@@ -5000,13 +5000,16 @@ body::after {
               }
               // Multi-media carousel (mediaUrls array)
               if (post.mediaUrls && post.mediaUrls.length) {
-                  const items = post.mediaUrls.map(mu => {
+                  const items = post.mediaUrls.map(rawMu => {
+                      let mu = rawMu;
+                      mu = mu.replace('https://pub-e5efe8c515324a8ab89ca15c5fa731dd.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
+                      mu = mu.replace('https://pub-1cb8318faddb49f0b2c91fbd098c271f.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
                       const ext = mu.split('?')[0].split('.').pop().toLowerCase();
                       const videoExts = ['mp4','webm','mov','avi','mkv'];
                       if (videoExts.some(e => ext === e)) {
-                          return `<video src="${mu}" controls playsinline onclick="openMediaViewer('video','${mu}')" style="max-height:240px;"></video>`;
+                          return `<video src="${mu}" controls playsinline preload="metadata" onclick="openMediaViewer('video','${mu}')" style="max-height:240px;" onerror="this.style.display='none'"></video>`;
                       }
-                      return `<img src="${mu}" alt="media" onclick="openMediaViewer('image','${mu}')" style="max-height:240px;">`;
+                      return `<img src="${mu}" alt="media" onclick="openMediaViewer('image','${mu}')" style="max-height:240px;" onerror="this.style.display='none'">`;
                   }).join('');
                   mediaHTML = `<div class="post-media-carousel">${items}</div>`;
               }
@@ -6691,8 +6694,11 @@ body::after {
 
   // Send image message
   window.confirmSendImage = async function() {
-      const url = document.getElementById("imgSendUrl").value.trim();
+      let url = document.getElementById("imgSendUrl").value.trim();
       if(!url) return;
+      // Rewrite old R2 public URLs to go through the Worker
+      url = url.replace('https://pub-e5efe8c515324a8ab89ca15c5fa731dd.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
+      url = url.replace('https://pub-1cb8318faddb49f0b2c91fbd098c271f.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
       // Detect type from URL extension
       const ext = url.split('?')[0].split('.').pop().toLowerCase();
       const audioExts = ['mp3','ogg','wav','aac','flac','m4a','webm'];
@@ -6797,13 +6803,12 @@ body::after {
               participants: (await getDoc(doc(db, 'chats', activeChatChannelId)))
                   .data().participants.filter(uid => uid !== currentUser.uid)
           });
-          // Reset local state and close chat
-          activeChatChannelId = null;
-          activeChatTargetUid = null;
-          if (activeChatUnsubscribe) { activeChatUnsubscribe(); activeChatUnsubscribe = null; }
+          // Reset local state and close chat — reuse the shared cleanup helper
+          if (typeof window._dmCleanupChat === 'function') window._dmCleanupChat();
+          const chatPanel = document.getElementById('msgChatPanel');
+          if (chatPanel) chatPanel.style.display = 'none';
           document.getElementById('chatFooter').classList.add('footer-hidden');
           document.getElementById('msgLayout').classList.remove('chat-open');
-          document.getElementById('chatBoxContainer').innerHTML = '';
           toastNotification('Conversation deleted.');
       } catch(e) { toastNotification('Could not delete: ' + e.message); }
   };
@@ -7083,26 +7088,38 @@ body::after {
                   t.textContent = 'This message was deleted.';
                   bub.appendChild(t);
               } else if (m.type === 'image' && m.imageUrl) {
+                  let mu = m.imageUrl;
+                  mu = mu.replace('https://pub-e5efe8c515324a8ab89ca15c5fa731dd.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
+                  mu = mu.replace('https://pub-1cb8318faddb49f0b2c91fbd098c271f.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
                   const img = document.createElement('img');
                   img.className = 'msg-media-img';
-                  img.src = m.imageUrl;
+                  img.src = mu;
                   img.alt = 'Image';
-                  img.onclick = () => openMediaViewer('image', m.imageUrl);
+                  img.onclick = () => openMediaViewer('image', mu);
+                  img.onerror = () => { img.style.display='none'; const fb=document.createElement('div'); fb.style.cssText='padding:10px;background:rgba(0,30,70,0.5);border-radius:8px;color:#6a90b8;font-size:12px;'; fb.textContent='🖼 Image unavailable'; bub.insertBefore(fb, img); };
                   bub.appendChild(img);
                   if (m.text) { const t = document.createElement('div'); t.style.fontSize = '13px'; t.textContent = m.text; bub.appendChild(t); }
               } else if (m.type === 'video' && m.imageUrl) {
+                  let mu = m.imageUrl;
+                  mu = mu.replace('https://pub-e5efe8c515324a8ab89ca15c5fa731dd.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
+                  mu = mu.replace('https://pub-1cb8318faddb49f0b2c91fbd098c271f.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
                   const vid = document.createElement('video');
                   vid.className = 'msg-media-vid';
-                  vid.src = m.imageUrl;
+                  vid.src = mu;
                   vid.controls = true;
                   vid.setAttribute('playsinline', '');
+                  vid.setAttribute('preload', 'metadata');
+                  vid.onerror = () => { vid.style.display='none'; const fb=document.createElement('div'); fb.style.cssText='padding:10px;background:rgba(0,0,0,0.5);border-radius:8px;color:#6a90b8;font-size:12px;'; fb.textContent='🎬 Video unavailable'; bub.insertBefore(fb, vid); };
                   bub.appendChild(vid);
                   if (m.text) { const t = document.createElement('div'); t.style.fontSize = '13px'; t.textContent = m.text; bub.appendChild(t); }
               } else if (m.type === 'audio' && m.imageUrl) {
-                  const filename = decodeURIComponent(m.imageUrl.split('/').pop().split('?')[0]);
+                  let mu = m.imageUrl;
+                  mu = mu.replace('https://pub-e5efe8c515324a8ab89ca15c5fa731dd.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
+                  mu = mu.replace('https://pub-1cb8318faddb49f0b2c91fbd098c271f.r2.dev/', 'https://yellow-term-11e6.nthntjrn.workers.dev/');
+                  const filename = decodeURIComponent(mu.split('/').pop().split('?')[0]);
                   const card = document.createElement('div');
                   card.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(0,30,70,0.7);border:1px solid rgba(0,174,239,0.3);border-radius:10px;min-width:200px;';
-                  card.innerHTML = `<span style="font-size:24px;flex-shrink:0;">🎵</span><div style="flex:1;min-width:0;"><div style="font-size:12px;color:#d8eeff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;">${_mEsc(filename)}</div><audio src="${m.imageUrl}" controls style="width:100%;"></audio></div>`;
+                  card.innerHTML = `<span style="font-size:24px;flex-shrink:0;">🎵</span><div style="flex:1;min-width:0;"><div style="font-size:12px;color:#d8eeff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;">${_mEsc(filename)}</div><audio src="${mu}" controls style="width:100%;"></audio></div>`;
                   bub.appendChild(card);
                   if (m.text) { const t = document.createElement('div'); t.style.fontSize = '13px'; t.textContent = m.text; bub.appendChild(t); }
               } else {
@@ -7739,6 +7756,38 @@ body::after {
       await adminAuditLog('EXPORT_USERS','Exported user list as CSV');
   };
 
+  // ── Exposed for closeChatPanel() (non-module scope) ──
+  // Cancels active chat Firestore listeners, resets shared state, and
+  // restores the empty-state placeholder so the panel is clean on next open.
+  window._dmCleanupChat = function() {
+      if (activeChatUnsubscribe)  { activeChatUnsubscribe();  activeChatUnsubscribe  = null; }
+      if (activeChatStatusUnsub)  { activeChatStatusUnsub();  activeChatStatusUnsub  = null; }
+      activeChatChannelId = null;
+      activeChatTargetUid = null;
+      // Clear rendered messages and restore the empty-state placeholder
+      const box = document.getElementById('chatBoxContainer');
+      if (box) {
+          box.innerHTML = '';
+          const es = document.createElement('div');
+          es.id = 'chatEmptyState';
+          es.className = 'chat-empty-state';
+          es.innerHTML = '<span>💬</span>Select a conversation to start chatting';
+          box.appendChild(es);
+      }
+      // Clear typing / read-receipt indicators
+      const typing = document.getElementById('chatTypingElement');
+      if (typing) typing.textContent = '';
+      const read = document.getElementById('chatReadElement');
+      if (read) read.textContent = '';
+      // Remove active highlight from all conv items
+      document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active-conv'));
+      // Reset chat header
+      const hName = document.getElementById('chatHeaderName');
+      if (hName) hName.textContent = '—';
+      const hStatus = document.getElementById('chatHeaderStatus');
+      if (hStatus) hStatus.textContent = 'Select a conversation';
+  };
+
 </script>
 
 <script>
@@ -7885,9 +7934,25 @@ function switchFriendsTab(tab) {
 
 /* ── Messaging UI helpers (non-module, called from HTML) ── */
 function closeChatPanel() {
+    // 1. Tear down Firestore listeners, reset state, clear rendered messages
+    if (typeof window._dmCleanupChat === 'function') window._dmCleanupChat();
+
+    // 2. Force-hide the chat panel with an inline style so it can never
+    //    overlap or swallow touches/clicks on the inbox list below it.
+    //    establishDirectMessageChannel() clears this with style.display=""
+    //    before showing it again, so CSS media-query rules remain in control.
+    const chatPanel = document.getElementById('msgChatPanel');
+    if (chatPanel) chatPanel.style.display = 'none';
+
+    // 3. Hide any open context menu (position:fixed z-index:9000 could block taps)
+    const ctxMenu = document.getElementById('msgCtxMenu');
+    if (ctxMenu) ctxMenu.style.display = 'none';
+
+    // 4. Collapse layout and hide input bar
     document.getElementById("msgLayout").classList.remove("chat-open");
-    // Restore footer-hidden so layout doesn't show orphan input bar
     document.getElementById("chatFooter").classList.add("footer-hidden");
+
+    // 5. Close emoji picker
     closeEmojiPicker();
 }
 
@@ -8597,12 +8662,12 @@ function mediaTypeFromMime(mime) {
 function showLocalPreview(file, imgEl, vidEl, audEl) {
     const url  = URL.createObjectURL(file);
     const type = mediaTypeFromMime(file.type);
-    if (imgEl) imgEl.style.display = 'none';
-    if (vidEl) vidEl.style.display = 'none';
-    if (audEl) audEl.style.display = 'none';
-    if (type === 'image' && imgEl) { imgEl.src = url; imgEl.style.display = 'block'; }
-    if (type === 'video' && vidEl) { vidEl.src = url; vidEl.style.display = 'block'; }
-    if (type === 'audio' && audEl) { audEl.src = url; audEl.style.display = 'block'; }
+    if (imgEl) { imgEl.style.display = 'none'; imgEl.classList.remove('visible'); }
+    if (vidEl) { vidEl.style.display = 'none'; vidEl.classList.remove('visible'); }
+    if (audEl) { audEl.style.display = 'none'; audEl.classList.remove('visible'); }
+    if (type === 'image' && imgEl) { imgEl.src = url; imgEl.style.display = 'block'; imgEl.classList.add('visible'); }
+    if (type === 'video' && vidEl) { vidEl.src = url; vidEl.style.display = 'block'; vidEl.classList.add('visible'); }
+    if (type === 'audio' && audEl) { audEl.src = url; audEl.style.display = 'block'; audEl.classList.add('visible'); }
 }
 
 /* ══ POST COMPOSER upload handlers ══ */
@@ -8627,10 +8692,6 @@ async function handlePostMediaPick(input) {
     if (files.length === 1) {
         showLocalPreview(files[0], previewImg, previewVid, previewAud);
         document.getElementById('postMediaFilename').textContent = files[0].name;
-        // Make sure audio preview is visible
-        if (mediaTypeFromMime(files[0].type) === 'audio' && previewAud) {
-            previewAud.style.display = 'block';
-        }
     } else {
         if (previewImg) previewImg.style.display = 'none';
         if (previewVid) previewVid.style.display = 'none';
@@ -8677,14 +8738,18 @@ function handlePostMediaDrop(event) {
 }
 
 function clearPostMedia() {
-    _postMediaUploadedUrl = '';
+    _postMediaUploadedUrl  = '';
+    _postMediaUploadedUrls = [];
     document.getElementById('postMediaUrl').value = '';
     document.getElementById('postMediaFile').value = '';
     document.getElementById('postMediaFilename').textContent = '';
     document.getElementById('postMediaClear').style.display = 'none';
-    document.getElementById('postMediaPreviewImg').style.display = 'none';
-    document.getElementById('postMediaPreviewVid').style.display = 'none';
-    document.getElementById('postMediaPreviewAud').style.display = 'none';
+    const pi = document.getElementById('postMediaPreviewImg');
+    const pv = document.getElementById('postMediaPreviewVid');
+    const pa = document.getElementById('postMediaPreviewAud');
+    if (pi) { pi.style.display = 'none'; pi.classList.remove('visible'); }
+    if (pv) { pv.style.display = 'none'; pv.classList.remove('visible'); }
+    if (pa) { pa.style.display = 'none'; pa.classList.remove('visible'); }
 }
 
 /* ══ DM file upload handlers ══ */
