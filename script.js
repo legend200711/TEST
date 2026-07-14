@@ -21,72 +21,35 @@
 (function registerSW() {
   if (!('serviceWorker' in navigator)) return;
 
-  // Capture whether a SW was already controlling the page at load time.
-  // If not, this is a first install — we must NOT reload on controllerchange
-  // because that would cause a startup loop (SW installs → claims → reload
-  // → SW installs again → ...).
-  const _hadControllerOnLoad = !!navigator.serviceWorker.controller;
-
-  // Determine base path — GitHub Pages vs local
   const isGH    = location.pathname.startsWith('/ShadowNexusSocial');
   const base    = isGH ? '/ShadowNexusSocial/' : './';
   const swPath  = base + 'sw.js';
   const fcmPath = base + 'firebase-messaging-sw.js';
 
   window.addEventListener('load', async () => {
+
     // ── Register main app service worker ──
     try {
-      const registration = await navigator.serviceWorker.register(swPath, {
-        scope: base
-      });
+      const reg = await navigator.serviceWorker.register(swPath, { scope: base });
+      console.log('[SW] Registered, scope:', reg.scope);
 
-      console.log('[SW] Registered, scope:', registration.scope);
-
-      // Auto-apply any update that is already waiting when the page loads
-      // (e.g. the SW updated while the app was in the background).
-      if (registration.waiting && navigator.serviceWorker.controller) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-
-      // Auto-apply future updates as soon as a new SW finishes installing
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // Silently skip waiting — the controllerchange handler below
-            // will reload the page so users instantly get the new version.
-            newWorker.postMessage({ type: 'SKIP_WAITING' });
-          }
-        });
-      });
-
-      // Reload the page ONLY when a new SW takes over from an existing one
-      // (i.e. a real app update). On first install there is no previous
-      // controller, so we skip the reload to avoid the startup loop.
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        // navigator.serviceWorker.controller is already the NEW worker here,
-        // so we check the flag we set before registering.
-        if (!_hadControllerOnLoad) return; // first install — no reload needed
-        refreshing = true;
-        window.location.reload();
-      });
-
+      // The SW calls skipWaiting() itself on install, so any waiting worker
+      // is already taking over. No reload needed — the page stays alive and
+      // the SW just starts serving future navigations. Reloading on every
+      // controllerchange was the source of the 6-7 reload startup loop, so
+      // we intentionally do NOT do that here.
     } catch (err) {
-      console.warn('[SW] Main SW registration failed:', err);
+      console.warn('[SW] Registration failed:', err);
     }
 
     // ── Register FCM messaging service worker ──
-    // This runs separately so FCM background messages work even when
-    // the app tab is closed or the phone screen is locked.
     try {
       await navigator.serviceWorker.register(fcmPath, { scope: base });
-      console.log('[FCM-SW] Messaging SW registered');
+      console.log('[FCM-SW] Registered');
     } catch (err) {
-      console.warn('[FCM-SW] Messaging SW registration failed:', err);
+      console.warn('[FCM-SW] Registration failed:', err);
     }
+
   });
 })();
 

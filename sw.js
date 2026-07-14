@@ -12,7 +12,7 @@
  * and the new one is pre-cached, so users always get the latest shell.
  */
 
-const CACHE_NAME    = 'shadow-nexus-v3';
+const CACHE_NAME    = 'shadow-nexus-v4';
 const OFFLINE_URL   = '/ShadowNexusSocial/offline.html';
 
 /** Files that make up the app shell — pre-cached on install */
@@ -48,24 +48,17 @@ const NETWORK_ONLY_HOSTS = [
    ───────────────────────────────────────────── */
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // addAll() will fail silently for missing files during development;
-      // use individual add() calls wrapped in try/catch so one missing
-      // icon doesn't block the entire SW install.
-      return Promise.allSettled(
+    caches.open(CACHE_NAME)
+      .then((cache) => Promise.allSettled(
         PRECACHE_URLS.map((url) =>
-          cache.add(url).catch((err) => {
-            console.warn(`[SW] Pre-cache skipped: ${url}`, err.message);
-          })
+          cache.add(url).catch((err) =>
+            console.warn(`[SW] Pre-cache skipped: ${url}`, err.message)
+          )
         )
-      );
-      // Note: we do NOT call skipWaiting() here automatically.
-      // Auto-skipping causes controllerchange to fire on first install,
-      // which script.js would interpret as an update and reload the page
-      // (the 6-7 reload loop on phones). The SW waits for the current
-      // page to close naturally, or the user can tap "Update" in the
-      // update toast which sends SKIP_WAITING via postMessage.
-    })
+      ))
+      // Take over immediately — script.js no longer reloads on
+      // controllerchange so this is safe on both first install and updates.
+      .then(() => self.skipWaiting())
   );
 });
 
