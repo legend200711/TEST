@@ -41,12 +41,30 @@
 <meta name="twitter:description" content="Connect, post, message, and share. No judgment. Stay legendary.">
 <meta name="twitter:image"       content="https://legend200711.github.io/ShadowNexusSocial/icon-512.png">
 
-<!-- ── Shared stylesheet ── -->
-<link rel="stylesheet" href="style.css">
+<!-- ── Shared stylesheet — loaded non-render-blocking.
+     The inline <style> block below already contains all critical CSS
+     so the page paints immediately; style.css enhances incrementally. ── -->
+<link rel="stylesheet" href="style.css" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="style.css"></noscript>
 
-<!-- ── Preconnect to Firebase so first load is faster ── -->
-<link rel="preconnect" href="https://www.gstatic.com">
-<link rel="preconnect" href="https://firestore.googleapis.com">
+<!-- ── DNS + connection warm-up for every Firebase host ── -->
+<link rel="preconnect"   href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect"   href="https://firestore.googleapis.com" crossorigin>
+<link rel="preconnect"   href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="preconnect"   href="https://securetoken.googleapis.com" crossorigin>
+<link rel="dns-prefetch" href="https://www.gstatic.com">
+<link rel="dns-prefetch" href="https://firestore.googleapis.com">
+<link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
+<link rel="dns-prefetch" href="https://securetoken.googleapis.com">
+
+<!-- ── Preload the Firebase ES-module chunks from <head> so the browser
+     starts fetching them in parallel with HTML parsing, not after the
+     parser reaches the <script type="module"> tag ~4300 lines in. ── -->
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js">
 
 <style>
 :root {
@@ -9428,7 +9446,7 @@ if (_origNavTo) {
      Shared JavaScript utilities (SW registration, PWA install,
      online/offline detection, helper functions)
      ═══════════════════════════════════════════════════════════ -->
-<script src="script.js"></script>
+<script src="script.js" async></script>
 
 </body>
 </html>
