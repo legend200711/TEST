@@ -18,8 +18,12 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-const ICON  = '/icon-192.png';
-const BADGE = '/favicon-32x32.png';
+// GitHub Pages serves this app under /ShadowNexusSocial/
+// Use absolute paths so icons resolve correctly regardless of SW scope.
+const SNX_BASE = '/ShadowNexusSocial/';
+const ICON  = SNX_BASE + 'icon-192.png';
+const BADGE = SNX_BASE + 'favicon-32x32.png';
+const APP_URL = SNX_BASE;
 
 const TYPE_TITLES = {
   message:       '💬 New Message',
@@ -48,18 +52,20 @@ messaging.onBackgroundMessage((payload) => {
     tag:     `snx-${type}-${Date.now()}`,
     renotify: true,
     vibrate: [200, 100, 200],
-    data:    { url: '/' },
+    data:    { url: APP_URL },
   });
 });
 
-// Notification click → open app
+// Notification click → focus existing tab or open app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || '/';
+  // Use the data URL if set, otherwise fall back to the app root
+  const url = event.notification.data?.url || APP_URL;
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      // Focus an existing tab that is already on the app
       for (const c of list) {
-        if ('focus' in c) return c.focus();
+        if (c.url.includes('/ShadowNexusSocial') && 'focus' in c) return c.focus();
       }
       return clients.openWindow(url);
     })

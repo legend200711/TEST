@@ -3382,7 +3382,7 @@ body::after {
              ondragover="event.preventDefault();this.classList.add('drag-over')"
              ondragleave="this.classList.remove('drag-over')"
              ondrop="handlePostMediaDrop(event)">
-            <input type="file" id="postMediaFile" accept="image/*,video/*,audio/*" multiple capture="environment" style="display:none;" onchange="handlePostMediaPick(this)">
+            <input type="file" id="postMediaFile" accept="image/*,video/*,audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" multiple style="display:none;" onchange="handlePostMediaPick(this)">
             <button class="snx-upload-btn" id="postMediaUploadBtn" onclick="document.getElementById('postMediaFile').click()" type="button">
                 📎 Photo / Video / Music
             </button>
@@ -3774,7 +3774,7 @@ body::after {
     <div class="img-send-inner">
         <button class="img-modal-close" onclick="closeImgSendModal()">✕</button>
         <h3>� Send Photo / Video / Music</h3>
-        <input type="file" id="imgSendFile" accept="image/*,video/*,audio/*" capture="environment" style="display:none;" onchange="handleDmFilePick(this)">
+        <input type="file" id="imgSendFile" accept="image/*,video/*,audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" style="display:none;" onchange="handleDmFilePick(this)">
         <div class="snx-upload-row snx-dropzone" id="imgSendDropZone"
              ondragover="event.preventDefault();this.classList.add('drag-over')"
              ondragleave="this.classList.remove('drag-over')"
@@ -4135,7 +4135,8 @@ body::after {
      ADMIN PANEL PAGE — Founder only
      ═══════════════════════════════════════════════════════════ -->
 <div class="page" id="adminPage">
-<h2 class="eclipse-title">🛡️ Founder Control Center</h2>
+<!-- Title reflects the current user's role (updated by renderAdminPanel) -->
+<h2 class="eclipse-title" id="adminPageTitle">🛡️ Admin Panel</h2>
 
 <!-- ── Admin Tab Nav ── -->
 <div class="admin-tab-bar" id="adminTabBar">
@@ -4143,9 +4144,10 @@ body::after {
     <button class="admin-tab" onclick="switchAdminTab('users')">👥 Users</button>
     <button class="admin-tab" onclick="switchAdminTab('content')">📝 Content</button>
     <button class="admin-tab" onclick="switchAdminTab('reports')">🚨 Reports</button>
-    <button class="admin-tab" onclick="switchAdminTab('announce')">📢 Announce</button>
-    <button class="admin-tab" onclick="switchAdminTab('settings')">⚙️ Settings</button>
-    <button class="admin-tab" onclick="switchAdminTab('security')">🔒 Security</button>
+    <!-- Founder-only tabs — hidden for Administrators via JS on render -->
+    <button class="admin-tab admin-tab-founder-only" onclick="switchAdminTab('announce')">📢 Announce</button>
+    <button class="admin-tab admin-tab-founder-only" onclick="switchAdminTab('settings')">⚙️ Settings</button>
+    <button class="admin-tab admin-tab-founder-only" onclick="switchAdminTab('security')">🔒 Security</button>
 </div>
 
 <!-- ══════════════════════════════════
@@ -4189,8 +4191,9 @@ body::after {
         <h3 style="margin:0 0 10px;font-size:13px;color:#00d4ff;letter-spacing:0.8px;text-transform:uppercase;">🏅 Badge Reference</h3>
         <div class="admin-badge-legend">
             <div class="admin-legend-item"><span class="badge badge-founder">👑 Founder</span></div>
+            <div class="admin-legend-item"><span class="badge badge-admin">🛡️ Administrator</span></div>
+            <div class="admin-legend-item"><span class="badge badge-moderator">🛠️ Moderator</span></div>
             <div class="admin-legend-item"><span class="badge badge-verified">✓ Verified</span></div>
-            <div class="admin-legend-item"><span class="badge badge-moderator">🛡 Moderator</span></div>
             <div class="admin-legend-item"><span class="badge badge-og">🔥 OG</span></div>
             <div class="admin-legend-item"><span class="badge badge-early">🌟 Early</span></div>
             <div class="admin-legend-item"><span class="badge badge-supporter">💎 Supporter</span></div>
@@ -4207,11 +4210,12 @@ body::after {
     <div class="section-card">
         <div class="admin-search-row">
             <input id="adminSearchInput" placeholder="🔍 Search by name or @handle…" autocomplete="off" oninput="adminDebouncedSearch()">
-            <select id="adminUserFilter" onchange="renderAdminPanel()" style="margin:0;width:auto;min-width:120px;font-size:12px;padding:6px 10px;">
+            <select id="adminUserFilter" onchange="renderAdminPanel()" style="margin:0;width:auto;min-width:130px;font-size:12px;padding:6px 10px;">
                 <option value="all">All Users</option>
                 <option value="online">Online Now</option>
                 <option value="suspended">Suspended</option>
                 <option value="founder">Founders</option>
+                <option value="admin">Administrators</option>
                 <option value="moderator">Moderators</option>
             </select>
             <button onclick="renderAdminPanel()" style="border-radius:8px;flex-shrink:0;">Refresh</button>
@@ -4380,9 +4384,12 @@ body::after {
     if (Notification.permission === 'denied') return;
 
     try {
-      // Register the FCM service worker explicitly so FCM knows where to deliver
-      const swReg = await navigator.serviceWorker.register('firebase-messaging-sw.js', {
-        scope: '/'
+      // Use the same scope as script.js so the FCM SW is registered under the
+      // correct path for GitHub Pages (/ShadowNexusSocial/) or localhost (/).
+      const isGH = location.pathname.startsWith('/ShadowNexusSocial');
+      const base  = isGH ? '/ShadowNexusSocial/' : './';
+      const swReg = await navigator.serviceWorker.register(base + 'firebase-messaging-sw.js', {
+        scope: base
       });
 
       const permission = await Notification.requestPermission();
@@ -4647,9 +4654,9 @@ body::after {
                   window._snxRole = userData.role || 'member';
               }
               applyAestheticMatrix(userData.aesthetic || 'cyber');
-              // Sync nav admin button visibility
+              // Sync nav admin button visibility — visible for founder AND admin
               const _ab = document.getElementById("navAdmin");
-              if (_ab) _ab.style.display = window._snxRole === 'founder' ? 'flex' : 'none';
+              if (_ab) _ab.style.display = (window._snxRole === 'founder' || window._snxRole === 'admin') ? 'flex' : 'none';
               const ps  = userData.privacySettings || {};
               const sel = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
               sel('privSeeProfile',   ps.seeProfile);
@@ -4664,10 +4671,11 @@ body::after {
           try {
               if (!_isFounder) {
                   const snap2 = await getDoc(doc(db, 'users', user.uid));
-                  window._snxRole = (snap2.exists() && snap2.data().role === 'founder') ? 'founder' : 'member';
+                  const r2 = snap2.exists() ? (snap2.data().role || 'member') : 'member';
+                  window._snxRole = r2; // preserve admin/moderator/member exactly
               }
               const adminNavBtn = document.getElementById("navAdmin");
-              if (adminNavBtn) adminNavBtn.style.display = window._snxRole === 'founder' ? 'flex' : 'none';
+              if (adminNavBtn) adminNavBtn.style.display = (window._snxRole === 'founder' || window._snxRole === 'admin') ? 'flex' : 'none';
           } catch(_) {}
           document.body.classList.remove('snx-auth-pending');
           navTo('feed');          initTimelineStream();
@@ -5222,6 +5230,8 @@ body::after {
       if (!badges || !badges.length) return '';
       return badges.map(bName => {
           if (bName === 'Founder' && role !== 'founder') return '';
+          // Admin badge only renders for actual admin/founder roles — prevents cosmetic spoofing
+          if (bName === 'Admin' && role !== 'admin' && role !== 'founder') return '';
           const cls      = BADGE_CLASS_MAP[bName] || '';
           const icon     = BADGE_ICON_MAP[bName]  || '🏅';
           const meta     = BADGE_META[bName] || {};
@@ -5317,7 +5327,45 @@ body::after {
       }
   };
 
-  /* ── Helper: push a notification to a user's document + FCM push ── */
+  /* ── Shared push title / body maps used by pushNotification and triggerOsPush ── */
+  const _pushTitles = {
+      message:       '💬 New Message',
+      like:          '❤️ Post Liked',
+      comment:       '💬 New Comment',
+      reply:         '↩️ New Reply',
+      follow:        '👤 New Follower',
+      friendRequest: '🦋 Friend Request',
+      friendAccepted:'✅ Friend Request Accepted',
+      mention:       '@ You were mentioned',
+      repost:        '🔄 Post Reposted',
+      wallPost:      '📝 New Wall Post',
+      announcement:  '📢 Announcement',
+  };
+
+  function _pushBody(notif) {
+      const name = notif.fromName || 'Someone';
+      switch (notif.type) {
+          case 'message':        return `${name} sent you a message`;
+          case 'like':           return `${name} liked your post`;
+          case 'comment':        return `${name} commented: "${(notif.commentText||'').substring(0,60)}"`;
+          case 'reply':          return `${name} replied to your comment`;
+          case 'follow':         return `${name} started following you`;
+          case 'friendRequest':  return `${name} sent you a friend request`;
+          case 'friendAccepted': return `${name} accepted your friend request`;
+          case 'mention':        return `${name} mentioned you in a post`;
+          case 'repost':         return `${name} reposted your post`;
+          case 'wallPost':       return `${name} posted on your wall`;
+          case 'announcement':   return notif.body || 'New announcement from admin';
+          default:               return 'You have a new notification';
+      }
+  }
+
+  /* ── Helper: push a notification to a user's document + OS push ──
+     Writes one in-app notification entry AND queues an OS push.
+     Do NOT call this for friendRequest/friendAccepted if the in-app
+     notification has already been written directly — use triggerOsPush
+     instead to avoid duplicate bell entries.
+  ── */
   async function pushNotification(targetUid, notif) {
       if (!targetUid || targetUid === currentUser.uid) return;
       // 1. Save to Firestore (in-app bell)
@@ -5332,31 +5380,28 @@ body::after {
           });
       } catch(e) { /* best-effort */ }
 
-      // 2. Fire FCM push — completely non-blocking, never throws
-      const pushTitles = {
-          message: '💬 New Message', like: '❤️ Post Liked',
-          comment: '💬 New Comment', reply: '↩️ New Reply',
-          follow: '👤 New Follower', friendRequest: '🦋 Friend Request',
-          mention: '@ You were mentioned', repost: '🔄 Post Reposted',
-          wallPost: '📝 New Wall Post', announcement: '📢 Announcement',
-      };
-      const pushBodies = {
-          message:       `${notif.fromName || 'Someone'} sent you a message`,
-          like:          `${notif.fromName || 'Someone'} liked your post`,
-          comment:       `${notif.fromName || 'Someone'} commented: "${(notif.commentText || '').substring(0,60)}"`,
-          reply:         `${notif.fromName || 'Someone'} replied to your comment`,
-          follow:        `${notif.fromName || 'Someone'} started following you`,
-          friendRequest: `${notif.fromName || 'Someone'} sent you a friend request`,
-          mention:       `${notif.fromName || 'Someone'} mentioned you`,
-          repost:        `${notif.fromName || 'Someone'} reposted your post`,
-          wallPost:      `${notif.fromName || 'Someone'} posted on your wall`,
-          announcement:  notif.body || 'New announcement from admin',
-      };
+      // 2. Queue OS push — completely non-blocking, never throws
+      const _appUrl = location.origin + (location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/');
       sendPushToUser(targetUid, {
-          title: pushTitles[notif.type] || '🔔 Shadow Nexus Social',
-          body:  pushBodies[notif.type] || 'You have a new notification',
+          title: _pushTitles[notif.type] || '🔔 Shadow Nexus Social',
+          body:  _pushBody(notif),
           type:  notif.type,
-          url:   '/'
+          url:   _appUrl
+      }).catch(() => {});
+  }
+
+  /* ── triggerOsPush: queue an OS push WITHOUT writing an in-app notification ──
+     Use this when the in-app notification has already been written separately
+     (e.g. sendFriendRequest, acceptFriendRequest) to avoid duplicate bell entries.
+  ── */
+  async function triggerOsPush(targetUid, notif) {
+      if (!targetUid || targetUid === currentUser.uid) return;
+      const _appUrl = location.origin + (location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/');
+      sendPushToUser(targetUid, {
+          title: _pushTitles[notif.type] || '🔔 Shadow Nexus Social',
+          body:  _pushBody(notif),
+          type:  notif.type,
+          url:   _appUrl
       }).catch(() => {});
   }
 
@@ -5697,9 +5742,19 @@ body::after {
       const theirSnap = await getDoc(doc(db,"users",targetUid));
       if (theirSnap.data()?.privacySettings?.sendRequests==='nobody') { toastNotification("This user isn't accepting requests."); return; }
       await updateDoc(doc(db,"users",currentUser.uid), { friendRequestsSent: arrayUnion(targetUid) });
+      // Write in-app notification directly (arrayUnion is fine here since we
+      // don't go through pushNotification — we need both the notifications array
+      // entry AND the pushQueue entry for OS push delivery).
       await updateDoc(doc(db,"users",targetUid), {
           friendRequestsReceived: arrayUnion(currentUser.uid),
-          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36), type:'friendRequest', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36).slice(2), type:'friendRequest', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+      });
+      // OS push only — in-app notification already written above via arrayUnion
+      triggerOsPush(targetUid, {
+          type: 'friendRequest',
+          fromUid: currentUser.uid,
+          fromName: userData.displayName,
+          fromAvatar: userData.avatar || ''
       });
       toastNotification("Friend request sent!");
       if (document.getElementById("searchInput").value) runSearch();
@@ -5711,12 +5766,19 @@ body::after {
       await updateDoc(doc(db,"users",currentUser.uid), {
           friends: arrayUnion(fromUid),
           friendRequestsReceived: (md.friendRequestsReceived||[]).filter(x=>x!==fromUid),
-          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36), type:'friendAccepted', fromUid, fromName:td.displayName, fromAvatar:td.avatar||'', ts:Date.now(), read:false })
+          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36).slice(2), type:'friendAccepted', fromUid, fromName:td.displayName, fromAvatar:td.avatar||'', ts:Date.now(), read:false })
       });
       await updateDoc(doc(db,"users",fromUid), {
           friends: arrayUnion(currentUser.uid),
           friendRequestsSent: (td.friendRequestsSent||[]).filter(x=>x!==currentUser.uid),
-          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36), type:'friendAccepted', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36).slice(2), type:'friendAccepted', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+      });
+      // OS push only — in-app notification already written above via arrayUnion
+      triggerOsPush(fromUid, {
+          type: 'friendAccepted',
+          fromUid: currentUser.uid,
+          fromName: userData.displayName,
+          fromAvatar: userData.avatar || ''
       });
       toastNotification(`Now friends with ${td.displayName}!`);
       renderFriendsPage();
@@ -5838,16 +5900,17 @@ body::after {
               // Show OS notification
               if ('Notification' in window && Notification.permission === 'granted') {
                   try {
-                      const reg = await navigator.serviceWorker.ready;
-                      reg.showNotification(n.title || '🔔 Shadow Nexus Social', {
-                          body:     n.body || 'You have a new notification',
-                          icon:     'icon-192.png',
-                          badge:    'favicon-32x32.png',
-                          tag:      `snx-${n.id}`,
-                          renotify: true,
-                          vibrate:  [200, 100, 200],
-                          data:     { url: n.url || '/' }
-                      });
+                          const _swBase = location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/';
+                          const reg = await navigator.serviceWorker.ready;
+                          reg.showNotification(n.title || '🔔 Shadow Nexus Social', {
+                              body:     n.body || 'You have a new notification',
+                              icon:     _swBase + 'icon-192.png',
+                              badge:    _swBase + 'favicon-32x32.png',
+                              tag:      `snx-${n.id}`,
+                              renotify: true,
+                              vibrate:  [200, 100, 200],
+                              data:     { url: location.origin + (location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/') }
+                          });
                   } catch(_) {
                       try { new Notification(n.title || '🔔 Shadow Nexus', { body: n.body || '', icon: 'icon-192.png' }); } catch(_) {}
                   }
@@ -6468,6 +6531,9 @@ body::after {
   // before the first await resolves we bail out of the stale call so only
   // the latest tap wins and there is never more than one active-conv highlight.
   let _dmOpenToken = 0;
+  // Exposed so the non-module closeChatPanel() can invalidate in-flight opens.
+  window._dmInvalidateOpenToken = function() { _dmOpenToken++; };
+
   window.establishDirectMessageChannel = async function(targetUid) {
       if(targetUid === currentUser.uid) return;
 
@@ -6518,9 +6584,15 @@ body::after {
       hName.onclick = null;
       // Header status updated live below ↓
 
+      // Guard again before mutating the UI — closeChatPanel() bumps the token
+      // so a Back tap while awaiting above will stale-out this call here.
+      if (myToken !== _dmOpenToken) return;
+
       // Show footer + panel — use classes, never inline style, so CSS media queries stay in control
       document.getElementById("chatFooter").classList.remove("footer-hidden");
-      document.getElementById("chatEmptyState").style.display = "none";
+      // #chatEmptyState may have been rebuilt by _dmCleanupChat() — use getElementById
+      const emptyState = document.getElementById("chatEmptyState");
+      if (emptyState) emptyState.style.display = "none";
       document.getElementById("msgLayout").classList.add("chat-open");
       // Remove any lingering inline display override so CSS flex rules take over
       document.getElementById("msgChatPanel").style.display = "";
@@ -7534,14 +7606,15 @@ body::after {
       }
   };
 
-  // Set a user's role (member / moderator) — only changes the role field, does not touch badges
+  // Set a user's role (member / moderator / admin) — Founder only.
+  // Automatically syncs the Moderator and Administrator badges to match the role.
   window.setUserRole = async function(targetUid, newRole, selectEl) {
       if (!userData || userData.role !== 'founder') {
           toastNotification('⛔ Only the Founder can change roles.');
           selectEl.value = selectEl.dataset.prev || 'member';
           return;
       }
-      // Never downgrade the founder account via this control
+      // Never let the founder demote themselves via this control
       if (targetUid === currentUser.uid) {
           toastNotification('You cannot change your own role here.');
           selectEl.value = 'founder';
@@ -7550,16 +7623,16 @@ body::after {
       try {
           await updateDoc(doc(db, 'users', targetUid), { role: newRole });
           selectEl.dataset.prev = newRole;
-          toastNotification(`Role updated to "${newRole}".`);
-          // Sync Moderator badge with role automatically
+          toastNotification(`Role updated to "${newRole === 'admin' ? 'Administrator' : newRole}".`);
+          // Auto-sync role badges: Moderator ↔ moderator, Administrator ↔ admin
           const snap = await getDoc(doc(db, 'users', targetUid));
-          const badges = snap.data().badges || [];
-          if (newRole === 'moderator' && !badges.includes('Moderator')) {
-              await updateDoc(doc(db, 'users', targetUid), { badges: [...badges, 'Moderator'] });
-          } else if (newRole === 'member' && badges.includes('Moderator')) {
-              await updateDoc(doc(db, 'users', targetUid), { badges: badges.filter(b => b !== 'Moderator') });
-          }
-          // Re-render to reflect changes
+          let badges = snap.data().badges || [];
+          // Remove both role badges first, then add the correct one
+          badges = badges.filter(b => b !== 'Moderator' && b !== 'Admin');
+          if (newRole === 'moderator') badges = [...badges, 'Moderator'];
+          if (newRole === 'admin')     badges = [...badges, 'Admin'];
+          await updateDoc(doc(db, 'users', targetUid), { badges });
+          await adminAuditLog('SET_ROLE', `Set ${targetUid} role → ${newRole}`);
           renderAdminPanel();
       } catch (e) {
           toastNotification('Role update failed: ' + e.message);
@@ -7577,7 +7650,20 @@ body::after {
       if (!userData || userData.role !== 'founder') { toastNotification('⛔ Founder access only.'); return false; }
       return true;
   }
+  // Returns true if the current user is an Administrator OR the Founder.
+  // Use this to gate actions that admins are permitted to perform.
+  function adminOrFounder() {
+      const r = userData?.role;
+      if (r !== 'founder' && r !== 'admin') { toastNotification('⛔ Administrator access required.'); return false; }
+      return true;
+  }
   window.switchAdminTab = function(tab) {
+      // Founder-only tabs — admins are redirected if they try to access them
+      const founderOnlyTabs = ['settings','security','announce'];
+      if (founderOnlyTabs.includes(tab) && userData?.role !== 'founder') {
+          toastNotification('⛔ Founder access only.');
+          return;
+      }
       document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
       const tabEl = document.querySelector(`.admin-tab[onclick*="'${tab}'"]`);
@@ -7596,12 +7682,25 @@ body::after {
 
   // Main render function — loads all users, builds the list with badge controls
   window.renderAdminPanel = async function() {
-      if (!founderOnly()) return;
+      if (!adminOrFounder()) return;
       const listEl = document.getElementById('adminUserList');
       if (!listEl) return;
       listEl.innerHTML = '<div class="empty-state" style="padding:20px 0;">Loading…</div>';
       const filter     = (document.getElementById('adminSearchInput')?.value||'').trim().toLowerCase();
       const filterMode = document.getElementById('adminUserFilter')?.value||'all';
+
+      // Set page title and show/hide founder-only tabs based on role
+      const isFounderView = userData?.role === 'founder';
+      const titleEl = document.getElementById('adminPageTitle');
+      if (titleEl) titleEl.textContent = isFounderView ? '👑 Founder Control Center' : '🛡️ Administrator Panel';
+      document.querySelectorAll('.admin-tab-founder-only').forEach(t => {
+          t.style.display = isFounderView ? '' : 'none';
+      });
+
+      // Hide the delete-user button for admins (founder-only action)
+      document.querySelectorAll('.btn-admin-delete').forEach(b => {
+          b.style.display = isFounderView ? '' : 'none';
+      });
 
       try {
           const snap = await getDocs(collection(db, 'users'));
@@ -7615,6 +7714,7 @@ body::after {
           if (filterMode==='online')    users = users.filter(u=>u.status==='online');
           if (filterMode==='suspended') users = users.filter(u=>u.suspended);
           if (filterMode==='founder')   users = users.filter(u=>u.role==='founder');
+          if (filterMode==='admin')     users = users.filter(u=>u.role==='admin');
           if (filterMode==='moderator') users = users.filter(u=>u.role==='moderator');
           if (filter) users = users.filter(u=>(u.displayName||'').toLowerCase().includes(filter)||(u.username||'').toLowerCase().includes(filter));
           users.sort((a,b)=>{ if(a.status==='online'&&b.status!=='online')return -1; if(b.status==='online'&&a.status!=='online')return 1; return(a.displayName||'').localeCompare(b.displayName||''); });
@@ -7649,7 +7749,11 @@ body::after {
               nameRow.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;';
               nameRow.innerHTML=`<span class="admin-user-name">${escFeed(u.displayName)}</span>${buildBadgeHtml(u.badges||[],u.role||'member')}${statusTag}`;
               const roleSelect=document.createElement('select'); roleSelect.className='admin-role-select'; roleSelect.dataset.prev=u.role||'member';
-              ['member','moderator'].forEach(r=>{ const opt=document.createElement('option'); opt.value=r; opt.textContent=r.charAt(0).toUpperCase()+r.slice(1); if((u.role||'member')===r)opt.selected=true; roleSelect.appendChild(opt); });
+              // Founder can assign member/moderator/admin. Admins can only view (select disabled).
+              const isCurrentFounder = userData?.role === 'founder';
+              const roleOptions = isCurrentFounder ? ['member','moderator','admin'] : ['member','moderator','admin'];
+              roleOptions.forEach(r=>{ const opt=document.createElement('option'); opt.value=r; opt.textContent=r==='admin'?'Administrator':r.charAt(0).toUpperCase()+r.slice(1); if((u.role||'member')===r)opt.selected=true; roleSelect.appendChild(opt); });
+              if (!isCurrentFounder) roleSelect.disabled = true; // admins cannot change roles
               roleSelect.onchange=()=>setUserRole(u.uid,roleSelect.value,roleSelect);
               nameRow.appendChild(roleSelect);
               const meta=document.createElement('div'); meta.className='admin-user-handle'; meta.textContent=`@${u.username||''}  ·  Joined ${joined}`;
@@ -7664,14 +7768,14 @@ body::after {
   };
 
   window.adminSuspendUser = async function(uid,name) {
-      if(!founderOnly())return;
+      if(!adminOrFounder())return;
       if(!confirm(`Suspend ${name}?`))return;
       await updateDoc(doc(db,'users',uid),{suspended:true,suspendedAt:Date.now()});
       await adminAuditLog('SUSPEND_USER',`Suspended ${name} (${uid})`);
       toastNotification(`🚫 ${name} suspended.`); renderAdminPanel();
   };
   window.adminRestoreUser = async function(uid,name) {
-      if(!founderOnly())return;
+      if(!adminOrFounder())return;
       await updateDoc(doc(db,'users',uid),{suspended:false,suspendedAt:null});
       await adminAuditLog('RESTORE_USER',`Restored ${name} (${uid})`);
       toastNotification(`✅ ${name} restored.`); renderAdminPanel();
@@ -7689,7 +7793,7 @@ body::after {
       }catch(e){toastNotification('Error: '+e.message);}
   };
   window.adminLoadPosts = async function(mode) {
-      if(!founderOnly())return;
+      if(!adminOrFounder())return;
       const box=document.getElementById('adminPostList'); if(!box)return;
       box.innerHTML='<div class="empty-state">Loading…</div>';
       try {
@@ -7706,7 +7810,7 @@ body::after {
       }catch(e){box.innerHTML=`<div class="empty-state" style="color:#ff5566;">${escFeed(e.message)}</div>`;}
   };
   window.adminDeletePost = async function(id,name) {
-      if(!founderOnly())return;
+      if(!adminOrFounder())return;
       if(!confirm(`Delete post by ${name}?`))return;
       await deleteDoc(doc(db,'posts',id));
       await adminAuditLog('DELETE_POST',`Deleted post ${id} by ${name}`);
@@ -7723,7 +7827,7 @@ body::after {
       toastNotification('🚨 Report submitted. Thank you.');
   };
   window.adminLoadReports = async function(type) {
-      if(!founderOnly())return;
+      if(!adminOrFounder())return;
       const box=document.getElementById('adminReportList'); if(!box)return;
       box.innerHTML='<div class="empty-state">Loading…</div>';
       try {
@@ -7738,8 +7842,8 @@ body::after {
           });
       }catch(e){box.innerHTML=`<div class="empty-state" style="color:#ff5566;">${escFeed(e.message)}</div>`;}
   };
-  window.adminResolveReport=async function(id){await updateDoc(doc(db,'reports',id),{status:'resolved',resolvedAt:Date.now(),resolvedBy:currentUser.uid});await adminAuditLog('RESOLVE_REPORT',`Resolved ${id}`);toastNotification('✓ Resolved.');adminLoadReports('user');};
-  window.adminDeleteReport=async function(id){await deleteDoc(doc(db,'reports',id));toastNotification('🗑 Dismissed.');adminLoadReports('user');};
+  window.adminResolveReport=async function(id){if(!adminOrFounder())return;await updateDoc(doc(db,'reports',id),{status:'resolved',resolvedAt:Date.now(),resolvedBy:currentUser.uid});await adminAuditLog('RESOLVE_REPORT',`Resolved ${id}`);toastNotification('✓ Resolved.');adminLoadReports('user');};
+  window.adminDeleteReport=async function(id){if(!adminOrFounder())return;await deleteDoc(doc(db,'reports',id));toastNotification('🗑 Dismissed.');adminLoadReports('user');};
   window.adminLoadAnnouncementHistory = async function() {
       const box=document.getElementById('adminAnnouncementHistory'); if(!box)return;
       try {
@@ -7783,7 +7887,7 @@ body::after {
       }catch(e){box.innerHTML=`<div class="empty-state" style="color:#ff5566;">${escFeed(e.message)}</div>`;}
   };
   window.adminLoadSuspended = async function() {
-      if(!founderOnly())return;
+      if(!adminOrFounder())return;
       const box=document.getElementById('adminSuspendedList'); if(!box)return;
       box.innerHTML='<div class="empty-state">Loading…</div>';
       try {
@@ -8004,25 +8108,31 @@ function switchFriendsTab(tab) {
 
 /* ── Messaging UI helpers (non-module, called from HTML) ── */
 function closeChatPanel() {
-    // 1. Tear down Firestore listeners, reset state, clear rendered messages
+    // 1. Invalidate any in-flight establishDirectMessageChannel() call so its
+    //    async continuation cannot re-add 'chat-open' after we remove it here.
+    //    The token is a module-scoped var; incrementing it makes every pending
+    //    invocation's myToken !== _dmOpenToken check fail on its next guard.
+    if (typeof window._dmInvalidateOpenToken === 'function') window._dmInvalidateOpenToken();
+
+    // 2. Tear down Firestore listeners, reset state, clear rendered messages
     if (typeof window._dmCleanupChat === 'function') window._dmCleanupChat();
 
-    // 2. Force-hide the chat panel with an inline style so it can never
+    // 3. Force-hide the chat panel with an inline style so it can never
     //    overlap or swallow touches/clicks on the inbox list below it.
     //    establishDirectMessageChannel() clears this with style.display=""
     //    before showing it again, so CSS media-query rules remain in control.
     const chatPanel = document.getElementById('msgChatPanel');
     if (chatPanel) chatPanel.style.display = 'none';
 
-    // 3. Hide any open context menu (position:fixed z-index:9000 could block taps)
+    // 4. Hide any open context menu (position:fixed z-index:9000 could block taps)
     const ctxMenu = document.getElementById('msgCtxMenu');
     if (ctxMenu) ctxMenu.style.display = 'none';
 
-    // 4. Collapse layout and hide input bar
+    // 5. Collapse layout and hide input bar
     document.getElementById("msgLayout").classList.remove("chat-open");
     document.getElementById("chatFooter").classList.add("footer-hidden");
 
-    // 5. Close emoji picker
+    // 6. Close emoji picker
     closeEmojiPicker();
 }
 

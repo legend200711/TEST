@@ -3382,7 +3382,7 @@ body::after {
              ondragover="event.preventDefault();this.classList.add('drag-over')"
              ondragleave="this.classList.remove('drag-over')"
              ondrop="handlePostMediaDrop(event)">
-            <input type="file" id="postMediaFile" accept="image/*,video/*,audio/*" multiple capture="environment" style="display:none;" onchange="handlePostMediaPick(this)">
+            <input type="file" id="postMediaFile" accept="image/*,video/*,audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" multiple style="display:none;" onchange="handlePostMediaPick(this)">
             <button class="snx-upload-btn" id="postMediaUploadBtn" onclick="document.getElementById('postMediaFile').click()" type="button">
                 📎 Photo / Video / Music
             </button>
@@ -3774,7 +3774,7 @@ body::after {
     <div class="img-send-inner">
         <button class="img-modal-close" onclick="closeImgSendModal()">✕</button>
         <h3>� Send Photo / Video / Music</h3>
-        <input type="file" id="imgSendFile" accept="image/*,video/*,audio/*" capture="environment" style="display:none;" onchange="handleDmFilePick(this)">
+        <input type="file" id="imgSendFile" accept="image/*,video/*,audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" style="display:none;" onchange="handleDmFilePick(this)">
         <div class="snx-upload-row snx-dropzone" id="imgSendDropZone"
              ondragover="event.preventDefault();this.classList.add('drag-over')"
              ondragleave="this.classList.remove('drag-over')"
@@ -4380,9 +4380,12 @@ body::after {
     if (Notification.permission === 'denied') return;
 
     try {
-      // Register the FCM service worker explicitly so FCM knows where to deliver
-      const swReg = await navigator.serviceWorker.register('firebase-messaging-sw.js', {
-        scope: '/'
+      // Use the same scope as script.js so the FCM SW is registered under the
+      // correct path for GitHub Pages (/ShadowNexusSocial/) or localhost (/).
+      const isGH = location.pathname.startsWith('/ShadowNexusSocial');
+      const base  = isGH ? '/ShadowNexusSocial/' : './';
+      const swReg = await navigator.serviceWorker.register(base + 'firebase-messaging-sw.js', {
+        scope: base
       });
 
       const permission = await Notification.requestPermission();
@@ -5317,7 +5320,45 @@ body::after {
       }
   };
 
-  /* ── Helper: push a notification to a user's document + FCM push ── */
+  /* ── Shared push title / body maps used by pushNotification and triggerOsPush ── */
+  const _pushTitles = {
+      message:       '💬 New Message',
+      like:          '❤️ Post Liked',
+      comment:       '💬 New Comment',
+      reply:         '↩️ New Reply',
+      follow:        '👤 New Follower',
+      friendRequest: '🦋 Friend Request',
+      friendAccepted:'✅ Friend Request Accepted',
+      mention:       '@ You were mentioned',
+      repost:        '🔄 Post Reposted',
+      wallPost:      '📝 New Wall Post',
+      announcement:  '📢 Announcement',
+  };
+
+  function _pushBody(notif) {
+      const name = notif.fromName || 'Someone';
+      switch (notif.type) {
+          case 'message':        return `${name} sent you a message`;
+          case 'like':           return `${name} liked your post`;
+          case 'comment':        return `${name} commented: "${(notif.commentText||'').substring(0,60)}"`;
+          case 'reply':          return `${name} replied to your comment`;
+          case 'follow':         return `${name} started following you`;
+          case 'friendRequest':  return `${name} sent you a friend request`;
+          case 'friendAccepted': return `${name} accepted your friend request`;
+          case 'mention':        return `${name} mentioned you in a post`;
+          case 'repost':         return `${name} reposted your post`;
+          case 'wallPost':       return `${name} posted on your wall`;
+          case 'announcement':   return notif.body || 'New announcement from admin';
+          default:               return 'You have a new notification';
+      }
+  }
+
+  /* ── Helper: push a notification to a user's document + OS push ──
+     Writes one in-app notification entry AND queues an OS push.
+     Do NOT call this for friendRequest/friendAccepted if the in-app
+     notification has already been written directly — use triggerOsPush
+     instead to avoid duplicate bell entries.
+  ── */
   async function pushNotification(targetUid, notif) {
       if (!targetUid || targetUid === currentUser.uid) return;
       // 1. Save to Firestore (in-app bell)
@@ -5332,31 +5373,28 @@ body::after {
           });
       } catch(e) { /* best-effort */ }
 
-      // 2. Fire FCM push — completely non-blocking, never throws
-      const pushTitles = {
-          message: '💬 New Message', like: '❤️ Post Liked',
-          comment: '💬 New Comment', reply: '↩️ New Reply',
-          follow: '👤 New Follower', friendRequest: '🦋 Friend Request',
-          mention: '@ You were mentioned', repost: '🔄 Post Reposted',
-          wallPost: '📝 New Wall Post', announcement: '📢 Announcement',
-      };
-      const pushBodies = {
-          message:       `${notif.fromName || 'Someone'} sent you a message`,
-          like:          `${notif.fromName || 'Someone'} liked your post`,
-          comment:       `${notif.fromName || 'Someone'} commented: "${(notif.commentText || '').substring(0,60)}"`,
-          reply:         `${notif.fromName || 'Someone'} replied to your comment`,
-          follow:        `${notif.fromName || 'Someone'} started following you`,
-          friendRequest: `${notif.fromName || 'Someone'} sent you a friend request`,
-          mention:       `${notif.fromName || 'Someone'} mentioned you`,
-          repost:        `${notif.fromName || 'Someone'} reposted your post`,
-          wallPost:      `${notif.fromName || 'Someone'} posted on your wall`,
-          announcement:  notif.body || 'New announcement from admin',
-      };
+      // 2. Queue OS push — completely non-blocking, never throws
+      const _appUrl = location.origin + (location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/');
       sendPushToUser(targetUid, {
-          title: pushTitles[notif.type] || '🔔 Shadow Nexus Social',
-          body:  pushBodies[notif.type] || 'You have a new notification',
+          title: _pushTitles[notif.type] || '🔔 Shadow Nexus Social',
+          body:  _pushBody(notif),
           type:  notif.type,
-          url:   '/'
+          url:   _appUrl
+      }).catch(() => {});
+  }
+
+  /* ── triggerOsPush: queue an OS push WITHOUT writing an in-app notification ──
+     Use this when the in-app notification has already been written separately
+     (e.g. sendFriendRequest, acceptFriendRequest) to avoid duplicate bell entries.
+  ── */
+  async function triggerOsPush(targetUid, notif) {
+      if (!targetUid || targetUid === currentUser.uid) return;
+      const _appUrl = location.origin + (location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/');
+      sendPushToUser(targetUid, {
+          title: _pushTitles[notif.type] || '🔔 Shadow Nexus Social',
+          body:  _pushBody(notif),
+          type:  notif.type,
+          url:   _appUrl
       }).catch(() => {});
   }
 
@@ -5697,9 +5735,19 @@ body::after {
       const theirSnap = await getDoc(doc(db,"users",targetUid));
       if (theirSnap.data()?.privacySettings?.sendRequests==='nobody') { toastNotification("This user isn't accepting requests."); return; }
       await updateDoc(doc(db,"users",currentUser.uid), { friendRequestsSent: arrayUnion(targetUid) });
+      // Write in-app notification directly (arrayUnion is fine here since we
+      // don't go through pushNotification — we need both the notifications array
+      // entry AND the pushQueue entry for OS push delivery).
       await updateDoc(doc(db,"users",targetUid), {
           friendRequestsReceived: arrayUnion(currentUser.uid),
-          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36), type:'friendRequest', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36).slice(2), type:'friendRequest', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+      });
+      // OS push only — in-app notification already written above via arrayUnion
+      triggerOsPush(targetUid, {
+          type: 'friendRequest',
+          fromUid: currentUser.uid,
+          fromName: userData.displayName,
+          fromAvatar: userData.avatar || ''
       });
       toastNotification("Friend request sent!");
       if (document.getElementById("searchInput").value) runSearch();
@@ -5711,12 +5759,19 @@ body::after {
       await updateDoc(doc(db,"users",currentUser.uid), {
           friends: arrayUnion(fromUid),
           friendRequestsReceived: (md.friendRequestsReceived||[]).filter(x=>x!==fromUid),
-          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36), type:'friendAccepted', fromUid, fromName:td.displayName, fromAvatar:td.avatar||'', ts:Date.now(), read:false })
+          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36).slice(2), type:'friendAccepted', fromUid, fromName:td.displayName, fromAvatar:td.avatar||'', ts:Date.now(), read:false })
       });
       await updateDoc(doc(db,"users",fromUid), {
           friends: arrayUnion(currentUser.uid),
           friendRequestsSent: (td.friendRequestsSent||[]).filter(x=>x!==currentUser.uid),
-          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36), type:'friendAccepted', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+          notifications: arrayUnion({ id:Date.now()+Math.random().toString(36).slice(2), type:'friendAccepted', fromUid:currentUser.uid, fromName:userData.displayName, fromAvatar:userData.avatar||'', ts:Date.now(), read:false })
+      });
+      // OS push only — in-app notification already written above via arrayUnion
+      triggerOsPush(fromUid, {
+          type: 'friendAccepted',
+          fromUid: currentUser.uid,
+          fromName: userData.displayName,
+          fromAvatar: userData.avatar || ''
       });
       toastNotification(`Now friends with ${td.displayName}!`);
       renderFriendsPage();
@@ -5838,18 +5893,19 @@ body::after {
               // Show OS notification
               if ('Notification' in window && Notification.permission === 'granted') {
                   try {
+                      const _swBase = location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/';
                       const reg = await navigator.serviceWorker.ready;
                       reg.showNotification(n.title || '🔔 Shadow Nexus Social', {
                           body:     n.body || 'You have a new notification',
-                          icon:     'icon-192.png',
-                          badge:    'favicon-32x32.png',
+                          icon:     _swBase + 'icon-192.png',
+                          badge:    _swBase + 'favicon-32x32.png',
                           tag:      `snx-${n.id}`,
                           renotify: true,
                           vibrate:  [200, 100, 200],
-                          data:     { url: n.url || '/' }
+                          data:     { url: location.origin + (location.pathname.startsWith('/ShadowNexusSocial') ? '/ShadowNexusSocial/' : '/') }
                       });
                   } catch(_) {
-                      try { new Notification(n.title || '🔔 Shadow Nexus', { body: n.body || '', icon: 'icon-192.png' }); } catch(_) {}
+                      try { new Notification(n.title || '🔔 Shadow Nexus', { body: n.body || '', icon: _swBase + 'icon-192.png' }); } catch(_) {}
                   }
               }
               // In-app toast
@@ -6463,13 +6519,27 @@ body::after {
   // Track the live-status unsubscribe for the current chat partner
   // activeChatStatusUnsub declared at top of module (line ~2179)
 
-  // Open a chat panel with a given user
+  // Guard against concurrent calls: if the user taps a second conversation
+  // before the first await resolves we bail out of the stale call so only
+  // the latest tap wins and there is never more than one active-conv highlight.
+  let _dmOpenToken = 0;
+  // Exposed so the non-module closeChatPanel() can invalidate in-flight opens.
+  window._dmInvalidateOpenToken = function() { _dmOpenToken++; };
+
   window.establishDirectMessageChannel = async function(targetUid) {
       if(targetUid === currentUser.uid) return;
+
+      // Stamp this invocation so we can detect if another tap superseded us.
+      const myToken = ++_dmOpenToken;
 
       const channelId = [currentUser.uid, targetUid].sort().join('_');
       activeChatChannelId = channelId;
       activeChatTargetUid = targetUid;
+
+      // Apply the highlight immediately (before any await) so the user sees
+      // instant feedback.
+      document.querySelectorAll('.conv-item').forEach(el =>
+          el.classList.toggle('active-conv', el.dataset.uid === targetUid));
 
       navTo('messagesInbox');
 
@@ -6480,8 +6550,14 @@ body::after {
           [`unread_${currentUser.uid}`]: 0
       }, { merge: true });
 
+      // Another tap or a Back press came in while awaiting — abandon this call.
+      if (myToken !== _dmOpenToken) return;
+
       // Fetch partner profile
       const targetSnap = await getDoc(doc(db, "users", targetUid));
+
+      if (myToken !== _dmOpenToken) return;
+
       const tData = targetSnap.exists()
           ? targetSnap.data()
           : { displayName: targetUid.substring(0,8), avatar: '', status: 'offline', mood: '' };
@@ -6499,9 +6575,15 @@ body::after {
       hName.onclick = null;
       // Header status updated live below ↓
 
+      // Guard again before mutating the UI — closeChatPanel() bumps the token
+      // so a Back tap while awaiting above will stale-out this call here.
+      if (myToken !== _dmOpenToken) return;
+
       // Show footer + panel — use classes, never inline style, so CSS media queries stay in control
       document.getElementById("chatFooter").classList.remove("footer-hidden");
-      document.getElementById("chatEmptyState").style.display = "none";
+      // #chatEmptyState may have been rebuilt by _dmCleanupChat() — use getElementById
+      const emptyState = document.getElementById("chatEmptyState");
+      if (emptyState) emptyState.style.display = "none";
       document.getElementById("msgLayout").classList.add("chat-open");
       // Remove any lingering inline display override so CSS flex rules take over
       document.getElementById("msgChatPanel").style.display = "";
@@ -7964,25 +8046,31 @@ function switchFriendsTab(tab) {
 
 /* ── Messaging UI helpers (non-module, called from HTML) ── */
 function closeChatPanel() {
-    // 1. Tear down Firestore listeners, reset state, clear rendered messages
+    // 1. Invalidate any in-flight establishDirectMessageChannel() call so its
+    //    async continuation cannot re-add 'chat-open' after we remove it here.
+    //    The token is a module-scoped var; incrementing it makes every pending
+    //    invocation's myToken !== _dmOpenToken check fail on its next guard.
+    if (typeof window._dmInvalidateOpenToken === 'function') window._dmInvalidateOpenToken();
+
+    // 2. Tear down Firestore listeners, reset state, clear rendered messages
     if (typeof window._dmCleanupChat === 'function') window._dmCleanupChat();
 
-    // 2. Force-hide the chat panel with an inline style so it can never
+    // 3. Force-hide the chat panel with an inline style so it can never
     //    overlap or swallow touches/clicks on the inbox list below it.
     //    establishDirectMessageChannel() clears this with style.display=""
     //    before showing it again, so CSS media-query rules remain in control.
     const chatPanel = document.getElementById('msgChatPanel');
     if (chatPanel) chatPanel.style.display = 'none';
 
-    // 3. Hide any open context menu (position:fixed z-index:9000 could block taps)
+    // 4. Hide any open context menu (position:fixed z-index:9000 could block taps)
     const ctxMenu = document.getElementById('msgCtxMenu');
     if (ctxMenu) ctxMenu.style.display = 'none';
 
-    // 4. Collapse layout and hide input bar
+    // 5. Collapse layout and hide input bar
     document.getElementById("msgLayout").classList.remove("chat-open");
     document.getElementById("chatFooter").classList.add("footer-hidden");
 
-    // 5. Close emoji picker
+    // 6. Close emoji picker
     closeEmojiPicker();
 }
 

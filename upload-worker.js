@@ -42,12 +42,12 @@ function mimeFromExt(filename) {
     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
     gif: 'image/gif',  webp: 'image/webp', svg: 'image/svg+xml',
     // videos
-    mp4: 'video/mp4',  webm: 'video/webm', mov: 'video/quicktime',
+    mp4: 'video/mp4',  mov: 'video/quicktime',
     avi: 'video/x-msvideo', mkv: 'video/x-matroska', m4v: 'video/mp4',
-    // audio
+    // audio (webm is listed here as audio because that's the common recording format)
     mp3: 'audio/mpeg', m4a: 'audio/mp4',  aac: 'audio/aac',
     ogg: 'audio/ogg',  wav: 'audio/wav',  flac: 'audio/flac',
-    webm_audio: 'audio/webm', opus: 'audio/ogg',
+    opus: 'audio/ogg', webm: 'audio/webm',
   };
   return map[ext] || null;
 }
@@ -109,9 +109,15 @@ export default {
     }
 
     // Determine MIME — use extension fallback if browser sends wrong type
+    // Some mobile browsers report video/webm for audio recordings, so we
+    // override based on extension when the reported MIME looks wrong.
     let mime = file.type || '';
+    const extMime = mimeFromExt(file.name);
     if (!mime || mime === 'application/octet-stream') {
-      mime = mimeFromExt(file.name) || mime;
+      mime = extMime || mime;
+    } else if (extMime && mime.startsWith('video/') && extMime.startsWith('audio/')) {
+      // Browser reported video/* but extension says it's audio — trust the extension
+      mime = extMime;
     }
 
     if (!isAllowedType(mime)) {
