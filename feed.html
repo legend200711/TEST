@@ -5054,18 +5054,27 @@ body::after {
       // Tear down any existing listener before (re)subscribing with a new limit
       if (feedUnsubscribe) { feedUnsubscribe(); feedUnsubscribe = null; }
 
-      const qElements = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(scrollLimit));
+      // No orderBy — avoids needing a Firestore index; we sort client-side instead
+      const qElements = query(collection(db, "posts"), limit(scrollLimit));
       feedUnsubscribe = onSnapshot(qElements, (snapshot) => {
+          try {
           const container = document.getElementById("feedPosts");
           const now = Date.now();
 
-          // Collect the set of post IDs in this snapshot (after TTL filter)
-          const incomingIds = new Set();
+          // Collect valid (non-expired) docs and sort newest-first client-side
+          const validDocs = [];
           snapshot.forEach(pDoc => {
               const post = pDoc.data();
-              if (post.timestamp && (now - post.timestamp) > TTL_MS) return;
-              incomingIds.add(pDoc.id);
+              const ts = typeof post.timestamp === 'number' ? post.timestamp
+                       : post.timestamp?.toMillis ? post.timestamp.toMillis()
+                       : 0;
+              if (ts && (now - ts) > TTL_MS) return;
+              validDocs.push({ pDoc, ts });
           });
+          validDocs.sort((a, b) => b.ts - a.ts);
+
+          // Collect the set of post IDs in this snapshot (after TTL filter)
+          const incomingIds = new Set(validDocs.map(v => v.pDoc.id));
 
           // Remove DOM nodes for posts no longer in the snapshot (deleted / expired)
           container.querySelectorAll('.postBox[id^="post-"]').forEach(el => {
@@ -5074,11 +5083,7 @@ body::after {
           });
 
           // Build an ordered list of post IDs to maintain correct DOM order
-          const orderedIds = [];
-          snapshot.forEach(pDoc => {
-              if (incomingIds.has(pDoc.id)) orderedIds.push(pDoc.id);
-          });
-          const finalOrderedIds = orderedIds;
+          const finalOrderedIds = validDocs.map(v => v.pDoc.id);
 
           // Empty feed state — show only when Firestore confirms zero posts
           if (incomingIds.size === 0) {
@@ -5091,13 +5096,12 @@ body::after {
               return;
           }
 
-          snapshot.forEach((pDoc, idx) => {
+          validDocs.forEach(({ pDoc, ts }, idx) => {
               const post = pDoc.data();
-              if (!incomingIds.has(pDoc.id)) return;
 
               const isLiked = post.likedBy?.includes(currentUser.uid);
               const isOwner = post.uid === currentUser.uid;
-              const ageMs   = now - (post.timestamp || now);
+              const ageMs   = ts ? now - ts : 0;
               const hoursLeft = Math.max(0, Math.floor((TTL_MS - ageMs) / 3600000));
               const ageLabel = hoursLeft === 0
                   ? '<span class="post-expiry expiry-soon">⏳ &lt;1h left</span>'
@@ -5273,6 +5277,15 @@ body::after {
                   if (cb) cb.dataset.count = (post.comments || []).length;
               }
           });
+          } catch (renderErr) {
+              console.error('[Feed] Render error:', renderErr);
+          }
+      }, (err) => {
+          console.error('[Feed] onSnapshot error:', err);
+          const container = document.getElementById("feedPosts");
+          if (container && !container.querySelector('.postBox')) {
+              container.innerHTML = `<div style="text-align:center;padding:48px 20px;color:#3a5a7a;"><div style="font-size:13px;color:#ff6680;">⚠️ Could not load posts: ${err.code || err.message}</div></div>`;
+          }
       });
   }
 
@@ -5598,6 +5611,14 @@ body::after {
       const mediaUrl = document.getElementById("postMediaUrl").value.trim();
       if (!text && !mediaUrl) { toastNotification("Write something first!"); return; }
       if (text.length > 500) { toastNotification("Post is too long — max 500 characters."); return; }
+      // Guard: userData may not be loaded yet (onSnapshot async race)
+      if (!userData) {
+          try {
+              const snap = await getDoc(doc(db, 'users', currentUser.uid));
+              if (snap.exists()) userData = snap.data();
+          } catch(_) {}
+      }
+      if (!userData) { toastNotification("Profile not loaded yet — please wait a moment."); return; }
       _postBusy = true;
       const btn = document.getElementById("btnBroadcast");
       btn.disabled = true; btn.textContent = "Posting…";
@@ -5608,8 +5629,8 @@ body::after {
           const taggedUsers = typeof window._snxGetTaggedUsers === 'function' ? window._snxGetTaggedUsers() : [];
           const postRef = await addDoc(collection(db, "posts"), {
               uid: currentUser.uid,
-              authorName:   userData.displayName,
-              authorHandle: userData.username,
+              authorName:   userData.displayName || 'Unknown',
+              authorHandle: userData.username    || 'unknown',
               authorAvatar: userData.avatar || '',
               authorBadges: userData.badges || [],
               authorRole:   userData.role   || 'member',
@@ -5642,7 +5663,8 @@ body::after {
           if (counter) { counter.textContent = "500 characters left"; counter.className = "post-char-counter"; }
           toastNotification("⚡ Post published! Auto-deletes in 24 hours.");
       } catch(e) {
-          toastNotification("Failed to post — please try again.");
+          console.error('[Post] Failed:', e);
+          toastNotification("Failed to post: " + (e.message || e.code || 'unknown error'));
       } finally {
           _postBusy = false;
           btn.disabled = false; btn.textContent = "⚡ Post to the Eclipse";
