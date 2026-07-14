@@ -12,7 +12,7 @@
  * and the new one is pre-cached, so users always get the latest shell.
  */
 
-const CACHE_NAME    = 'shadow-nexus-v2';
+const CACHE_NAME    = 'shadow-nexus-v3';
 const OFFLINE_URL   = '/ShadowNexusSocial/offline.html';
 
 /** Files that make up the app shell — pre-cached on install */
@@ -108,22 +108,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Navigation requests (page loads) — cache-first, fallback to offline page
+  // 3. Navigation requests (page loads) — network-first so users always get
+  //    the latest HTML. Only fall back to the cache when offline.
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
-          // Cache successful navigations
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        }).catch(() => {
-          // Offline fallback
-          return caches.match(OFFLINE_URL);
-        });
+      fetch(request).then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => {
+        // Offline: serve the cached page if available, else the offline page
+        return caches.match(request).then((cached) => cached || caches.match(OFFLINE_URL));
       })
     );
     return;
