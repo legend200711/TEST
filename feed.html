@@ -5284,10 +5284,11 @@ body::after {
           if (!u.joinedAt || (Date.now() - u.joinedAt) < fiftyDaysMs) return;
 
           // Count how many users joined before this user (must be < 100)
-          const { query: fsQuery, collection: fsCollection, where, orderBy, limit, getDocs } =
+          const { query: fsQuery, collection: fsCollection, where, limit, getDocs } =
               await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+          // No composite index needed — count users with joinedAt < this user's
           const earlier = await getDocs(
-              fsQuery(fsCollection(db, 'users'), where('joinedAt', '<', u.joinedAt), orderBy('joinedAt'), limit(100))
+              fsQuery(fsCollection(db, 'users'), where('joinedAt', '<', u.joinedAt), limit(100))
           );
           // If fewer than 100 people joined before this user → they're in the first 100
           if (earlier.size < 100) {
@@ -5397,8 +5398,9 @@ body::after {
       if (feedUnsubscribe) { feedUnsubscribe(); feedUnsubscribe = null; }
 
       _snxDebug('Connecting to Firestore posts…');
-      // Query ALL posts — no expiry filter. Posts are permanent until manually deleted.
-      const qElements = query(collection(db, "posts"), orderBy("timestamp", "desc"));
+      // Fetch ALL posts without orderBy — no composite index required.
+      // Client-side sort (allDocs.sort below) handles ordering.
+      const qElements = collection(db, "posts");
       feedUnsubscribe = onSnapshot(qElements, (snapshot) => {
           try {
           const container = document.getElementById("feedPosts");
@@ -8568,11 +8570,19 @@ service cloud.firestore {
       const box=document.getElementById('adminPostList'); if(!box)return;
       box.innerHTML='<div class="empty-state">Loading…</div>';
       try {
-          const q=mode==='reported'?query(collection(db,'posts'),where('reportCount','>',0),orderBy('reportCount','desc'),limit(30)):query(collection(db,'posts'),orderBy('timestamp','desc'),limit(30));
-          const snap=await getDocs(q);
+          // No composite indexes needed — fetch then sort client-side.
+          const q = mode === 'reported'
+              ? query(collection(db,'posts'), where('reportCount','>',0), limit(50))
+              : query(collection(db,'posts'), limit(50));
+          const snap = await getDocs(q);
           if(snap.empty){box.innerHTML='<div class="empty-state">No posts.</div>';return;}
           box.innerHTML='';
-          snap.forEach(pDoc=>{
+          // Sort in JS so no Firestore index is required
+          const postDocs = snap.docs.slice().sort((a,b) => {
+              if (mode === 'reported') return (b.data().reportCount||0) - (a.data().reportCount||0);
+              return (b.data().timestamp||0) - (a.data().timestamp||0);
+          });
+          postDocs.forEach(pDoc=>{
               const p=pDoc.data();
               const card=document.createElement('div'); card.className='admin-post-card';
               card.innerHTML=`<div style="font-size:12px;color:#6a90b8;margin-bottom:4px;"><b style="color:#00AEEF">${escFeed(p.authorName||'?')}</b> · ${p.timestamp?new Date(p.timestamp).toLocaleDateString():''}${p.reportCount?` <span style="color:#ff4466;">🚨 ${p.reportCount} reports</span>`:''}</div><div style="font-size:13px;color:#d8eeff;">${escFeed((p.text||'').substring(0,200))}</div><div class="admin-post-actions"><button onclick="adminDeletePost('${pDoc.id}','${escFeed(p.authorName||'')}')">🗑 Delete</button><button onclick="viewProfile('${p.uid||''}')">👤 Author</button></div>`;
@@ -8602,11 +8612,13 @@ service cloud.firestore {
       const box=document.getElementById('adminReportList'); if(!box)return;
       box.innerHTML='<div class="empty-state">Loading…</div>';
       try {
-          const q=query(collection(db,'reports'),where('type','==',type),where('status','==','open'),orderBy('ts','desc'),limit(40));
+          // Two where-clauses with no orderBy — no composite index required
+          const q=query(collection(db,'reports'),where('type','==',type),where('status','==','open'),limit(40));
           const snap=await getDocs(q);
           if(snap.empty){box.innerHTML='<div class="empty-state">No open reports.</div>';return;}
           box.innerHTML='';
-          snap.forEach(rDoc=>{
+          const reportDocs=snap.docs.slice().sort((a,b)=>(b.data().ts||0)-(a.data().ts||0));
+          reportDocs.forEach(rDoc=>{
               const r=rDoc.data(); const card=document.createElement('div'); card.className='report-card';
               card.innerHTML=`<div class="report-card-header"><span>From: <b>${escFeed(r.fromName||'?')}</b></span><span>${r.ts?new Date(r.ts).toLocaleDateString():''}</span></div>${r.target?`<div style="font-size:11px;color:#6a90b8;margin-bottom:4px;">Target: ${escFeed(r.target)}</div>`:''}<div class="report-card-body">${escFeed(r.body||'')}</div><div class="report-card-actions"><button onclick="adminResolveReport('${rDoc.id}')" style="font-size:11px;padding:4px 10px;border-radius:8px;border-color:rgba(57,255,20,0.5);color:#39FF14;">✓ Resolve</button><button onclick="adminDeleteReport('${rDoc.id}')" style="font-size:11px;padding:4px 10px;border-radius:8px;border-color:rgba(255,51,102,0.4);color:#ff6680;">🗑 Dismiss</button></div>`;
               box.appendChild(card);
@@ -8618,11 +8630,12 @@ service cloud.firestore {
   window.adminLoadAnnouncementHistory = async function() {
       const box=document.getElementById('adminAnnouncementHistory'); if(!box)return;
       try {
-          const q=query(collection(db,'announcements'),orderBy('ts','desc'),limit(10));
+          const q=query(collection(db,'announcements'),limit(10));
           const snap=await getDocs(q);
           if(snap.empty){box.innerHTML='<div class="empty-state">No announcements yet.</div>';return;}
           box.innerHTML='';
-          snap.forEach(d=>{const a=d.data();const el=document.createElement('div');el.style.cssText='padding:10px;border-bottom:1px solid rgba(0,51,102,0.25);font-size:12px;';el.innerHTML=`<div style="color:#ffaa44;font-weight:700;">${escFeed(a.type||'').toUpperCase()}</div><div style="color:#d8eeff;margin:4px 0;">${escFeed(a.body||'')}</div><div style="color:#3a5a7a;">${a.ts?new Date(a.ts).toLocaleString():''}</div>`;box.appendChild(el);});
+          // Sort newest first client-side — no index required
+          snap.docs.slice().sort((a,b)=>(b.data().ts||0)-(a.data().ts||0)).forEach(d=>{const a=d.data();const el=document.createElement('div');el.style.cssText='padding:10px;border-bottom:1px solid rgba(0,51,102,0.25);font-size:12px;';el.innerHTML=`<div style="color:#ffaa44;font-weight:700;">${escFeed(a.type||'').toUpperCase()}</div><div style="color:#d8eeff;margin:4px 0;">${escFeed(a.body||'')}</div><div style="color:#3a5a7a;">${a.ts?new Date(a.ts).toLocaleString():''}</div>`;box.appendChild(el);});
       }catch(_){}
   };
   window.sendAdminAnnouncement = async function() {
@@ -8650,11 +8663,12 @@ service cloud.firestore {
       if(!founderOnly())return;
       const box=document.getElementById('adminAuditLog'); if(!box)return;
       try {
-          const q=query(collection(db,'auditLog'),orderBy('ts','desc'),limit(50));
+          const q=query(collection(db,'auditLog'),limit(50));
           const snap=await getDocs(q);
           if(snap.empty){box.innerHTML='<div class="empty-state">No actions logged yet.</div>';return;}
           box.innerHTML='';
-          snap.forEach(d=>{const a=d.data();const el=document.createElement('div');el.className='audit-entry';el.innerHTML=`<span class="audit-ts">${a.ts?new Date(a.ts).toLocaleString():''}</span><span class="audit-action"><b style="color:#ffcc44;">${escFeed(a.action||'')}</b> — ${escFeed(a.details||'')} <span style="color:#3a5a7a;">by ${escFeed(a.adminName||'?')}</span></span>`;box.appendChild(el);});
+          // Sort newest-first client-side — no index required
+          snap.docs.slice().sort((a,b)=>(b.data().ts||0)-(a.data().ts||0)).forEach(d=>{const a=d.data();const el=document.createElement('div');el.className='audit-entry';el.innerHTML=`<span class="audit-ts">${a.ts?new Date(a.ts).toLocaleString():''}</span><span class="audit-action"><b style="color:#ffcc44;">${escFeed(a.action||'')}</b> — ${escFeed(a.details||'')} <span style="color:#3a5a7a;">by ${escFeed(a.adminName||'?')}</span></span>`;box.appendChild(el);});
       }catch(e){box.innerHTML=`<div class="empty-state" style="color:#ff5566;">${escFeed(e.message)}</div>`;}
   };
   window.adminLoadSuspended = async function() {
@@ -8755,10 +8769,10 @@ service cloud.firestore {
      if (!container) return;
      container.innerHTML = '<div style="text-align:center;padding:28px;color:#3a5a7a;font-size:13px;">Loading posts…</div>';
 
+     // where() alone requires no composite index; orderBy is done client-side below.
      const q = query(
          collection(db, 'posts'),
-         where('uid', '==', uid),
-         orderBy('timestamp', 'desc')
+         where('uid', '==', uid)
      );
 
      _profilePostsUnsub = onSnapshot(q, (snap) => {
