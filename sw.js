@@ -12,7 +12,7 @@
  * and the new one is pre-cached, so users always get the latest shell.
  */
 
-const CACHE_NAME    = 'shadow-nexus-v5';
+const CACHE_NAME    = 'shadow-nexus-v6';
 const OFFLINE_URL   = '/ShadowNexusSocial/offline.html';
 
 /** Files that make up the app shell — pre-cached on install */

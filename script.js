@@ -33,11 +33,15 @@
       const reg = await navigator.serviceWorker.register(swPath, { scope: base });
       console.log('[SW] Registered, scope:', reg.scope);
 
-      // The SW calls skipWaiting() itself on install, so any waiting worker
-      // is already taking over. No reload needed — the page stays alive and
-      // the SW just starts serving future navigations. Reloading on every
-      // controllerchange was the source of the 6-7 reload startup loop, so
-      // we intentionally do NOT do that here.
+      // When a NEW service worker activates (cache version bumped), reload
+      // the page exactly once so users immediately get the latest files.
+      // sessionStorage flag prevents a reload loop: if we just reloaded we
+      // skip the next controllerchange event that fires on the fresh page.
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (sessionStorage.getItem('snx-sw-reloading')) return;
+        sessionStorage.setItem('snx-sw-reloading', '1');
+        window.location.reload();
+      });
     } catch (err) {
       console.warn('[SW] Registration failed:', err);
     }
@@ -51,6 +55,10 @@
     }
 
   });
+
+  // Clear the reload-guard flag on every fresh page load so the next update
+  // can trigger a reload again.
+  sessionStorage.removeItem('snx-sw-reloading');
 })();
 
 /* ═══════════════════════════════════════════════
