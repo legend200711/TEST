@@ -4127,6 +4127,11 @@ body::after {
                         <div class="pc-swatch" data-group="solidColor" data-val="#111111" style="background:#111111;" title="Charcoal"></div>
                         <div class="pc-swatch" data-group="solidColor" data-val="#0d0d22" style="background:#0d0d22;" title="Indigo Dark"></div>
                     </div>
+                    <div class="pc-color-row" style="margin-top:8px;">
+                        <label style="font-size:12px;color:#8ab;min-width:80px;">Custom Color</label>
+                        <input type="color" class="pc-color-input" id="pcBannerCustomColor" value="#071428" title="Pick any color">
+                        <span style="font-size:11px;color:#6a90b8;">Pick any banner color</span>
+                    </div>
                 </div>
 
                 <!-- Gradients -->
@@ -8923,10 +8928,17 @@ window.applyProfileCustomization = function(data, viewerUid, profileUid) {
     };
 
     // ── Banner background ──
+    // Apply custom background whenever bgType is not 'default'.
+    // 'default' preserves the user's uploaded cover photo (url(...)).
+    // Any other bgType (solid, gradient, pattern, animated) overrides it.
     const bannerEl = document.getElementById('profileBanner');
-    if (bannerEl && !bannerEl.style.backgroundImage.startsWith('url(')) {
-        const { background } = _pcBannerCss(state);
-        if (background) bannerEl.style.background = background;
+    if (bannerEl) {
+        if (state.bgType !== 'default') {
+            const { background } = _pcBannerCss(state);
+            bannerEl.style.backgroundImage = '';
+            if (background) bannerEl.style.background = background;
+        }
+        // for 'default', leave the existing backgroundImage (cover photo) untouched
     }
     // Animated layer
     const animEl = document.getElementById('profileBgAnimated');
@@ -9020,6 +9032,24 @@ window.applyProfileCustomization = function(data, viewerUid, profileUid) {
             if (show && sec.privacy === 'friends' && !isSelf && !isFriend) show = false;
             el.classList.toggle('profile-section-hidden', !show);
         });
+        // ── Sync profile-tabs tab buttons to match section visibility ──
+        // Hide the tab button for wall/arcade if their section is hidden
+        const wallSec    = state.sections.find(s => s.id === 'wall');
+        const arcadeSec  = state.sections.find(s => s.id === 'arcade');
+        const wallBtn    = document.getElementById('tabWallLink');
+        const arcadeBtn  = document.getElementById('tabArcadeLink');
+        if (wallSec && wallBtn) {
+            let showWall = wallSec.visible;
+            if (showWall && wallSec.privacy === 'private' && !isSelf) showWall = false;
+            if (showWall && wallSec.privacy === 'friends' && !isSelf && !isFriend) showWall = false;
+            wallBtn.style.display = showWall ? '' : 'none';
+        }
+        if (arcadeSec && arcadeBtn) {
+            let showArcade = arcadeSec.visible;
+            if (showArcade && arcadeSec.privacy === 'private' && !isSelf) showArcade = false;
+            if (showArcade && arcadeSec.privacy === 'friends' && !isSelf && !isFriend) showArcade = false;
+            arcadeBtn.style.display = showArcade ? '' : 'none';
+        }
     }
 };
 
@@ -9168,9 +9198,20 @@ function openCustomizeModal() {
     const cbEl = document.getElementById('pcCardBorderColor');
     const btEl = document.getElementById('pcBioTextColor');
     const ftEl = document.getElementById('pcFeaturedText');
+    const bcEl = document.getElementById('pcBannerCustomColor');
     if (cbEl) cbEl.value = _pcState.cardBorderColor;
     if (btEl) btEl.value = _pcState.bioTextColor;
     if (ftEl) ftEl.value = _pcState.featuredText;
+    if (bcEl) bcEl.value = _pcState.solidColor;
+    // Real-time preview on color picker change
+    if (cbEl && !cbEl._snxBound) { cbEl._snxBound = true; cbEl.addEventListener('input', () => { _pcState.cardBorderColor = cbEl.value; }); }
+    if (btEl && !btEl._snxBound) { btEl._snxBound = true; btEl.addEventListener('input', () => { _pcState.bioTextColor = btEl.value; }); }
+    if (bcEl && !bcEl._snxBound) { bcEl._snxBound = true; bcEl.addEventListener('input', () => {
+        _pcState.solidColor = bcEl.value;
+        // Deactivate preset swatches, no preset matches a custom color
+        document.querySelectorAll('[data-group="solidColor"]').forEach(s => s.classList.remove('active'));
+        _pcUpdatePreview();
+    }); }
 
     // Build dynamic UIs
     _pcBuildSectionsUI();
@@ -9444,12 +9485,17 @@ function arcadeStartGame() {
     if (ARCADE.currentGame === 'snake')    _snakeInit();
     else if (ARCADE.currentGame === 'breakout') _breakoutInit();
     else if (ARCADE.currentGame === 'pong')     _pongInit();
+
+    // Show portrait hint immediately if needed
+    if (typeof _arcadeUpdateOrientationHint === 'function') _arcadeUpdateOrientationHint();
 }
 
 // ── Stop / game over ──
 function arcadeStopGame(isFinal) {
     ARCADE.running = false;
     if (ARCADE.rafId) { cancelAnimationFrame(ARCADE.rafId); ARCADE.rafId = null; }
+    // Hide the portrait hint when game is no longer running
+    if (typeof _arcadeUpdateOrientationHint === 'function') _arcadeUpdateOrientationHint();
 
     if (isFinal) {
         const best = ARCADE.bestScores[ARCADE.currentGame];
@@ -11511,49 +11557,3 @@ function _stormStopCanvas() {
     window.removeEventListener('resize', _stormResizeCanvas);
     const cv = document.getElementById('storm-canvas');
     if (cv) { const ctx = cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height); }
-}
-
-/* Wire navTo hook: start/stop canvas when entering/leaving page */
-const _origNavTo = window.navTo;
-if (_origNavTo) {
-    window.navTo = function(pageId) {
-        _origNavTo(pageId);
-        if (pageId === 'stormRoomsPage' && _stormRoom) _stormStartCanvas();
-        if (pageId !== 'stormRoomsPage' && _stormCanvasRAF) _stormStopCanvas();
-    };
-}
-</script>
-
-<!-- ═══════════════════════════════════════════════════════════
-     PWA: Install Banner
-     Shown by script.js when the beforeinstallprompt event fires.
-     Hidden by default; script.js adds class .visible to show it.
-     ═══════════════════════════════════════════════════════════ -->
-<div id="pwa-install-banner" role="complementary" aria-label="Install app">
-  <div class="banner-icon" aria-hidden="true">🌑</div>
-  <div class="banner-text">
-    <div class="banner-title">Add to Home Screen</div>
-    <div class="banner-sub">Install Shadow Nexus Social for the full experience</div>
-  </div>
-  <button class="banner-install" onclick="snxInstallApp()" aria-label="Install app">Install</button>
-  <button class="banner-dismiss" onclick="snxDismissInstallBanner()" aria-label="Dismiss">✕</button>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════
-     PWA: Update Available Toast
-     Shown by script.js when a new service worker is waiting.
-     ═══════════════════════════════════════════════════════════ -->
-<div id="pwa-update-toast" role="alert" aria-live="polite">
-  <span class="update-icon" aria-hidden="true">⚡</span>
-  <span class="update-text">New version available!</span>
-  <button class="update-btn" aria-label="Update app now">Update</button>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════
-     Shared JavaScript utilities (SW registration, PWA install,
-     online/offline detection, helper functions)
-     ═══════════════════════════════════════════════════════════ -->
-<script src="script.js"></script>
-
-</body>
-</html>
