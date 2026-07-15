@@ -726,6 +726,76 @@ input:focus, textarea:focus, select:focus {
 .p-avatar.frame-fire    { border-color:#ff6622 !important; box-shadow:0 0 22px rgba(255,100,20,0.65) !important; }
 .p-avatar.frame-ice     { border-color:#88eeff !important; box-shadow:0 0 22px rgba(80,220,255,0.6)  !important; }
 .p-avatar.frame-none    { border-color:transparent !important; box-shadow:none !important; animation:none !important; }
+.p-avatar.frame-cosmic  { border-color:#9b59ff !important; box-shadow:0 0 22px rgba(155,89,255,0.7), 0 0 8px rgba(100,50,200,0.4) !important; animation:cosmicFrame 2s ease-in-out infinite, blueFlame 3s infinite !important; }
+.p-avatar.frame-shadow  { border-color:#444466 !important; box-shadow:0 0 0 3px #111, 0 0 28px rgba(80,0,160,0.5) !important; }
+.p-avatar.frame-cyber   { border-color:#00AEEF !important; box-shadow:0 0 0 2px #001122, 0 0 22px rgba(0,174,239,0.8), inset 0 0 10px rgba(0,174,239,0.1) !important; animation:cyberFrame 1.8s steps(4,end) infinite, blueFlame 3s infinite !important; }
+.p-avatar.frame-toxic   { border-color:#33ff88 !important; box-shadow:0 0 22px rgba(50,255,100,0.7), 0 0 44px rgba(50,255,100,0.2) !important; animation:toxicFrame 1.6s ease-in-out infinite !important; }
+.p-avatar.frame-crystal { border-color:#aaeeff !important; box-shadow:0 0 18px rgba(160,240,255,0.6), 0 0 8px rgba(200,255,255,0.3), inset 0 0 12px rgba(180,240,255,0.15) !important; }
+@keyframes cosmicFrame  { 0%,100%{border-color:#9b59ff;box-shadow:0 0 22px rgba(155,89,255,0.7);}50%{border-color:#ff59e6;box-shadow:0 0 30px rgba(255,89,230,0.7);} }
+@keyframes cyberFrame   { 0%,100%{opacity:1;} 50%{opacity:0.72;} }
+@keyframes toxicFrame   { 0%,100%{box-shadow:0 0 22px rgba(50,255,100,0.7);}50%{box-shadow:0 0 38px rgba(50,255,100,0.9), 0 0 60px rgba(50,255,100,0.25);} }
+/* ── Animated profile header backgrounds ── */
+@keyframes profileAurora  {
+    0%   { background-position:0% 50%; }
+    50%  { background-position:100% 50%; }
+    100% { background-position:0% 50%; }
+}
+@keyframes profileCyberPulse {
+    0%,100% { opacity:0.55; }
+    50%     { opacity:1; }
+}
+@keyframes profileWaves {
+    0%   { background-position:0 0; }
+    100% { background-position:60px 60px; }
+}
+@keyframes profileSakura {
+    0%   { background-position:0% 0%;  }
+    50%  { background-position:100% 100%; }
+    100% { background-position:0% 0%;  }
+}
+/* Aurora animated bg on profile header */
+.profile-bg-aurora {
+    background: linear-gradient(270deg,#0d0033,#001a4d,#003322,#1a0040,#0a1a00) !important;
+    background-size:400% 400% !important;
+    animation: profileAurora 8s ease infinite !important;
+}
+/* Cyber-pulse grid overlay (applied to profile-pattern-overlay when bg=cyber-pulse) */
+.profile-bg-cyber-pulse {
+    background: linear-gradient(135deg,#000a1a 0%,#001a0a 100%) !important;
+}
+.profile-bg-cyber-pulse .profile-pattern-overlay {
+    background-image: linear-gradient(rgba(0,174,239,0.35) 1px,transparent 1px),
+                      linear-gradient(90deg, rgba(0,174,239,0.35) 1px,transparent 1px) !important;
+    background-size: 28px 28px !important;
+    animation: profileCyberPulse 2.4s ease-in-out infinite !important;
+    display:block !important; opacity:1 !important;
+}
+/* Starfield bg */
+.profile-bg-starfield {
+    background: radial-gradient(ellipse at top, #0a0a2a 0%, #000010 100%) !important;
+}
+.profile-bg-starfield .profile-pattern-overlay {
+    background-image: radial-gradient(circle, rgba(255,255,255,0.85) 1px, transparent 1px) !important;
+    background-size: 30px 30px !important;
+    display:block !important; opacity:0.5 !important;
+    animation: profileCyberPulse 3s ease-in-out infinite !important;
+}
+/* Sakura drifting-petal bg */
+.profile-bg-sakura {
+    background: linear-gradient(270deg,#1a0010,#300020,#1a0020,#200015) !important;
+    background-size:400% 400% !important;
+    animation: profileSakura 10s ease infinite !important;
+}
+/* Waves bg */
+.profile-bg-waves {
+    background: linear-gradient(135deg,#001a3a,#003060) !important;
+}
+.profile-bg-waves .profile-pattern-overlay {
+    background-image: repeating-linear-gradient(0deg,rgba(0,174,239,0.18) 0px,rgba(0,174,239,0.18) 1px,transparent 1px,transparent 18px) !important;
+    background-size: 100% 18px !important;
+    display:block !important; opacity:1 !important;
+    animation: profileWaves 2s linear infinite !important;
+}
 /* Decoration picker in the editor */
 .deco-section-label { font-size:10px; color:#3a5a7a; text-transform:uppercase; letter-spacing:0.8px; font-weight:700; width:100%; margin:8px 0 4px; }
 .deco-grid { display:flex; flex-wrap:wrap; gap:6px; padding:4px 0; max-height:140px; overflow-y:auto; }
@@ -763,6 +833,8 @@ input:focus, textarea:focus, select:focus {
 .profile-border-neon-green { border:2px solid #39FF14 !important; box-shadow:0 0 18px rgba(57,255,20,0.5) !important; }
 .profile-border-neon-pink { border:2px solid #ff00aa !important; box-shadow:0 0 18px rgba(255,0,170,0.5) !important; }
 .profile-border-gold { border:2px solid #ffcc44 !important; box-shadow:0 0 18px rgba(255,200,50,0.4) !important; }
+.profile-border-cosmic { border:2px solid #9b59ff !important; box-shadow:0 0 18px rgba(155,89,255,0.55) !important; animation:cosmicFrame 2.5s ease-in-out infinite !important; }
+.profile-border-cyber  { border:2px solid #00AEEF !important; box-shadow:0 0 0 1px #001122, 0 0 18px rgba(0,174,239,0.6) !important; }
 .profile-border-none { border:none !important; box-shadow:none !important; }
 /* Online status badge on profile */
 .profile-online-badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#00ff88; margin-bottom:6px; }
@@ -3871,8 +3943,24 @@ body::after {
                     <button class="style-preset" onclick="applyStylePreset('ocean')" title="Ocean">🌊 Ocean</button>
                     <button class="style-preset" onclick="applyStylePreset('fire')" title="Fire">🔥 Fire</button>
                     <button class="style-preset" onclick="applyStylePreset('neon')" title="Neon">⚡ Neon</button>
+                    <button class="style-preset" onclick="applyStylePreset('cosmic')" title="Cosmic">🌌 Cosmic</button>
+                    <button class="style-preset" onclick="applyStylePreset('toxic')" title="Toxic">☢️ Toxic</button>
+                    <button class="style-preset" onclick="applyStylePreset('crystal')" title="Crystal">🔷 Crystal</button>
+                    <button class="style-preset" onclick="applyStylePreset('sakura')" title="Sakura">🌸 Sakura</button>
+                    <button class="style-preset" onclick="applyStylePreset('storm')" title="Storm">⛈️ Storm</button>
                     <button class="style-preset" onclick="applyStylePreset('none')" title="Default">✕ Default</button>
                 </div>
+
+                <label>Animated Background</label>
+                <select id="profileBgType" onchange="updateStylePreview()">
+                    <option value="">None (use color/gradient above)</option>
+                    <option value="aurora">🌌 Aurora Drift</option>
+                    <option value="starfield">✦ Starfield</option>
+                    <option value="cyber-pulse">⚡ Cyber Pulse Grid</option>
+                    <option value="waves">🌊 Waves</option>
+                    <option value="sakura">🌸 Sakura Drift</option>
+                </select>
+                <p style="font-size:10px;color:#3a5a7a;margin:2px 0 10px;">Animated backgrounds override color/gradient when active.</p>
 
                 <label>Background Color</label>
                 <div style="display:flex;gap:8px;align-items:center;">
@@ -3919,6 +4007,8 @@ body::after {
                     <option value="neon-pink">Neon Pink</option>
                     <option value="gold">Gold</option>
                     <option value="rainbow">Rainbow</option>
+                    <option value="cosmic">✦ Cosmic Purple</option>
+                    <option value="cyber">⚡ Cyber Blue</option>
                     <option value="none">None</option>
                 </select>
 
@@ -3952,7 +4042,7 @@ body::after {
                 <div class="pattern-grid" id="patternPickerGrid"></div>
 
                 <!-- Decoration stickers -->
-                <label style="margin-top:14px;">Profile Stickers <span style="font-size:10px;color:#3a5a7a;">(pick up to 5 — shown on your cover)</span></label>
+                <label style="margin-top:14px;">Profile Stickers <span style="font-size:10px;color:#3a5a7a;">(pick up to 8 — shown on your cover)</span></label>
                 <div class="deco-grid" id="decoPickerGrid"></div>
 
                 <!-- Reset -->
@@ -7047,6 +7137,7 @@ body::after {
           document.getElementById("profileBgColor2").value    = userData.profileBgColor2   || '#071428';
           document.getElementById("profileBgColor2Hex").value = userData.profileBgColor2   || '#071428';
           document.getElementById("profileBgGradient").value  = userData.profileBgGradient || 'none';
+          document.getElementById("profileBgType").value      = userData.profileBgType     || '';
           document.getElementById("profileFontFamily").value  = userData.profileFontFamily || '';
           document.getElementById("profileNameColor").value   = userData.profileNameColor  || '#e0f0ff';
           document.getElementById("profileNameColorHex").value= userData.profileNameColor  || '#e0f0ff';
@@ -7270,6 +7361,7 @@ body::after {
           profileBgColor:    document.getElementById("profileBgColor").value,
           profileBgColor2:   document.getElementById("profileBgColor2").value,
           profileBgGradient: document.getElementById("profileBgGradient").value,
+          profileBgType:     document.getElementById("profileBgType").value     || '',
           profileFontFamily: document.getElementById("profileFontFamily").value,
           profileNameColor:  document.getElementById("profileNameColor").value,
           profileBorderStyle:document.getElementById("profileBorderStyle").value,
@@ -9150,6 +9242,11 @@ const DECO_FRAMES = [
     { id: 'green',   label: '💚 Neon Green' },
     { id: 'fire',    label: '🔥 Fire' },
     { id: 'ice',     label: '🧊 Ice' },
+    { id: 'cosmic',  label: '🔮 Cosmic' },
+    { id: 'shadow',  label: '🌑 Shadow' },
+    { id: 'cyber',   label: '⚡ Cyber' },
+    { id: 'toxic',   label: '☢️ Toxic' },
+    { id: 'crystal', label: '🔷 Crystal' },
 ];
 const DECO_PATTERNS = [
     { id: '',        label: '⬜ None' },
@@ -9167,6 +9264,10 @@ const DECO_STICKERS = [
     '💎','💍','👑','🔮','🧿','🪄','⚔️','🛡️',
     '🐉','🦊','🐱','🐺','🦁','🐸','🦄','🐧',
     '🎸','🎵','🎤','🎬','📸','🎆','🎇','🧨',
+    '🌋','☄️','🌀','🔴','🟣','🔵','🟢','⚪',
+    '🪐','🌌','🌃','🌉','🌁','🗺️','🏔️','🏝️',
+    '🦋','🐝','🦅','🐬','🦈','🐊','🦕','🦖',
+    '🍄','🌿','🍁','🌾','🌴','🌲','🌳','🎋',
 ];
 
 function initDecoPicker() {
@@ -9248,7 +9349,7 @@ function toggleDecoItem(emoji) {
     if (decos.includes(emoji)) {
         decos = decos.filter(e => e !== emoji);
     } else {
-        if (decos.length >= 5) { toastNotification('Max 5 stickers — remove one first.'); return; }
+        if (decos.length >= 8) { toastNotification('Max 8 stickers — remove one first.'); return; }
         decos.push(emoji);
     }
     document.getElementById('editProfileDecos').value = JSON.stringify(decos);
@@ -9280,7 +9381,7 @@ function updateDecoPreview() {
     // Avatar frame preview
     const previewAvatar = document.getElementById('decoPreviewAvatar');
     if (previewAvatar) {
-        previewAvatar.classList.remove('frame-rainbow','frame-gold','frame-pink','frame-green','frame-fire','frame-ice','frame-none');
+        previewAvatar.classList.remove('frame-rainbow','frame-gold','frame-pink','frame-green','frame-fire','frame-ice','frame-none','frame-cosmic','frame-shadow','frame-cyber','frame-toxic','frame-crystal');
         const frameStyleMap = {
             gold:    'border-color:#ffcc44;box-shadow:0 0 18px rgba(255,200,50,0.6);',
             pink:    'border-color:#ff00aa;box-shadow:0 0 18px rgba(255,0,170,0.6);',
@@ -9288,6 +9389,11 @@ function updateDecoPreview() {
             fire:    'border-color:#ff6622;box-shadow:0 0 18px rgba(255,100,20,0.65);',
             ice:     'border-color:#88eeff;box-shadow:0 0 18px rgba(80,220,255,0.6);',
             rainbow: 'border-color:#ff0066;',
+            cosmic:  'border-color:#9b59ff;box-shadow:0 0 18px rgba(155,89,255,0.7);',
+            shadow:  'border-color:#444466;box-shadow:0 0 0 3px #111,0 0 22px rgba(80,0,160,0.5);',
+            cyber:   'border-color:#00AEEF;box-shadow:0 0 0 2px #001122,0 0 18px rgba(0,174,239,0.8);',
+            toxic:   'border-color:#33ff88;box-shadow:0 0 22px rgba(50,255,100,0.7);',
+            crystal: 'border-color:#aaeeff;box-shadow:0 0 18px rgba(160,240,255,0.6);',
             none:    'border-color:transparent;box-shadow:none;',
         };
         const base = 'width:52px;height:52px;border-radius:50%;background:#0B1F3A;border:3px solid rgba(0,174,239,0.6);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;transition:all 0.2s;';
@@ -9429,14 +9535,19 @@ function clearMoodSelection() {
 
 // ── Style Editor ──
 const STYLE_PRESETS = {
-    dark:     { bg:'#0d2444', bg2:'#071428', grad:'to bottom',       font:'',                    nameColor:'#e0f0ff', border:'default' },
-    midnight: { bg:'#0a0020', bg2:'#1a0040', grad:'to bottom right', font:'',                    nameColor:'#c8a8ff', border:'neon-pink' },
-    forest:   { bg:'#0a1e0a', bg2:'#051005', grad:'to bottom',       font:'Georgia,serif',       nameColor:'#88ffaa', border:'neon-green' },
-    sunset:   { bg:'#2a0a00', bg2:'#4a1500', grad:'135deg',          font:"'Trebuchet MS',sans-serif", nameColor:'#ffaa66', border:'gold' },
-    ocean:    { bg:'#001a3a', bg2:'#003060', grad:'radial',          font:"'Segoe UI',sans-serif", nameColor:'#66ccff', border:'default' },
-    fire:     { bg:'#1a0000', bg2:'#3a0a00', grad:'to bottom',       font:"'Arial Black',sans-serif", nameColor:'#ff6622', border:'gold' },
-    neon:     { bg:'#000a1a', bg2:'#001a0a', grad:'135deg',          font:"'Courier New',monospace", nameColor:'#00ff88', border:'neon-green' },
-    none:     { bg:'#0d2444', bg2:'#071428', grad:'none',            font:'',                    nameColor:'#e0f0ff', border:'default' },
+    dark:     { bg:'#0d2444', bg2:'#071428', grad:'to bottom',       font:'',                         nameColor:'#e0f0ff', border:'default',    bgType:'' },
+    midnight: { bg:'#0a0020', bg2:'#1a0040', grad:'to bottom right', font:'',                         nameColor:'#c8a8ff', border:'neon-pink',   bgType:'' },
+    forest:   { bg:'#0a1e0a', bg2:'#051005', grad:'to bottom',       font:'Georgia,serif',            nameColor:'#88ffaa', border:'neon-green',  bgType:'' },
+    sunset:   { bg:'#2a0a00', bg2:'#4a1500', grad:'135deg',          font:"'Trebuchet MS',sans-serif",nameColor:'#ffaa66', border:'gold',         bgType:'' },
+    ocean:    { bg:'#001a3a', bg2:'#003060', grad:'radial',          font:"'Segoe UI',sans-serif",    nameColor:'#66ccff', border:'default',      bgType:'waves' },
+    fire:     { bg:'#1a0000', bg2:'#3a0a00', grad:'to bottom',       font:"'Arial Black',sans-serif", nameColor:'#ff6622', border:'gold',         bgType:'' },
+    neon:     { bg:'#000a1a', bg2:'#001a0a', grad:'135deg',          font:"'Courier New',monospace",  nameColor:'#00ff88', border:'neon-green',   bgType:'cyber-pulse' },
+    cosmic:   { bg:'#0d0033', bg2:'#1a0040', grad:'135deg',          font:'',                         nameColor:'#cc88ff', border:'cosmic',       bgType:'aurora' },
+    toxic:    { bg:'#001a00', bg2:'#003300', grad:'to bottom',       font:"'Courier New',monospace",  nameColor:'#33ff88', border:'neon-green',   bgType:'' },
+    crystal:  { bg:'#001a2a', bg2:'#003344', grad:'radial',          font:"'Segoe UI',sans-serif",    nameColor:'#aaeeff', border:'cyber',         bgType:'starfield' },
+    sakura:   { bg:'#1a0010', bg2:'#300020', grad:'135deg',          font:'Georgia,serif',            nameColor:'#ffaacc', border:'neon-pink',    bgType:'sakura' },
+    storm:    { bg:'#0a0a1a', bg2:'#141430', grad:'to bottom',       font:'',                         nameColor:'#8888ff', border:'default',      bgType:'starfield' },
+    none:     { bg:'#0d2444', bg2:'#071428', grad:'none',            font:'',                         nameColor:'#e0f0ff', border:'default',      bgType:'' },
 };
 
 function applyStylePreset(name) {
@@ -9447,6 +9558,7 @@ function applyStylePreset(name) {
     document.getElementById('profileBgColor2').value    = p.bg2;
     document.getElementById('profileBgColor2Hex').value = p.bg2;
     document.getElementById('profileBgGradient').value  = p.grad;
+    document.getElementById('profileBgType').value      = p.bgType || '';
     document.getElementById('profileFontFamily').value  = p.font;
     document.getElementById('profileNameColor').value   = p.nameColor;
     document.getElementById('profileNameColorHex').value= p.nameColor;
@@ -9489,6 +9601,18 @@ function updateStylePreview() {
     preview.style.fontFamily = font || '';
     if (pName) pName.style.color = nameC;
 
+    // Animated bg type indicator in preview
+    const bgType = document.getElementById('profileBgType')?.value || '';
+    const bgTypeLabels = { aurora:'🌌 Aurora', starfield:'✦ Starfield', 'cyber-pulse':'⚡ Cyber Pulse', waves:'🌊 Waves', sakura:'🌸 Sakura' };
+    let bgTypeBadge = document.getElementById('pspBgTypeBadge');
+    if (!bgTypeBadge) {
+        bgTypeBadge = document.createElement('div');
+        bgTypeBadge.id = 'pspBgTypeBadge';
+        bgTypeBadge.style.cssText = 'font-size:10px;color:#6a90b8;margin-top:4px;';
+        preview.appendChild(bgTypeBadge);
+    }
+    bgTypeBadge.textContent = bgType ? `Animated: ${bgTypeLabels[bgType] || bgType}` : '';
+
     // Border
     preview.className = 'profile-style-preview';
     preview.style.flexDirection = 'column';
@@ -9498,6 +9622,8 @@ function updateStylePreview() {
     else if (border === 'neon-pink') preview.classList.add('profile-border-neon-pink');
     else if (border === 'gold')   preview.classList.add('profile-border-gold');
     else if (border === 'rainbow')preview.classList.add('profile-border-rainbow');
+    else if (border === 'cosmic') preview.classList.add('profile-border-cosmic');
+    else if (border === 'cyber')  preview.classList.add('profile-border-cyber');
     else if (border === 'none')   preview.classList.add('profile-border-none');
 
     // Mood chip in preview card
@@ -9551,24 +9677,36 @@ function applyProfileStyles(p) {
     const nameEl = document.getElementById('profileName');
     if (nameEl) nameEl.style.color = p.profileNameColor || '';
 
+    // Animated background type
+    const bgType = p.profileBgType || '';
+    const ALL_BG_TYPES = ['aurora','starfield','cyber-pulse','waves','sakura'];
+    ALL_BG_TYPES.forEach(t => header.classList.remove('profile-bg-' + t));
+    if (bgType) {
+        header.classList.add('profile-bg-' + bgType);
+        header.style.background = '';   // let CSS class handle it
+    }
+
     // Border style
-    header.classList.remove('profile-border-neon-green','profile-border-neon-pink','profile-border-gold','profile-border-rainbow','profile-border-none');
+    header.classList.remove('profile-border-neon-green','profile-border-neon-pink','profile-border-gold','profile-border-rainbow','profile-border-cosmic','profile-border-cyber','profile-border-none');
     if (p.profileBorderStyle === 'neon-green')  header.classList.add('profile-border-neon-green');
     else if (p.profileBorderStyle === 'neon-pink') header.classList.add('profile-border-neon-pink');
     else if (p.profileBorderStyle === 'gold')   header.classList.add('profile-border-gold');
     else if (p.profileBorderStyle === 'rainbow')header.classList.add('profile-border-rainbow');
+    else if (p.profileBorderStyle === 'cosmic') header.classList.add('profile-border-cosmic');
+    else if (p.profileBorderStyle === 'cyber')  header.classList.add('profile-border-cyber');
     else if (p.profileBorderStyle === 'none')   header.classList.add('profile-border-none');
 
-    // Avatar frame
+    // Avatar frame — includes new frames
     const avatarEl = document.getElementById('profileAvatar');
     if (avatarEl) {
-        avatarEl.classList.remove('frame-rainbow','frame-gold','frame-pink','frame-green','frame-fire','frame-ice','frame-none');
+        avatarEl.classList.remove('frame-rainbow','frame-gold','frame-pink','frame-green','frame-fire','frame-ice','frame-none','frame-cosmic','frame-shadow','frame-cyber','frame-toxic','frame-crystal');
         const f = p.profileFrame || '';
         if (f && f !== 'none') avatarEl.classList.add('frame-' + f);
         if (f === 'none') avatarEl.classList.add('frame-none');
     }
 
-    // Background pattern overlay
+    // Background pattern overlay — skip if an animated bg type is active
+    // (animated types manage the overlay themselves via CSS classes)
     const patternOverlay = document.getElementById('profilePatternOverlay');
     if (patternOverlay) {
         const pat = p.profilePattern || '';
@@ -9580,10 +9718,15 @@ function applyProfileStyles(p) {
             chevron: 'repeating-linear-gradient(135deg, rgba(0,174,239,0.2) 0px, rgba(0,174,239,0.2) 2px, transparent 2px, transparent 12px)',
             diamonds:'repeating-linear-gradient(45deg, rgba(0,174,239,0.2) 0px, rgba(0,174,239,0.2) 2px, transparent 2px, transparent 14px)',
         };
-        if (pat && patternMap[pat]) {
+        // Only apply manual pattern if not overridden by an animated bg type
+        const bgTypeManagedPatterns = ['cyber-pulse','starfield','waves'];
+        if (bgTypeManagedPatterns.includes(bgType)) {
+            // Animated bg type owns the overlay — don't overwrite
+        } else if (pat && patternMap[pat]) {
             patternOverlay.style.backgroundImage = patternMap[pat];
             patternOverlay.style.backgroundSize  = pat === 'grid' ? '24px 24px' : '20px 20px';
             patternOverlay.style.display = 'block';
+            patternOverlay.style.animation = '';
         } else {
             patternOverlay.style.display = 'none';
         }
