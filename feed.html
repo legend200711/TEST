@@ -3968,6 +3968,10 @@ body::after {
                     <div class="profile-online-dot"></div> Online now
                 </div>
                 <div class="profile-joined-text" id="profileJoinedText"></div>
+                <!-- Visitor count (optional, shown to owner) -->
+                <div id="profileVisitorsRow" class="profile-visitors-row" style="display:none;">
+                    👁 <span id="profileVisitorCount">0</span> profile visits
+                </div>
 
                 <!-- Stats -->
                 <div class="profile-stats-row">
@@ -3986,6 +3990,10 @@ body::after {
                     <div class="profile-stat" onclick="openSocialList('friends')" title="View friends">
                         <div class="stat-num" id="cntFriends">0</div>
                         <div class="stat-label">Friends</div>
+                    </div>
+                    <div class="profile-stat" id="statMutual" onclick="openSocialList('mutual')" title="View mutual friends" style="display:none;">
+                        <div class="stat-num" id="cntMutual">0</div>
+                        <div class="stat-label">Mutual</div>
                     </div>
                 </div>
 
@@ -4251,6 +4259,44 @@ body::after {
         <div class="profile-links-section">
             <div class="profile-links-title">🔗 Links</div>
             <div id="profileLinksList"></div>
+        </div>
+    </div>
+
+    <!-- ── Pinned Post Section ── -->
+    <div id="profilePinnedSection" data-section-id="pinned" style="display:none;">
+        <div class="pinned-post-wrap">
+            <div class="pinned-post-label">Pinned Post</div>
+            <div class="pinned-post-author">
+                <div class="pinned-post-avatar" id="pinnedPostAvatar"></div>
+                <span class="pinned-post-author-name" id="pinnedPostAuthorName"></span>
+            </div>
+            <div class="pinned-post-content" id="pinnedPostContent"></div>
+            <div class="pinned-post-meta" id="pinnedPostMeta"></div>
+            <button class="pinned-post-unpin" id="btnUnpinPost" onclick="snxUnpinPost()" style="display:none;" title="Unpin">📌 Unpin</button>
+        </div>
+    </div>
+
+    <!-- ── Mutual Friends Section (shown when viewing someone else's profile) ── -->
+    <div id="profileMutualSection" data-section-id="mutual" style="display:none;">
+        <div class="mutual-friends-wrap">
+            <div class="mutual-friends-title">🤝 Mutual Friends</div>
+            <div class="mutual-friends-avatars" id="mutualFriendsList"></div>
+        </div>
+    </div>
+
+    <!-- ── Recently Active Friends Section ── -->
+    <div id="profileRecentlyActiveSection" data-section-id="recently-active" style="display:none;">
+        <div class="recently-active-wrap">
+            <div class="recently-active-title">🟢 Recently Active Friends</div>
+            <div class="recently-active-list" id="recentlyActiveFriendsList"></div>
+        </div>
+    </div>
+
+    <!-- ── Favorite Posts Section ── -->
+    <div id="profileFavPostsSection" data-section-id="fav-posts" style="display:none;">
+        <div class="profile-fav-posts-wrap section-card">
+            <div class="profile-fav-posts-title">⭐ Favorite Posts</div>
+            <div class="fav-posts-grid" id="favPostsGrid"></div>
         </div>
     </div>
 
@@ -5329,6 +5375,7 @@ body::after {
               followers:   [],
               following:   [],
               status:      "online",
+              lastSeen:    Date.now(),
               badges:      isFounder ? ["Founder"] : ["Early"],
               role:        isFounder ? "founder" : "member",
               friends:             [],
@@ -5362,8 +5409,9 @@ body::after {
   };
 
   window.handleLogout = async () => {
+      if (window._snxLastSeenInterval) { clearInterval(window._snxLastSeenInterval); window._snxLastSeenInterval = null; }
       if (currentUser) {
-          try { await updateDoc(doc(db, "users", currentUser.uid), { status: "offline" }); } catch(_) {}
+          try { await updateDoc(doc(db, "users", currentUser.uid), { status: "offline", lastSeen: Date.now() }); } catch(_) {}
       }
       signOut(auth);
   };
@@ -5447,7 +5495,14 @@ body::after {
               } catch(_) {}
           }
 
-          try { await updateDoc(doc(db, "users", user.uid), { status: "online" }); } catch(_) {}
+          try { await updateDoc(doc(db, "users", user.uid), { status: "online", lastSeen: Date.now() }); } catch(_) {}
+          // Heartbeat: update lastSeen every 5 minutes while logged in
+          if (window._snxLastSeenInterval) clearInterval(window._snxLastSeenInterval);
+          window._snxLastSeenInterval = setInterval(async () => {
+              if (user && user.uid) {
+                  try { await updateDoc(doc(db, "users", user.uid), { lastSeen: Date.now() }); } catch(_) {}
+              }
+          }, 5 * 60 * 1000);
 
           // Save email to Firestore so username login works for existing accounts
           try {
@@ -5544,17 +5599,28 @@ body::after {
       const body  = document.getElementById('socialListBody');
       if (!modal) return;
 
-      const labels = { friends: 'Friends', followers: 'Followers', following: 'Following' };
+      const labels = { friends: 'Friends', followers: 'Followers', following: 'Following', mutual: 'Mutual Friends' };
       title.textContent = labels[type] || type;
       body.innerHTML = '<div class="social-list-empty">Loading…</div>';
       modal.classList.add('open');
 
       try {
-          const snap = await getDoc(doc(db, 'users', uid));
-          if (!snap.exists()) { body.innerHTML = '<div class="social-list-empty">No data found.</div>'; return; }
+          let uids = [];
 
-          const data = snap.data();
-          const uids = data[type] || [];
+          if (type === 'mutual') {
+              // Mutual friends = intersection of viewer's friends and profile's friends
+              const [profileSnap, mySnap] = await Promise.all([
+                  getDoc(doc(db, 'users', uid)),
+                  getDoc(doc(db, 'users', currentUser.uid))
+              ]);
+              const profileFriends = profileSnap.exists() ? (profileSnap.data().friends || []) : [];
+              const myFriends = mySnap.exists() ? (mySnap.data().friends || []) : [];
+              uids = myFriends.filter(id => profileFriends.includes(id));
+          } else {
+              const snap = await getDoc(doc(db, 'users', uid));
+              if (!snap.exists()) { body.innerHTML = '<div class="social-list-empty">No data found.</div>'; return; }
+              uids = snap.data()[type] || [];
+          }
 
           if (!uids.length) {
               body.innerHTML = `<div class="social-list-empty">No ${labels[type] || type} yet.</div>`;
@@ -5577,6 +5643,15 @@ body::after {
               return;
           }
 
+          // Sort: online first, then by displayName
+          users.sort((a, b) => {
+              const aOn = a.status === 'online' ? 0 : 1;
+              const bOn = b.status === 'online' ? 0 : 1;
+              if (aOn !== bOn) return aOn - bOn;
+              return (a.displayName || '').localeCompare(b.displayName || '');
+          });
+
+          title.textContent = `${labels[type] || type} (${users.length})`;
           body.innerHTML = '';
           users.forEach(u => {
               const item = document.createElement('div');
@@ -5585,18 +5660,25 @@ body::after {
 
               const avatarDiv = document.createElement('div');
               avatarDiv.className = 'social-list-avatar';
-              if (u.avatar) {
-                  avatarDiv.style.backgroundImage = `url('${u.avatar}')`;
-              } else {
-                  avatarDiv.textContent = (u.displayName || '?')[0].toUpperCase();
+              if (u.avatar) { avatarDiv.style.backgroundImage = `url('${u.avatar}')`; }
+              else { avatarDiv.textContent = (u.displayName || '?')[0].toUpperCase(); }
+              // Online dot on avatar
+              if (u.status === 'online') {
+                  avatarDiv.style.borderColor = 'rgba(57,255,20,0.7)';
+                  avatarDiv.style.boxShadow = '0 0 8px rgba(57,255,20,0.5)';
               }
 
               const infoDiv = document.createElement('div');
               infoDiv.style.flex = '1';
               infoDiv.style.minWidth = '0';
+              const isOnline = u.status === 'online';
+              const lastSeenMin = (!isOnline && u.lastSeen) ? Math.round((Date.now() - u.lastSeen) / 60000) : null;
+              const metaText = isOnline ? '<span class="social-list-online-dot"></span>Online now'
+                  : (lastSeenMin !== null ? (lastSeenMin < 60 ? `Active ${lastSeenMin}m ago` : lastSeenMin < 1440 ? `Active ${Math.round(lastSeenMin/60)}h ago` : '') : '');
               infoDiv.innerHTML = `
                   <div class="social-list-name">${escFeed(u.displayName || u.username || 'Unknown')}${buildBadgeHtml(u.badges||[], u.role||'member')}</div>
                   <div class="social-list-handle">@${escFeed(u.username || '')}</div>
+                  ${metaText ? `<div class="social-list-meta">${metaText}</div>` : ''}
               `;
 
               item.appendChild(avatarDiv);
@@ -5960,6 +6042,8 @@ body::after {
                         <button class="react-btn ${isLiked ? 'liked' : ''}" id="like-btn-${pDoc.id}" onclick="processPostReaction('${pDoc.id}','like',this)">❤️ <span class="like-count">${post.likes || 0}</span></button>
                         ${!post.isRepost ? `<button class="react-btn" id="repost-btn-${pDoc.id}" onclick="processPostReaction('${pDoc.id}','repost',this)">🔄 <span class="repost-count">${post.repostCount || 0}</span></button>` : ''}
                         <button class="react-btn" onclick="sharePostItem('${pDoc.id}')">🔗 Share</button>
+                        ${currentUser ? (() => { const isFavd = (userData?.favoritePosts||[]).includes(pDoc.id); return `<button class="btn-fav-post${isFavd?' faved':''}" onclick="${isFavd?`snxUnfavPost('${pDoc.id}')`:`snxFavPost('${pDoc.id}')`}" title="${isFavd?'Remove from favorites':'Add to favorites'}">${isFavd?'⭐':'☆'}</button>`; })() : ''}
+                        ${isOwner ? (() => { const isPinned = userData?.pinnedPostId === pDoc.id; return `<button class="btn-pin-post${isPinned?' pinned':''}" onclick="${isPinned?`snxUnpinPost()`:`snxPinPost('${pDoc.id}')`}" title="${isPinned?'Unpin post':'Pin to profile'}">📌</button>`; })() : ''}
                         ${isOwner ? `<button class="react-btn btn-del-post" onclick="window.deleteTimelinePost('${pDoc.id}')">🗑️ Delete</button>` : ''}
                     </div>
                     <div class="commentBox" id="comments-${pDoc.id}" data-count="0"></div>
@@ -7071,6 +7155,18 @@ body::after {
           document.getElementById("cntFollowers").textContent = (p.followers?.length || 0);
           document.getElementById("cntFollowing").textContent = (p.following?.length || 0);
           document.getElementById("cntFriends").textContent   = (p.friends?.length || 0);
+          // Mutual friends stat (only for other profiles)
+          const statMutualEl = document.getElementById("statMutual");
+          const cntMutualEl  = document.getElementById("cntMutual");
+          if (statMutualEl && cntMutualEl) {
+              if (!isSelf && currentUser) {
+                  const mutualCount = (userData?.friends || []).filter(id => (p.friends || []).includes(id)).length;
+                  cntMutualEl.textContent = mutualCount;
+                  statMutualEl.style.display = mutualCount > 0 ? '' : 'none';
+              } else {
+                  statMutualEl.style.display = 'none';
+              }
+          }
 
           // Badges — only show real earned badges; never show defaults
           // The Founder badge is only rendered when role === "founder" (prevents spoofing)
@@ -7205,11 +7301,251 @@ body::after {
               wallBox.appendChild(div);
           });
 
+          // ── Pinned post ──────────────────────────────────────────────
+          const pinnedSection = document.getElementById("profilePinnedSection");
+          if (pinnedSection) {
+              const pinnedId = p.pinnedPostId;
+              if (pinnedId) {
+                  pinnedSection.style.display = '';
+                  // Fetch pinned post from feed
+                  try {
+                      const pSnap = await getDoc(doc(db, "posts", pinnedId));
+                      if (pSnap.exists()) {
+                          const pp = pSnap.data();
+                          const avatarEl = document.getElementById("pinnedPostAvatar");
+                          if (avatarEl) {
+                              if (pp.authorAvatar) { avatarEl.style.backgroundImage = `url('${pp.authorAvatar}')`; avatarEl.textContent = ''; }
+                              else { avatarEl.style.backgroundImage = 'none'; avatarEl.textContent = (pp.authorName||'?')[0].toUpperCase(); }
+                          }
+                          const nameEl = document.getElementById("pinnedPostAuthorName");
+                          if (nameEl) nameEl.textContent = pp.authorName || '';
+                          const contentEl = document.getElementById("pinnedPostContent");
+                          if (contentEl) contentEl.textContent = pp.text || '';
+                          const metaEl = document.getElementById("pinnedPostMeta");
+                          if (metaEl) metaEl.textContent = pp.timestamp ? fmtTimeAgo(pp.timestamp) : '';
+                      } else {
+                          pinnedSection.style.display = 'none';
+                      }
+                  } catch(_) { pinnedSection.style.display = 'none'; }
+              } else {
+                  pinnedSection.style.display = 'none';
+              }
+              // Show unpin button only to owner
+              const unpinBtn = document.getElementById("btnUnpinPost");
+              if (unpinBtn) unpinBtn.style.display = (isSelf && pinnedId) ? '' : 'none';
+          }
+
+          // ── Visitor count (owner-only) ────────────────────────────────
+          const visitorsRow = document.getElementById("profileVisitorsRow");
+          const visitorCountEl = document.getElementById("profileVisitorCount");
+          if (visitorsRow && visitorCountEl) {
+              if (isSelf) {
+                  visitorsRow.style.display = '';
+                  visitorCountEl.textContent = p.visitorCount || 0;
+              } else {
+                  visitorsRow.style.display = 'none';
+              }
+          }
+
+          // ── Recently active friends ──────────────────────────────────
+          snxLoadRecentlyActive(p.friends || [], uid);
+
+          // ── Mutual friends (only when viewing others) ────────────────
+          if (!isSelf) {
+              snxLoadMutualFriends(p.friends || [], uid);
+          } else {
+              const ms = document.getElementById("profileMutualSection");
+              if (ms) ms.style.display = 'none';
+          }
+
+          // ── Favorite posts ───────────────────────────────────────────
+          snxLoadFavPosts(p.favoritePosts || [], isSelf);
+
           // Apply profile customization (pass viewer + profile uid for privacy checks)
           if (typeof window.applyProfileCustomization === 'function') {
               window.applyProfileCustomization(p.profileCustomization || null, currentUser.uid, uid);
           }
       });
+
+      // ── Track profile visitor (not yourself) ───────────────────────
+      if (!isSelf) {
+          try {
+              await updateDoc(doc(db, "users", uid), {
+                  visitorCount: (await getDoc(doc(db, "users", uid))).data()?.visitorCount + 1 || 1
+              });
+          } catch(_) { /* best-effort */ }
+      }
+  };
+
+  /* ── snxLoadRecentlyActive — render recently active friends strip ─────── */
+  async function snxLoadRecentlyActive(friendUids, profileUid) {
+      const el = document.getElementById("recentlyActiveFriendsList");
+      const section = document.getElementById("profileRecentlyActiveSection");
+      if (!el || !section) return;
+      el.innerHTML = '';
+      if (!friendUids.length) { section.style.display = 'none'; return; }
+
+      try {
+          const chunks = [];
+          for (let i = 0; i < friendUids.length; i += 10) chunks.push(friendUids.slice(i, i + 10));
+          const users = [];
+          for (const chunk of chunks) {
+              const q = query(collection(db, 'users'), where('uid', 'in', chunk));
+              const qs = await getDocs(q);
+              qs.forEach(d => users.push(d.data()));
+          }
+          // Sort by lastSeen descending, take up to 12
+          const now = Date.now();
+          const WEEK = 7 * 24 * 60 * 60 * 1000;
+          const active = users
+              .filter(u => u.lastSeen && (now - u.lastSeen) < WEEK)
+              .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))
+              .slice(0, 12);
+          if (!active.length) { section.style.display = 'none'; return; }
+
+          section.style.display = '';
+          active.forEach(u => {
+              const item = document.createElement('div');
+              item.className = 'recently-active-item';
+              item.title = u.displayName || u.username || '?';
+              item.onclick = () => viewProfile(u.uid);
+              const isOnline = u.status === 'online';
+              const lastSeenMin = u.lastSeen ? Math.round((now - u.lastSeen) / 60000) : null;
+              const timeStr = isOnline ? '' : (lastSeenMin !== null ? (lastSeenMin < 60 ? `${lastSeenMin}m ago` : `${Math.round(lastSeenMin/60)}h ago`) : '');
+              const avatarBg = u.avatar ? `url('${u.avatar}')` : 'none';
+              const avatarLetter = u.avatar ? '' : (u.displayName || u.username || '?')[0].toUpperCase();
+              item.innerHTML = `
+                <div class="recently-active-avatar" style="background-image:${avatarBg};">
+                    ${avatarLetter}
+                    ${isOnline ? '<div class="recently-active-dot"></div>' : ''}
+                </div>
+                <div class="recently-active-name">${escFeed(u.displayName || u.username || '?')}</div>
+                ${timeStr ? `<div class="recently-active-time">${timeStr}</div>` : ''}
+              `;
+              el.appendChild(item);
+          });
+      } catch(_) { section.style.display = 'none'; }
+  }
+
+  /* ── snxLoadMutualFriends — show mutual friends between viewer and profile ─ */
+  async function snxLoadMutualFriends(profileFriends, profileUid) {
+      const el = document.getElementById("mutualFriendsList");
+      const section = document.getElementById("profileMutualSection");
+      if (!el || !section) return;
+      el.innerHTML = '';
+      const myFriends = userData?.friends || [];
+      if (!myFriends.length || !profileFriends.length) { section.style.display = 'none'; return; }
+
+      const mutualUids = myFriends.filter(id => profileFriends.includes(id)).slice(0, 15);
+      if (!mutualUids.length) { section.style.display = 'none'; return; }
+
+      try {
+          const chunks = [];
+          for (let i = 0; i < mutualUids.length; i += 10) chunks.push(mutualUids.slice(i, i + 10));
+          const users = [];
+          for (const chunk of chunks) {
+              const q = query(collection(db, 'users'), where('uid', 'in', chunk));
+              const qs = await getDocs(q);
+              qs.forEach(d => users.push(d.data()));
+          }
+          if (!users.length) { section.style.display = 'none'; return; }
+
+          section.style.display = '';
+          const titleEl = section.querySelector('.mutual-friends-title');
+          if (titleEl) titleEl.textContent = `🤝 ${users.length} Mutual Friend${users.length !== 1 ? 's' : ''}`;
+
+          users.forEach(u => {
+              const chip = document.createElement('div');
+              chip.className = 'mutual-friend-chip';
+              chip.onclick = () => viewProfile(u.uid);
+              chip.title = u.displayName || u.username || '?';
+              const avatarStyle = u.avatar ? `background-image:url('${u.avatar}')` : '';
+              const avatarLetter = u.avatar ? '' : (u.displayName || u.username || '?')[0].toUpperCase();
+              chip.innerHTML = `
+                <div class="mutual-friend-avatar" style="${avatarStyle}">${avatarLetter}</div>
+                ${escFeed(u.displayName || u.username || '?')}
+              `;
+              el.appendChild(chip);
+          });
+      } catch(_) { section.style.display = 'none'; }
+  }
+
+  /* ── snxLoadFavPosts — display user's starred/favorite posts ─────────── */
+  async function snxLoadFavPosts(favPostIds, isSelf) {
+      const el = document.getElementById("favPostsGrid");
+      const section = document.getElementById("profileFavPostsSection");
+      if (!el || !section) return;
+      el.innerHTML = '';
+      if (!favPostIds || !favPostIds.length) { section.style.display = 'none'; return; }
+
+      try {
+          // Fetch up to 9 fav posts
+          const ids = favPostIds.slice(0, 9);
+          const posts = [];
+          for (const id of ids) {
+              try {
+                  const pSnap = await getDoc(doc(db, "posts", id));
+                  if (pSnap.exists()) posts.push({ id, ...pSnap.data() });
+              } catch(_) {}
+          }
+          if (!posts.length) { section.style.display = 'none'; return; }
+
+          section.style.display = '';
+          posts.forEach(p => {
+              const tile = document.createElement('div');
+              tile.className = 'fav-post-tile';
+              tile.title = 'View post';
+              const mediaUrl = p.mediaUrls?.[0] || p.mediaUrl || '';
+              const isImg = mediaUrl && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(mediaUrl);
+              tile.innerHTML = `
+                ${isImg ? `<img class="fav-post-thumb" src="${mediaUrl}" alt="" loading="lazy">` : ''}
+                <div class="fav-post-text">${escFeed((p.text || '').substring(0, 120))}</div>
+                <div class="fav-post-meta">by ${escFeed(p.authorName || '?')} · ${p.timestamp ? fmtTimeAgo(p.timestamp) : ''}</div>
+                ${isSelf ? `<button class="fav-post-unfav" onclick="event.stopPropagation();snxUnfavPost('${p.id}')" title="Remove from favorites">✕</button>` : ''}
+              `;
+              tile.onclick = () => {
+                  // Scroll to post in feed if visible, otherwise navigate
+                  const postEl = document.getElementById(`post-${p.id}`);
+                  if (postEl) { postEl.scrollIntoView({ behavior:'smooth', block:'center' }); }
+                  else { navTo('feed'); }
+              };
+              el.appendChild(tile);
+          });
+      } catch(_) { section.style.display = 'none'; }
+  }
+
+  /* ── Pinned post actions ─────────────────────────────────────────────── */
+  window.snxPinPost = async function(postId) {
+      if (!currentUser) return;
+      await updateDoc(doc(db, "users", currentUser.uid), { pinnedPostId: postId });
+      toastNotification("📌 Post pinned to your profile!");
+      // Refresh profile
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
+  };
+
+  window.snxUnpinPost = async function() {
+      if (!currentUser) return;
+      await updateDoc(doc(db, "users", currentUser.uid), { pinnedPostId: null });
+      toastNotification("📌 Post unpinned.");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
+  };
+
+  /* ── Favorite post actions ───────────────────────────────────────────── */
+  window.snxFavPost = async function(postId) {
+      if (!currentUser) return;
+      const myRef = doc(db, "users", currentUser.uid);
+      await updateDoc(myRef, { favoritePosts: arrayUnion(postId) });
+      toastNotification("⭐ Added to favorites!");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
+  };
+
+  window.snxUnfavPost = async function(postId) {
+      if (!currentUser) return;
+      const mySnap = await getDoc(doc(db, "users", currentUser.uid));
+      const favs = (mySnap.data()?.favoritePosts || []).filter(id => id !== postId);
+      await updateDoc(doc(db, "users", currentUser.uid), { favoritePosts: favs });
+      toastNotification("⭐ Removed from favorites.");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
   };
 
   document.getElementById("btnSaveProfile").onclick = async () => {

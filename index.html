@@ -3499,6 +3499,172 @@ body::after {
 #profile .profile-bio-text { color: var(--pc-bio-color); }
 
 /* ══════════════════════════════════════════════════════════════
+   SOCIAL PROFILE SECTIONS
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Pinned post banner ── */
+.pinned-post-wrap {
+    background: rgba(0,30,70,0.65);
+    border: 1.5px solid rgba(57,255,20,0.30);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    position: relative;
+}
+.pinned-post-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 800; letter-spacing: 1.4px;
+    text-transform: uppercase; color: #39FF14; margin-bottom: 10px;
+    opacity: 0.85;
+}
+.pinned-post-label::before { content: '📌'; font-size: 13px; }
+.pinned-post-content { font-size: 13px; color: #d8eeff; line-height: 1.55; }
+.pinned-post-meta { font-size: 11px; color: #4a6a8a; margin-top: 8px; }
+.pinned-post-author { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pinned-post-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #0B1F3A; background-size: cover; background-position: center;
+    border: 1.5px solid rgba(57,255,20,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #39FF14; flex-shrink: 0;
+}
+.pinned-post-author-name { font-size: 12px; font-weight: 700; color: #a8c8e8; }
+.pinned-post-unpin {
+    position: absolute; top: 10px; right: 10px;
+    background: none; border: none; color: #3a5a7a; font-size: 12px;
+    cursor: pointer; padding: 3px 8px; border-radius: 6px; transition: color .15s;
+}
+.pinned-post-unpin:hover { color: #ff5577; background: rgba(255,51,102,0.1); }
+
+/* ── Favorite posts grid ── */
+.profile-fav-posts-wrap { margin-bottom: 16px; }
+.profile-fav-posts-title {
+    font-size: 11px; font-weight: 800; letter-spacing: 1.4px;
+    text-transform: uppercase; color: #00AEEF; margin-bottom: 10px;
+}
+.fav-posts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+}
+.fav-post-tile {
+    background: rgba(0,20,55,0.6);
+    border: 1.5px solid rgba(0,174,239,0.22);
+    border-radius: 12px; padding: 12px;
+    cursor: pointer; transition: border-color .15s, background .15s;
+    position: relative;
+}
+.fav-post-tile:hover { border-color: rgba(0,174,239,0.55); background: rgba(0,30,80,0.55); }
+.fav-post-text {
+    font-size: 12px; color: #c8e0f8; line-height: 1.45;
+    overflow: hidden; display: -webkit-box;
+    -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+.fav-post-meta { font-size: 10px; color: #4a6a8a; margin-top: 6px; }
+.fav-post-thumb {
+    width: 100%; height: 70px; object-fit: cover;
+    border-radius: 8px; margin-bottom: 6px;
+    border: 1px solid rgba(0,100,200,0.2);
+}
+.fav-post-unfav {
+    position: absolute; top: 6px; right: 6px;
+    background: none; border: none; color: #3a5a7a; font-size: 14px;
+    cursor: pointer; padding: 2px 5px; border-radius: 4px; line-height: 1;
+    transition: color .15s;
+}
+.fav-post-unfav:hover { color: #ff5577; }
+
+/* ── Visitor count badge ── */
+.profile-visitors-row {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #4a7a9a; margin-bottom: 4px;
+    padding: 2px 8px; background: rgba(0,100,200,0.08);
+    border: 1px solid rgba(0,174,239,0.15); border-radius: 10px;
+}
+.profile-visitors-row span { font-weight: 700; color: #7aaac8; }
+
+/* ── Mutual friends row ── */
+.mutual-friends-wrap {
+    background: rgba(0,20,55,0.5);
+    border: 1px solid rgba(0,174,239,0.18);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
+}
+.mutual-friends-title {
+    font-size: 11px; font-weight: 800; letter-spacing: 1px;
+    text-transform: uppercase; color: #6a90b8; margin-bottom: 8px;
+}
+.mutual-friends-avatars { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.mutual-friend-chip {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(0,30,70,0.6); border: 1px solid rgba(0,174,239,0.2);
+    border-radius: 20px; padding: 4px 10px 4px 4px; cursor: pointer;
+    transition: border-color .15s, background .15s; font-size: 12px; color: #c8e8ff;
+}
+.mutual-friend-chip:hover { border-color: rgba(0,174,239,0.55); background: rgba(0,50,120,0.45); }
+.mutual-friend-avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #0B1F3A; background-size: cover; background-position: center;
+    border: 1.5px solid rgba(0,174,239,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: #00AEEF; flex-shrink: 0;
+}
+.mutual-more { font-size: 12px; color: #3a6a9a; padding: 4px 8px; cursor: pointer; }
+.mutual-more:hover { color: #00AEEF; }
+
+/* ── Recently active friends strip ── */
+.recently-active-wrap {
+    background: rgba(0,20,55,0.5);
+    border: 1px solid rgba(57,255,20,0.15);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
+}
+.recently-active-title {
+    font-size: 11px; font-weight: 800; letter-spacing: 1px;
+    text-transform: uppercase; color: #39FF14; margin-bottom: 8px;
+    opacity: 0.8;
+}
+.recently-active-list { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.recently-active-list::-webkit-scrollbar { display: none; }
+.recently-active-item { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; flex-shrink: 0; }
+.recently-active-avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #0B1F3A; background-size: cover; background-position: center;
+    border: 2px solid rgba(57,255,20,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: #39FF14;
+    position: relative; transition: border-color .15s, transform .15s;
+}
+.recently-active-avatar:hover { border-color: rgba(57,255,20,0.8); transform: scale(1.06); }
+.recently-active-name { font-size: 10px; color: #7aaac8; max-width: 46px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recently-active-time { font-size: 9px; color: #3a5a7a; }
+.recently-active-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #39FF14; box-shadow: 0 0 6px rgba(57,255,20,0.8);
+    position: absolute; bottom: 0; right: 0;
+    border: 1.5px solid #0B1F3A;
+}
+
+/* ── Pin/Fav buttons on posts (owner only) ── */
+.btn-pin-post, .btn-fav-post {
+    background: none; border: none; padding: 4px 8px; font-size: 13px;
+    cursor: pointer; border-radius: 6px; line-height: 1;
+    transition: color .15s, background .15s;
+    color: #3a5a7a;
+}
+.btn-pin-post:hover { color: #39FF14; background: rgba(57,255,20,0.08); }
+.btn-fav-post:hover { color: #00AEEF; background: rgba(0,174,239,0.08); }
+.btn-pin-post.pinned  { color: #39FF14; }
+.btn-fav-post.faved   { color: #00AEEF; }
+
+/* Social lists: extra types */
+.social-list-meta { font-size: 11px; color: #3a6a9a; margin-top: 2px; }
+.social-list-online-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #39FF14; box-shadow: 0 0 5px rgba(57,255,20,0.7);
+    display: inline-block; margin-right: 3px; flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
    RETRO ARCADE SYSTEM
    ══════════════════════════════════════════════════════════════ */
 
@@ -3783,6 +3949,457 @@ body::after {
         gap: 10px;
     }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   NEXUS COMMUNITY PAGE
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Quote of the Day card ── */
+.snx-community-page { max-width: 780px; margin: 0 auto; }
+.snx-qotd-card {
+    background: linear-gradient(135deg, #040e22 0%, #071428 100%);
+    border: 1.5px solid rgba(57,255,20,0.28);
+    border-radius: 16px;
+    padding: 22px 24px;
+    margin-bottom: 18px;
+    position: relative;
+    overflow: hidden;
+}
+.snx-qotd-card::before {
+    content: '"';
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    font-size: 120px;
+    color: rgba(57,255,20,0.06);
+    font-family: Georgia, serif;
+    line-height: 1;
+}
+.snx-qotd-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #39FF14;
+    margin-bottom: 10px;
+}
+.snx-qotd-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: #e8f4ff;
+    line-height: 1.55;
+    margin: 0 0 8px;
+    font-style: italic;
+}
+.snx-qotd-author {
+    font-size: 12px;
+    color: #6a90b8;
+    text-align: right;
+}
+
+/* ── Section heading ── */
+.snx-com-section {
+    background: linear-gradient(160deg, #081526, #050e1d);
+    border: 1.5px solid rgba(0,174,239,0.18);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+}
+.snx-com-section-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: #00AEEF;
+    margin: 0 0 14px;
+}
+
+/* ── Daily Challenge ── */
+.snx-challenge-card {
+    background: rgba(0,174,239,0.06);
+    border: 1.5px solid rgba(0,174,239,0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.snx-challenge-icon { font-size: 26px; flex-shrink: 0; line-height: 1; }
+.snx-challenge-body { flex: 1; }
+.snx-challenge-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #d8eeff;
+    margin: 0 0 4px;
+}
+.snx-challenge-desc { font-size: 12px; color: #6a90b8; margin: 0 0 10px; line-height: 1.5; }
+.snx-challenge-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+}
+.snx-challenge-status.done {
+    background: rgba(57,255,20,0.12);
+    border: 1px solid rgba(57,255,20,0.4);
+    color: #39FF14;
+}
+.snx-challenge-status.todo {
+    background: rgba(0,174,239,0.1);
+    border: 1px solid rgba(0,174,239,0.3);
+    color: #00AEEF;
+    cursor: pointer;
+    transition: background .15s;
+}
+.snx-challenge-status.todo:hover { background: rgba(0,174,239,0.2); }
+.snx-challenge-xp {
+    font-size: 11px;
+    color: #ffcc44;
+    font-weight: 700;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.snx-challenge-progress-wrap {
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(0,174,239,0.12);
+    margin-top: 6px;
+    overflow: hidden;
+}
+.snx-challenge-progress-bar {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #005fa3, #00AEEF);
+    transition: width .4s ease;
+}
+
+/* ── Community Goal ── */
+.snx-goal-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.snx-goal-label { font-size: 13px; font-weight: 700; color: #d8eeff; flex: 1; }
+.snx-goal-count { font-size: 12px; color: #6a90b8; flex-shrink: 0; }
+.snx-goal-bar-wrap {
+    height: 8px;
+    border-radius: 8px;
+    background: rgba(0,50,100,0.4);
+    overflow: hidden;
+    margin-bottom: 14px;
+}
+.snx-goal-bar {
+    height: 100%;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #39FF14, #00cc88);
+    transition: width .6s ease;
+}
+.snx-goal-cta {
+    font-size: 12px;
+    color: #3a6a9a;
+    text-align: center;
+    padding-top: 4px;
+}
+
+/* ── Support Rooms ── */
+.snx-rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+.snx-room-tile {
+    background: rgba(0,20,60,0.5);
+    border: 1.5px solid rgba(0,174,239,0.2);
+    border-radius: 12px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.snx-room-tile:hover {
+    border-color: rgba(0,174,239,0.55);
+    background: rgba(0,30,80,0.55);
+}
+.snx-room-tile.active-room {
+    border-color: #39FF14;
+    background: rgba(57,255,20,0.06);
+}
+.snx-room-emoji { font-size: 26px; line-height: 1; }
+.snx-room-name { font-size: 12px; font-weight: 700; color: #d8eeff; }
+.snx-room-desc { font-size: 11px; color: #5a7a9a; line-height: 1.4; }
+.snx-room-online {
+    font-size: 10px;
+    color: #39FF14;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.snx-room-online::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #39FF14;
+    display: inline-block;
+}
+.snx-room-chat-area {
+    display: none;
+    flex-direction: column;
+    border: 1.5px solid rgba(0,174,239,0.22);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 14px;
+    background: #040d1a;
+}
+.snx-room-chat-area.open { display: flex; }
+.snx-room-chat-header {
+    padding: 10px 14px;
+    background: rgba(0,5,15,0.7);
+    font-size: 13px;
+    font-weight: 700;
+    color: #00AEEF;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.snx-room-chat-msgs {
+    flex: 1;
+    min-height: 160px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.snx-room-msg {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.snx-room-msg-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #0B1F3A;
+    border: 1px solid rgba(0,174,239,0.3);
+    flex-shrink: 0;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #00AEEF;
+}
+.snx-room-msg-body { flex: 1; }
+.snx-room-msg-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #7aaac8;
+    margin-bottom: 2px;
+}
+.snx-room-msg-name.anon { color: #8a6a9a; }
+.snx-room-msg-text {
+    font-size: 13px;
+    color: #d8eeff;
+    line-height: 1.45;
+    word-break: break-word;
+}
+.snx-room-msg-time { font-size: 10px; color: #334; margin-top: 2px; }
+.snx-room-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(0,5,15,0.5);
+    border-top: 1px solid rgba(0,174,239,0.1);
+}
+.snx-room-input-row input { flex: 1; margin: 0; font-size: 13px; }
+.snx-room-send-btn {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #005fa3, #00AEEF);
+    border: none;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.snx-room-anon-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-top: 1px solid rgba(0,174,239,0.08);
+    background: rgba(0,5,15,0.4);
+    font-size: 11px;
+    color: #5a7a9a;
+}
+.snx-room-anon-toggle label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+/* ── Kindness Badges ── */
+.snx-badge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+.snx-kbadge-tile {
+    background: rgba(0,20,60,0.4);
+    border: 1.5px solid rgba(0,174,239,0.18);
+    border-radius: 12px;
+    padding: 14px 12px;
+    text-align: center;
+    position: relative;
+    transition: border-color .2s;
+}
+.snx-kbadge-tile.earned {
+    border-color: rgba(57,255,20,0.45);
+    background: rgba(57,255,20,0.05);
+}
+.snx-kbadge-tile.locked { opacity: .55; }
+.snx-kbadge-icon { font-size: 30px; margin-bottom: 6px; }
+.snx-kbadge-name { font-size: 11px; font-weight: 700; color: #d8eeff; margin-bottom: 3px; }
+.snx-kbadge-req { font-size: 10px; color: #5a7a9a; line-height: 1.35; }
+.snx-kbadge-earned-tag {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: #39FF14;
+    color: #041020;
+    border-radius: 6px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 5px;
+}
+.snx-kbadge-progress {
+    font-size: 10px;
+    color: #3a6a9a;
+    margin-top: 4px;
+}
+
+/* ── Support Reactions ── */
+.snx-reactions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+.snx-react-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1.5px solid rgba(0,174,239,0.25);
+    background: rgba(0,20,60,0.4);
+    color: #d8eeff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .12s;
+    user-select: none;
+}
+.snx-react-btn:hover { border-color: rgba(0,174,239,0.55); background: rgba(0,40,100,0.5); transform: scale(1.06); }
+.snx-react-btn.reacted {
+    border-color: rgba(57,255,20,0.5);
+    background: rgba(57,255,20,0.08);
+    color: #39FF14;
+}
+.snx-react-count { font-size: 11px; font-weight: 700; color: #6a90b8; }
+.snx-react-btn.reacted .snx-react-count { color: #39FF14; }
+
+/* ── Anonymous Support Posts ── */
+.snx-anon-composer {
+    background: rgba(80,30,120,0.12);
+    border: 1.5px solid rgba(120,60,200,0.28);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+}
+.snx-anon-composer textarea {
+    width: 100%;
+    min-height: 80px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(120,60,200,0.3);
+    border-radius: 8px;
+    color: #d8eeff;
+    font-size: 13px;
+    padding: 10px;
+    resize: vertical;
+    box-sizing: border-box;
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+.snx-anon-composer textarea:focus { outline: none; border-color: rgba(160,80,240,0.6); }
+.snx-anon-post-hint { font-size: 11px; color: #6a4a9a; margin-bottom: 10px; line-height: 1.5; }
+.snx-anon-submit-btn {
+    background: linear-gradient(135deg, #3d0080, #7c3cf8);
+    border: 1px solid rgba(160,100,255,0.5);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 9px 22px;
+    cursor: pointer;
+    transition: opacity .15s;
+}
+.snx-anon-submit-btn:hover { opacity: .85; }
+.snx-anon-posts-list { display: flex; flex-direction: column; gap: 12px; }
+.snx-anon-post-card {
+    background: rgba(50,20,90,0.25);
+    border: 1.5px solid rgba(100,50,180,0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    position: relative;
+}
+.snx-anon-post-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.snx-anon-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3d0080, #7c3cf8);
+    border: 1.5px solid rgba(160,80,240,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.snx-anon-name { font-size: 12px; font-weight: 700; color: #b080f0; }
+.snx-anon-time { font-size: 10px; color: #4a3a6a; margin-left: auto; }
+.snx-anon-text {
+    font-size: 13px;
+    color: #d8c8f8;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.snx-anon-reactions-row { margin-top: 10px; }
+.snx-support-crisis-bar {
+    background: rgba(255,60,80,0.1);
+    border: 1.5px solid rgba(255,60,80,0.3);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #ffaaaa;
+    line-height: 1.55;
+}
+.snx-support-crisis-bar a { color: #ff8899; }
 </style>
 
 <body>
@@ -3837,6 +4454,9 @@ body::after {
         </button>
         <button class="nav-item" id="navStorm" onclick="navTo('stormRoomsPage')">
             <span class="nav-icon">⚡</span> Storm Rooms
+        </button>
+        <button class="nav-item" id="navCommunity" onclick="navTo('communityPage')">
+            <span class="nav-icon">💚</span> Nexus Community
         </button>
         <!-- Admin Panel — only visible to the Founder; toggled in JS after auth -->
         <button class="nav-item nav-item-admin" id="navAdmin" onclick="navTo('adminPage')" style="display:none;">
@@ -3968,6 +4588,10 @@ body::after {
                     <div class="profile-online-dot"></div> Online now
                 </div>
                 <div class="profile-joined-text" id="profileJoinedText"></div>
+                <!-- Visitor count (optional, shown to owner) -->
+                <div id="profileVisitorsRow" class="profile-visitors-row" style="display:none;">
+                    👁 <span id="profileVisitorCount">0</span> profile visits
+                </div>
 
                 <!-- Stats -->
                 <div class="profile-stats-row">
@@ -3986,6 +4610,10 @@ body::after {
                     <div class="profile-stat" onclick="openSocialList('friends')" title="View friends">
                         <div class="stat-num" id="cntFriends">0</div>
                         <div class="stat-label">Friends</div>
+                    </div>
+                    <div class="profile-stat" id="statMutual" onclick="openSocialList('mutual')" title="View mutual friends" style="display:none;">
+                        <div class="stat-num" id="cntMutual">0</div>
+                        <div class="stat-label">Mutual</div>
                     </div>
                 </div>
 
@@ -4251,6 +4879,44 @@ body::after {
         <div class="profile-links-section">
             <div class="profile-links-title">🔗 Links</div>
             <div id="profileLinksList"></div>
+        </div>
+    </div>
+
+    <!-- ── Pinned Post Section ── -->
+    <div id="profilePinnedSection" data-section-id="pinned" style="display:none;">
+        <div class="pinned-post-wrap">
+            <div class="pinned-post-label">Pinned Post</div>
+            <div class="pinned-post-author">
+                <div class="pinned-post-avatar" id="pinnedPostAvatar"></div>
+                <span class="pinned-post-author-name" id="pinnedPostAuthorName"></span>
+            </div>
+            <div class="pinned-post-content" id="pinnedPostContent"></div>
+            <div class="pinned-post-meta" id="pinnedPostMeta"></div>
+            <button class="pinned-post-unpin" id="btnUnpinPost" onclick="snxUnpinPost()" style="display:none;" title="Unpin">📌 Unpin</button>
+        </div>
+    </div>
+
+    <!-- ── Mutual Friends Section (shown when viewing someone else's profile) ── -->
+    <div id="profileMutualSection" data-section-id="mutual" style="display:none;">
+        <div class="mutual-friends-wrap">
+            <div class="mutual-friends-title">🤝 Mutual Friends</div>
+            <div class="mutual-friends-avatars" id="mutualFriendsList"></div>
+        </div>
+    </div>
+
+    <!-- ── Recently Active Friends Section ── -->
+    <div id="profileRecentlyActiveSection" data-section-id="recently-active" style="display:none;">
+        <div class="recently-active-wrap">
+            <div class="recently-active-title">🟢 Recently Active Friends</div>
+            <div class="recently-active-list" id="recentlyActiveFriendsList"></div>
+        </div>
+    </div>
+
+    <!-- ── Favorite Posts Section ── -->
+    <div id="profileFavPostsSection" data-section-id="fav-posts" style="display:none;">
+        <div class="profile-fav-posts-wrap section-card">
+            <div class="profile-fav-posts-title">⭐ Favorite Posts</div>
+            <div class="fav-posts-grid" id="favPostsGrid"></div>
         </div>
     </div>
 
@@ -5136,6 +5802,121 @@ body::after {
 
 </div><!-- end adminPage -->
 
+<!-- ═══════════════════════════════════════════════════════════════════
+     NEXUS COMMUNITY PAGE
+     7 community features for Shadow Nexus Social safe space
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="page" id="communityPage">
+<div class="snx-community-page">
+    <h2 class="eclipse-title">💚 Nexus Community</h2>
+
+    <!-- ① Quote of the Day -->
+    <div class="snx-qotd-card">
+        <div class="snx-qotd-label">✨ Positive Quote of the Day</div>
+        <p class="snx-qotd-text" id="snxQotdText">Loading today's quote…</p>
+        <div class="snx-qotd-author" id="snxQotdAuthor"></div>
+    </div>
+
+    <!-- ② Daily Challenges -->
+    <div class="snx-com-section">
+        <div class="snx-com-section-title">🎯 Daily Challenges</div>
+        <div id="snxChallengesList">
+            <div class="empty-state">Loading challenges…</div>
+        </div>
+        <div style="margin-top:10px;">
+            <div class="snx-challenge-progress-wrap">
+                <div class="snx-challenge-progress-bar" id="snxChallengeProgressBar" style="width:0%"></div>
+            </div>
+            <div style="font-size:11px;color:#3a6a9a;margin-top:4px;text-align:right;" id="snxChallengeProgressLabel">0 / 0 completed today</div>
+        </div>
+    </div>
+
+    <!-- ③ Community Goal -->
+    <div class="snx-com-section">
+        <div class="snx-com-section-title">🌍 Community Goal</div>
+        <div id="snxGoalArea">
+            <div class="snx-goal-row">
+                <span class="snx-goal-label" id="snxGoalLabel">Loading…</span>
+                <span class="snx-goal-count" id="snxGoalCount"></span>
+            </div>
+            <div class="snx-goal-bar-wrap">
+                <div class="snx-goal-bar" id="snxGoalBar" style="width:0%"></div>
+            </div>
+            <div class="snx-goal-cta" id="snxGoalCta"></div>
+        </div>
+    </div>
+
+    <!-- ④ Mental Health Support Rooms -->
+    <div class="snx-com-section">
+        <div class="snx-com-section-title">🧠 Mental Health Support Rooms</div>
+        <p style="font-size:12px;color:#5a7a9a;margin:0 0 12px;line-height:1.5;">Safe spaces to talk, listen, and support each other. No judgment here.</p>
+        <div class="snx-rooms-grid" id="snxRoomsGrid"></div>
+        <!-- Active chat area (shown when a room is selected) -->
+        <div class="snx-room-chat-area" id="snxRoomChatArea">
+            <div class="snx-room-chat-header">
+                <span id="snxRoomChatTitle">Room</span>
+                <button onclick="snxLeaveRoom()" style="background:none;border:none;color:#5a7a9a;cursor:pointer;font-size:13px;padding:0;">✕ Leave</button>
+            </div>
+            <div class="snx-room-chat-msgs" id="snxRoomChatMsgs">
+                <div class="empty-state" style="font-size:12px;">No messages yet. Say hello 👋</div>
+            </div>
+            <div class="snx-room-anon-toggle">
+                <label>
+                    <input type="checkbox" id="snxRoomAnonCheck" style="width:auto;margin:0;">
+                    Send anonymously 🕶️
+                </label>
+            </div>
+            <div class="snx-room-input-row">
+                <input id="snxRoomMsgInput" placeholder="Share something kind…" maxlength="400" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();snxSendRoomMsg();}">
+                <button class="snx-room-send-btn" onclick="snxSendRoomMsg()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ⑤ Kindness Badges -->
+    <div class="snx-com-section">
+        <div class="snx-com-section-title">🏅 Kindness Badges</div>
+        <p style="font-size:12px;color:#5a7a9a;margin:0 0 14px;line-height:1.5;">Earn badges by being a positive member of the Nexus community.</p>
+        <div class="snx-badge-grid" id="snxKbadgeGrid">
+            <div class="empty-state">Loading badges…</div>
+        </div>
+    </div>
+
+    <!-- ⑥ Support Reactions board -->
+    <div class="snx-com-section">
+        <div class="snx-com-section-title">💬 Community Support Reactions</div>
+        <p style="font-size:12px;color:#5a7a9a;margin:0 0 14px;line-height:1.5;">Send a collective reaction to lift the whole community's energy.</p>
+        <div class="snx-reactions-row" id="snxCommunityReactRow"></div>
+        <div style="margin-top:12px;font-size:11px;color:#3a5a7a;" id="snxReactTotal"></div>
+    </div>
+
+    <!-- ⑦ Anonymous Support Posts -->
+    <div class="snx-com-section">
+        <div class="snx-com-section-title">🕶️ Anonymous Support Posts</div>
+        <!-- Crisis resources bar -->
+        <div class="snx-support-crisis-bar">
+            🆘 If you're in crisis, please reach out: <a href="tel:988" style="font-weight:700;">988 Suicide &amp; Crisis Lifeline (US)</a> · <a href="https://www.crisistextline.org/" target="_blank" rel="noopener">Crisis Text Line</a> — Text HOME to 741741
+        </div>
+        <!-- Composer -->
+        <div class="snx-anon-composer">
+            <p class="snx-anon-post-hint">🔒 Your identity is never revealed. Posts appear as "Anonymous Nexus Member". Be kind — this is a safe space.</p>
+            <textarea id="snxAnonPostInput" placeholder="Share what's on your mind… you're not alone 💚" maxlength="600"></textarea>
+            <button class="snx-anon-submit-btn" onclick="snxSubmitAnonPost()">🕶️ Post Anonymously</button>
+        </div>
+        <!-- Posts feed -->
+        <div class="snx-anon-posts-list" id="snxAnonPostsList">
+            <div class="empty-state">No support posts yet. Be the first to share 💚</div>
+        </div>
+        <div id="snxAnonLoadMoreWrap" style="text-align:center;margin-top:12px;display:none;">
+            <button onclick="snxLoadMoreAnonPosts()" style="font-size:12px;padding:6px 18px;border-radius:10px;">Load more…</button>
+        </div>
+    </div>
+
+</div>
+</div><!-- end communityPage -->
+
+
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -5362,8 +6143,9 @@ body::after {
   };
 
   window.handleLogout = async () => {
+      if (window._snxLastSeenInterval) { clearInterval(window._snxLastSeenInterval); window._snxLastSeenInterval = null; }
       if (currentUser) {
-          try { await updateDoc(doc(db, "users", currentUser.uid), { status: "offline" }); } catch(_) {}
+          try { await updateDoc(doc(db, "users", currentUser.uid), { status: "offline", lastSeen: Date.now() }); } catch(_) {}
       }
       signOut(auth);
   };
@@ -5447,7 +6229,14 @@ body::after {
               } catch(_) {}
           }
 
-          try { await updateDoc(doc(db, "users", user.uid), { status: "online" }); } catch(_) {}
+          try { await updateDoc(doc(db, "users", user.uid), { status: "online", lastSeen: Date.now() }); } catch(_) {}
+          // Heartbeat: update lastSeen every 5 minutes while logged in
+          if (window._snxLastSeenInterval) clearInterval(window._snxLastSeenInterval);
+          window._snxLastSeenInterval = setInterval(async () => {
+              if (user && user.uid) {
+                  try { await updateDoc(doc(db, "users", user.uid), { lastSeen: Date.now() }); } catch(_) {}
+              }
+          }, 5 * 60 * 1000);
 
           // Save email to Firestore so username login works for existing accounts
           try {
@@ -5544,27 +6333,34 @@ body::after {
       const body  = document.getElementById('socialListBody');
       if (!modal) return;
 
-      const labels = { friends: 'Friends', followers: 'Followers', following: 'Following' };
+      const labels = { friends: 'Friends', followers: 'Followers', following: 'Following', mutual: 'Mutual Friends' };
       title.textContent = labels[type] || type;
       body.innerHTML = '<div class="social-list-empty">Loading…</div>';
       modal.classList.add('open');
 
       try {
-          const snap = await getDoc(doc(db, 'users', uid));
-          if (!snap.exists()) { body.innerHTML = '<div class="social-list-empty">No data found.</div>'; return; }
-
-          const data = snap.data();
-          const uids = data[type] || [];
+          let uids = [];
+          if (type === 'mutual') {
+              const [profileSnap, mySnap] = await Promise.all([
+                  getDoc(doc(db, 'users', uid)),
+                  getDoc(doc(db, 'users', currentUser.uid))
+              ]);
+              const profileFriends = profileSnap.exists() ? (profileSnap.data().friends || []) : [];
+              const myFriends = mySnap.exists() ? (mySnap.data().friends || []) : [];
+              uids = myFriends.filter(id => profileFriends.includes(id));
+          } else {
+              const snap = await getDoc(doc(db, 'users', uid));
+              if (!snap.exists()) { body.innerHTML = '<div class="social-list-empty">No data found.</div>'; return; }
+              uids = snap.data()[type] || [];
+          }
 
           if (!uids.length) {
               body.innerHTML = `<div class="social-list-empty">No ${labels[type] || type} yet.</div>`;
               return;
           }
 
-          // Fetch all user docs in batches of 10 (Firestore 'in' limit)
           const chunks = [];
           for (let i = 0; i < uids.length; i += 10) chunks.push(uids.slice(i, i + 10));
-
           const users = [];
           for (const chunk of chunks) {
               const q = query(collection(db, 'users'), where('uid', 'in', chunk));
@@ -5577,6 +6373,14 @@ body::after {
               return;
           }
 
+          users.sort((a, b) => {
+              const aOn = a.status === 'online' ? 0 : 1;
+              const bOn = b.status === 'online' ? 0 : 1;
+              if (aOn !== bOn) return aOn - bOn;
+              return (a.displayName || '').localeCompare(b.displayName || '');
+          });
+
+          title.textContent = `${labels[type] || type} (${users.length})`;
           body.innerHTML = '';
           users.forEach(u => {
               const item = document.createElement('div');
@@ -5585,18 +6389,24 @@ body::after {
 
               const avatarDiv = document.createElement('div');
               avatarDiv.className = 'social-list-avatar';
-              if (u.avatar) {
-                  avatarDiv.style.backgroundImage = `url('${u.avatar}')`;
-              } else {
-                  avatarDiv.textContent = (u.displayName || '?')[0].toUpperCase();
+              if (u.avatar) { avatarDiv.style.backgroundImage = `url('${u.avatar}')`; }
+              else { avatarDiv.textContent = (u.displayName || '?')[0].toUpperCase(); }
+              if (u.status === 'online') {
+                  avatarDiv.style.borderColor = 'rgba(57,255,20,0.7)';
+                  avatarDiv.style.boxShadow = '0 0 8px rgba(57,255,20,0.5)';
               }
 
               const infoDiv = document.createElement('div');
               infoDiv.style.flex = '1';
               infoDiv.style.minWidth = '0';
+              const isOnline = u.status === 'online';
+              const lastSeenMin = (!isOnline && u.lastSeen) ? Math.round((Date.now() - u.lastSeen) / 60000) : null;
+              const metaText = isOnline ? '<span class="social-list-online-dot"></span>Online now'
+                  : (lastSeenMin !== null ? (lastSeenMin < 60 ? `Active ${lastSeenMin}m ago` : lastSeenMin < 1440 ? `Active ${Math.round(lastSeenMin/60)}h ago` : '') : '');
               infoDiv.innerHTML = `
                   <div class="social-list-name">${escFeed(u.displayName || u.username || 'Unknown')}${buildBadgeHtml(u.badges||[], u.role||'member')}</div>
                   <div class="social-list-handle">@${escFeed(u.username || '')}</div>
+                  ${metaText ? `<div class="social-list-meta">${metaText}</div>` : ''}
               `;
 
               item.appendChild(avatarDiv);
@@ -7071,6 +7881,16 @@ body::after {
           document.getElementById("cntFollowers").textContent = (p.followers?.length || 0);
           document.getElementById("cntFollowing").textContent = (p.following?.length || 0);
           document.getElementById("cntFriends").textContent   = (p.friends?.length || 0);
+          // Mutual friends stat (only for other profiles)
+          const statMutualElV = document.getElementById("statMutual");
+          const cntMutualElV  = document.getElementById("cntMutual");
+          if (statMutualElV && cntMutualElV) {
+              if (!isSelf && currentUser) {
+                  const mutualCount = (userData?.friends || []).filter(id => (p.friends || []).includes(id)).length;
+                  cntMutualElV.textContent = mutualCount;
+                  statMutualElV.style.display = mutualCount > 0 ? '' : 'none';
+              } else { statMutualElV.style.display = 'none'; }
+          }
 
           // Badges — only show real earned badges; never show defaults
           // The Founder badge is only rendered when role === "founder" (prevents spoofing)
@@ -7205,11 +8025,209 @@ body::after {
               wallBox.appendChild(div);
           });
 
+          // ── Pinned post ──────────────────────────────────────────────
+          const pinnedSection = document.getElementById("profilePinnedSection");
+          if (pinnedSection) {
+              const pinnedId = p.pinnedPostId;
+              if (pinnedId) {
+                  pinnedSection.style.display = '';
+                  try {
+                      const pSnap = await getDoc(doc(db, "posts", pinnedId));
+                      if (pSnap.exists()) {
+                          const pp = pSnap.data();
+                          const avatarEl = document.getElementById("pinnedPostAvatar");
+                          if (avatarEl) {
+                              if (pp.authorAvatar) { avatarEl.style.backgroundImage = `url('${pp.authorAvatar}')`; avatarEl.textContent = ''; }
+                              else { avatarEl.style.backgroundImage = 'none'; avatarEl.textContent = (pp.authorName||'?')[0].toUpperCase(); }
+                          }
+                          const nameEl = document.getElementById("pinnedPostAuthorName");
+                          if (nameEl) nameEl.textContent = pp.authorName || '';
+                          const contentEl = document.getElementById("pinnedPostContent");
+                          if (contentEl) contentEl.textContent = pp.text || '';
+                          const metaEl = document.getElementById("pinnedPostMeta");
+                          if (metaEl) metaEl.textContent = pp.timestamp ? fmtTimeAgo(pp.timestamp) : '';
+                      } else { pinnedSection.style.display = 'none'; }
+                  } catch(_) { pinnedSection.style.display = 'none'; }
+              } else { pinnedSection.style.display = 'none'; }
+              const unpinBtn = document.getElementById("btnUnpinPost");
+              if (unpinBtn) unpinBtn.style.display = (isSelf && pinnedId) ? '' : 'none';
+          }
+
+          // ── Visitor count (owner-only) ────────────────────────────────
+          const visitorsRow = document.getElementById("profileVisitorsRow");
+          const visitorCountEl = document.getElementById("profileVisitorCount");
+          if (visitorsRow && visitorCountEl) {
+              if (isSelf) { visitorsRow.style.display = ''; visitorCountEl.textContent = p.visitorCount || 0; }
+              else { visitorsRow.style.display = 'none'; }
+          }
+
+          // ── Mutual friends stat ───────────────────────────────────────
+          const statMutualEl = document.getElementById("statMutual");
+          const cntMutualEl  = document.getElementById("cntMutual");
+          if (statMutualEl && cntMutualEl) {
+              if (!isSelf && currentUser) {
+                  const mutualCount = (userData?.friends || []).filter(id => (p.friends || []).includes(id)).length;
+                  cntMutualEl.textContent = mutualCount;
+                  statMutualEl.style.display = mutualCount > 0 ? '' : 'none';
+              } else { statMutualEl.style.display = 'none'; }
+          }
+
+          // ── Recently active friends ──────────────────────────────────
+          snxLoadRecentlyActive(p.friends || [], uid);
+
+          // ── Mutual friends section (only when viewing others) ────────
+          if (!isSelf) { snxLoadMutualFriends(p.friends || [], uid); }
+          else {
+              const ms = document.getElementById("profileMutualSection");
+              if (ms) ms.style.display = 'none';
+          }
+
+          // ── Favorite posts ───────────────────────────────────────────
+          snxLoadFavPosts(p.favoritePosts || [], isSelf);
+
           // Apply profile customization (pass viewer + profile uid for privacy checks)
           if (typeof window.applyProfileCustomization === 'function') {
               window.applyProfileCustomization(p.profileCustomization || null, currentUser.uid, uid);
           }
       });
+
+      // ── Track profile visitor (not yourself) ───────────────────────
+      if (!isSelf) {
+          try {
+              await updateDoc(doc(db, "users", uid), {
+                  visitorCount: (await getDoc(doc(db, "users", uid))).data()?.visitorCount + 1 || 1
+              });
+          } catch(_) { /* best-effort */ }
+      }
+  };
+
+  /* ── snxLoadRecentlyActive ──────────────────────────────────────────── */
+  async function snxLoadRecentlyActive(friendUids, profileUid) {
+      const el = document.getElementById("recentlyActiveFriendsList");
+      const section = document.getElementById("profileRecentlyActiveSection");
+      if (!el || !section) return;
+      el.innerHTML = '';
+      if (!friendUids.length) { section.style.display = 'none'; return; }
+      try {
+          const chunks = [];
+          for (let i = 0; i < friendUids.length; i += 10) chunks.push(friendUids.slice(i, i + 10));
+          const users = [];
+          for (const chunk of chunks) {
+              const q = query(collection(db, 'users'), where('uid', 'in', chunk));
+              const qs = await getDocs(q);
+              qs.forEach(d => users.push(d.data()));
+          }
+          const now = Date.now();
+          const WEEK = 7 * 24 * 60 * 60 * 1000;
+          const active = users.filter(u => u.lastSeen && (now - u.lastSeen) < WEEK)
+              .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).slice(0, 12);
+          if (!active.length) { section.style.display = 'none'; return; }
+          section.style.display = '';
+          active.forEach(u => {
+              const item = document.createElement('div');
+              item.className = 'recently-active-item';
+              item.title = u.displayName || u.username || '?';
+              item.onclick = () => viewProfile(u.uid);
+              const isOnline = u.status === 'online';
+              const lastSeenMin = u.lastSeen ? Math.round((now - u.lastSeen) / 60000) : null;
+              const timeStr = isOnline ? '' : (lastSeenMin !== null ? (lastSeenMin < 60 ? `${lastSeenMin}m ago` : `${Math.round(lastSeenMin/60)}h ago`) : '');
+              const avatarBg = u.avatar ? `url('${u.avatar}')` : 'none';
+              const avatarLetter = u.avatar ? '' : (u.displayName || u.username || '?')[0].toUpperCase();
+              item.innerHTML = `<div class="recently-active-avatar" style="background-image:${avatarBg};">${avatarLetter}${isOnline ? '<div class="recently-active-dot"></div>' : ''}</div><div class="recently-active-name">${escFeed(u.displayName || u.username || '?')}</div>${timeStr ? `<div class="recently-active-time">${timeStr}</div>` : ''}`;
+              el.appendChild(item);
+          });
+      } catch(_) { section.style.display = 'none'; }
+  }
+
+  /* ── snxLoadMutualFriends ───────────────────────────────────────────── */
+  async function snxLoadMutualFriends(profileFriends, profileUid) {
+      const el = document.getElementById("mutualFriendsList");
+      const section = document.getElementById("profileMutualSection");
+      if (!el || !section) return;
+      el.innerHTML = '';
+      const myFriends = userData?.friends || [];
+      if (!myFriends.length || !profileFriends.length) { section.style.display = 'none'; return; }
+      const mutualUids = myFriends.filter(id => profileFriends.includes(id)).slice(0, 15);
+      if (!mutualUids.length) { section.style.display = 'none'; return; }
+      try {
+          const chunks = [];
+          for (let i = 0; i < mutualUids.length; i += 10) chunks.push(mutualUids.slice(i, i + 10));
+          const users = [];
+          for (const chunk of chunks) {
+              const q = query(collection(db, 'users'), where('uid', 'in', chunk));
+              const qs = await getDocs(q);
+              qs.forEach(d => users.push(d.data()));
+          }
+          if (!users.length) { section.style.display = 'none'; return; }
+          section.style.display = '';
+          const titleEl = section.querySelector('.mutual-friends-title');
+          if (titleEl) titleEl.textContent = `🤝 ${users.length} Mutual Friend${users.length !== 1 ? 's' : ''}`;
+          users.forEach(u => {
+              const chip = document.createElement('div');
+              chip.className = 'mutual-friend-chip';
+              chip.onclick = () => viewProfile(u.uid);
+              chip.title = u.displayName || u.username || '?';
+              const avatarStyle = u.avatar ? `background-image:url('${u.avatar}')` : '';
+              const avatarLetter = u.avatar ? '' : (u.displayName || u.username || '?')[0].toUpperCase();
+              chip.innerHTML = `<div class="mutual-friend-avatar" style="${avatarStyle}">${avatarLetter}</div>${escFeed(u.displayName || u.username || '?')}`;
+              el.appendChild(chip);
+          });
+      } catch(_) { section.style.display = 'none'; }
+  }
+
+  /* ── snxLoadFavPosts ────────────────────────────────────────────────── */
+  async function snxLoadFavPosts(favPostIds, isSelf) {
+      const el = document.getElementById("favPostsGrid");
+      const section = document.getElementById("profileFavPostsSection");
+      if (!el || !section) return;
+      el.innerHTML = '';
+      if (!favPostIds || !favPostIds.length) { section.style.display = 'none'; return; }
+      try {
+          const ids = favPostIds.slice(0, 9);
+          const posts = [];
+          for (const id of ids) {
+              try { const pSnap = await getDoc(doc(db, "posts", id)); if (pSnap.exists()) posts.push({ id, ...pSnap.data() }); } catch(_) {}
+          }
+          if (!posts.length) { section.style.display = 'none'; return; }
+          section.style.display = '';
+          posts.forEach(p => {
+              const tile = document.createElement('div');
+              tile.className = 'fav-post-tile';
+              const mediaUrl = p.mediaUrls?.[0] || p.mediaUrl || '';
+              const isImg = mediaUrl && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(mediaUrl);
+              tile.innerHTML = `${isImg ? `<img class="fav-post-thumb" src="${mediaUrl}" alt="" loading="lazy">` : ''}<div class="fav-post-text">${escFeed((p.text || '').substring(0, 120))}</div><div class="fav-post-meta">by ${escFeed(p.authorName || '?')} · ${p.timestamp ? fmtTimeAgo(p.timestamp) : ''}</div>${isSelf ? `<button class="fav-post-unfav" onclick="event.stopPropagation();snxUnfavPost('${p.id}')" title="Remove from favorites">✕</button>` : ''}`;
+              tile.onclick = () => { const postEl = document.getElementById(`post-${p.id}`); if (postEl) postEl.scrollIntoView({ behavior:'smooth', block:'center' }); else navTo('feed'); };
+              el.appendChild(tile);
+          });
+      } catch(_) { section.style.display = 'none'; }
+  }
+
+  /* ── Pin/Fav/Unpin/Unfav ─────────────────────────────────────────────── */
+  window.snxPinPost = async function(postId) {
+      if (!currentUser) return;
+      await updateDoc(doc(db, "users", currentUser.uid), { pinnedPostId: postId });
+      toastNotification("📌 Post pinned to your profile!");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
+  };
+  window.snxUnpinPost = async function() {
+      if (!currentUser) return;
+      await updateDoc(doc(db, "users", currentUser.uid), { pinnedPostId: null });
+      toastNotification("📌 Post unpinned.");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
+  };
+  window.snxFavPost = async function(postId) {
+      if (!currentUser) return;
+      await updateDoc(doc(db, "users", currentUser.uid), { favoritePosts: arrayUnion(postId) });
+      toastNotification("⭐ Added to favorites!");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
+  };
+  window.snxUnfavPost = async function(postId) {
+      if (!currentUser) return;
+      const mySnap = await getDoc(doc(db, "users", currentUser.uid));
+      const favs = (mySnap.data()?.favoritePosts || []).filter(id => id !== postId);
+      await updateDoc(doc(db, "users", currentUser.uid), { favoritePosts: favs });
+      toastNotification("⭐ Removed from favorites.");
+      if (activeProfileUid === currentUser.uid) viewProfile(currentUser.uid);
   };
 
   document.getElementById("btnSaveProfile").onclick = async () => {
@@ -8707,7 +9725,8 @@ function navTo(pageId) {
         feed:'navHome', profile:'navProfile', messagesInbox:'navMessages',
         searchPage:'navSearch', friendsPage:'navFriends',
         notificationsPage:'navNotifs', settingsPage:'navSettings',
-        stormRoomsPage:'navStorm', adminPage:'navAdmin'
+        stormRoomsPage:'navStorm', adminPage:'navAdmin',
+        communityPage:'navCommunity'
     };
     const navEl = document.getElementById(map[pageId]);
     if (navEl) navEl.classList.add('active-nav');
@@ -8727,6 +9746,10 @@ function navTo(pageId) {
     if (pageId === 'notificationsPage' && typeof window.markAllNotifsRead === 'function') {
         // Short delay so the list renders first, giving visual feedback before clearing badge
         setTimeout(() => window.markAllNotifsRead(true).catch(() => {}), 900);
+    }
+    // Load community page data when opened
+    if (pageId === 'communityPage' && typeof window.snxInitCommunityPage === 'function') {
+        window.snxInitCommunityPage();
     }
     // Auto-close sidebar on mobile after navigation
     closeSidebar();
@@ -11118,6 +12141,725 @@ window.clearAvatarUpload   = clearAvatarUpload;
 window.handleBannerPick    = handleBannerPick;
 window.clearBannerUpload   = clearBannerUpload;
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     NEXUS COMMUNITY — Firebase module
+     Handles: quotes, challenges, community goal, support rooms,
+              kindness badges, support reactions, anon posts
+     ═══════════════════════════════════════════════════════════ -->
+<script type="module">
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {
+    getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, getDocs,
+    collection, query, orderBy, limit, where, onSnapshot,
+    increment, arrayUnion, serverTimestamp, startAfter
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+/* ── Reuse the default Firebase app ── */
+const _comApp  = getApps().find(a => a.name === '[DEFAULT]') || initializeApp({
+    apiKey: "AIzaSyByZRmp6R9HY17T2_WdJUFWeeaLNOP6y2Y",
+    authDomain: "horr-a08f4.firebaseapp.com",
+    projectId: "horr-a08f4",
+    storageBucket: "horr-a08f4.firebasestorage.app",
+    messagingSenderId: "933810617818",
+    appId: "1:933810617818:web:efb24f123337dd987c14e3"
+});
+const _comAuth = getAuth(_comApp);
+const _comDb   = getFirestore(_comApp);
+
+/* ───────────────────────────────────────────────────────────
+   HELPERS
+   ─────────────────────────────────────────────────────────── */
+function _esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _fmtAgo(ts) {
+    if (!ts) return '';
+    const d = Date.now() - (ts.toDate ? ts.toDate().getTime() : ts);
+    if (d < 60000)    return 'just now';
+    if (d < 3600000)  return Math.floor(d/60000) + 'm ago';
+    if (d < 86400000) return Math.floor(d/3600000) + 'h ago';
+    return Math.floor(d/86400000) + 'd ago';
+}
+function _todayKey() {
+    return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
+function _currentUser() {
+    return _comAuth.currentUser;
+}
+
+/* ───────────────────────────────────────────────────────────
+   ① QUOTE OF THE DAY
+   One hardcoded pool — rotates by day-of-year so all users
+   see the same quote without any Firestore write.
+   ─────────────────────────────────────────────────────────── */
+const QUOTES = [
+    { text: "You are enough. You have always been enough.", author: "— Shadow Nexus Community" },
+    { text: "Every day may not be good, but there is something good in every day.", author: "— Alice Morse Earle" },
+    { text: "You don't have to be positive all the time. It's perfectly okay to feel sad, angry, annoyed, frustrated, or overwhelmed.", author: "— Lori Deschene" },
+    { text: "Be the reason someone smiles today.", author: "— Shadow Nexus Community" },
+    { text: "Healing is not linear. Give yourself grace.", author: "— Shadow Nexus Community" },
+    { text: "In the middle of difficulty lies opportunity.", author: "— Albert Einstein" },
+    { text: "You are braver than you believe, stronger than you seem, and smarter than you think.", author: "— A.A. Milne" },
+    { text: "Vulnerability is not weakness. It is the birthplace of connection.", author: "— Brené Brown" },
+    { text: "Start where you are. Use what you have. Do what you can.", author: "— Arthur Ashe" },
+    { text: "Mental health is not a destination, but a process. It's about how you drive, not where you're going.", author: "— Noam Shpancer" },
+    { text: "You owe yourself the love that you so freely give to other people.", author: "— R.H. Sin" },
+    { text: "Taking care of yourself is not self-indulgence, it's self-preservation.", author: "— Audre Lorde" },
+    { text: "It's okay to ask for help. That's what we're here for.", author: "— Shadow Nexus Community" },
+    { text: "One small positive thought in the morning can change your whole day.", author: "— Shadow Nexus Community" },
+    { text: "Be gentle with yourself. You are a child of the universe.", author: "— Max Ehrmann" },
+    { text: "Tough times never last, but tough people do.", author: "— Robert H. Schuller" },
+    { text: "You matter. Your feelings matter. You are not alone.", author: "— Shadow Nexus Community" },
+    { text: "Kindness is a language which the deaf can hear and the blind can see.", author: "— Mark Twain" },
+    { text: "The sun will rise and we will try again.", author: "— Shadow Nexus Community" },
+    { text: "Your present situation is not your final destination.", author: "— Shadow Nexus Community" },
+    { text: "Peace begins with a smile.", author: "— Mother Teresa" },
+    { text: "Be somebody who makes everybody feel like a somebody.", author: "— Shadow Nexus Community" },
+    { text: "You are worthy of love and belonging.", author: "— Brené Brown" },
+    { text: "Progress, not perfection.", author: "— Shadow Nexus Community" },
+    { text: "Small steps every day add up to big changes.", author: "— Shadow Nexus Community" },
+    { text: "The most courageous act is still to think for yourself. Aloud.", author: "— Coco Chanel" },
+    { text: "Life is tough, my darling, but so are you.", author: "— Stephanie Bennett-Henry" },
+    { text: "Believe you can and you're halfway there.", author: "— Theodore Roosevelt" },
+    { text: "You survived 100% of your worst days so far.", author: "— Shadow Nexus Community" },
+    { text: "Darkness cannot drive out darkness; only light can do that.", author: "— Martin Luther King Jr." },
+    { text: "Sometimes the bravest and most important thing you can do is just show up.", author: "— Brené Brown" },
+];
+
+function snxLoadQotd() {
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(),0,0).getTime()) / 86400000);
+    const q = QUOTES[dayOfYear % QUOTES.length];
+    const t = document.getElementById('snxQotdText');
+    const a = document.getElementById('snxQotdAuthor');
+    if (t) t.textContent = q.text;
+    if (a) a.textContent = q.author;
+}
+
+/* ───────────────────────────────────────────────────────────
+   ② DAILY CHALLENGES
+   Challenges are stored in Firestore at community/dailyChallenges.
+   Per-user completion stored on users/{uid}.communityChallenges.{dateKey}.
+   ─────────────────────────────────────────────────────────── */
+const DEFAULT_CHALLENGES = [
+    { id: 'kind_comment',  icon: '💬', title: 'Leave a Kind Comment',       desc: 'Comment something supportive on someone else\'s post.',            xp: 10 },
+    { id: 'post_today',    icon: '✍️', title: 'Share Your Day',             desc: 'Make at least one post on the Eclipse Feed today.',                xp: 10 },
+    { id: 'react_support', icon: '💚', title: 'Send a Support Reaction',    desc: 'Tap any support reaction on the Community page.',                  xp: 5  },
+    { id: 'join_room',     icon: '🧠', title: 'Visit a Support Room',       desc: 'Open any Mental Health Support Room and read the messages.',       xp: 5  },
+    { id: 'check_in',      icon: '🌅', title: 'Daily Check-In',             desc: 'Visit the Nexus Community page — you showed up today!',            xp: 5  },
+    { id: 'anon_support',  icon: '🕶️', title: 'Read Anonymous Support Posts', desc: 'Open and scroll the Anonymous Support Posts section.',           xp: 5  },
+];
+
+async function snxLoadChallenges() {
+    const user = _currentUser();
+    if (!user) return;
+    const dateKey = _todayKey();
+
+    // Fetch user's completed challenges for today
+    let completed = [];
+    try {
+        const snap = await getDoc(doc(_comDb, 'users', user.uid));
+        const d = snap.exists() ? snap.data() : {};
+        completed = (d.communityChallenges && d.communityChallenges[dateKey]) || [];
+    } catch(_) {}
+
+    // Auto-complete check-in immediately
+    if (!completed.includes('check_in')) {
+        completed = [...completed, 'check_in'];
+        try {
+            await updateDoc(doc(_comDb, 'users', user.uid), {
+                [`communityChallenges.${dateKey}`]: arrayUnion('check_in')
+            });
+        } catch(_) {}
+    }
+
+    const list = document.getElementById('snxChallengesList');
+    const bar  = document.getElementById('snxChallengeProgressBar');
+    const lbl  = document.getElementById('snxChallengeProgressLabel');
+    if (!list) return;
+
+    const total = DEFAULT_CHALLENGES.length;
+    const done  = DEFAULT_CHALLENGES.filter(c => completed.includes(c.id)).length;
+    if (bar) bar.style.width = total ? Math.round((done/total)*100) + '%' : '0%';
+    if (lbl) lbl.textContent = `${done} / ${total} completed today`;
+
+    list.innerHTML = '';
+    DEFAULT_CHALLENGES.forEach(ch => {
+        const isDone = completed.includes(ch.id);
+        const el = document.createElement('div');
+        el.className = 'snx-challenge-card';
+        el.innerHTML = `
+            <div class="snx-challenge-icon">${ch.icon}</div>
+            <div class="snx-challenge-body">
+                <div class="snx-challenge-title">${_esc(ch.title)}</div>
+                <div class="snx-challenge-desc">${_esc(ch.desc)}</div>
+                <span class="snx-challenge-status ${isDone ? 'done' : 'todo'}"
+                      ${isDone ? '' : `onclick="snxMarkChallengeDone('${ch.id}')"`}>
+                    ${isDone ? '✅ Completed' : '⬜ Mark done'}
+                </span>
+            </div>
+            <div class="snx-challenge-xp">+${ch.xp} XP</div>`;
+        list.appendChild(el);
+    });
+}
+
+window.snxMarkChallengeDone = async function(challengeId) {
+    const user = _currentUser();
+    if (!user) { toastNotification && toastNotification('Please sign in.'); return; }
+    const dateKey = _todayKey();
+    try {
+        await updateDoc(doc(_comDb, 'users', user.uid), {
+            [`communityChallenges.${dateKey}`]: arrayUnion(challengeId)
+        });
+        snxLoadChallenges();
+        snxCheckKindnessBadges(); // re-evaluate badges after challenge completion
+        if (typeof toastNotification === 'function') toastNotification('🎯 Challenge completed! Keep it up 💚');
+    } catch(e) {
+        if (typeof toastNotification === 'function') toastNotification('Could not save: ' + e.message);
+    }
+};
+
+/* ───────────────────────────────────────────────────────────
+   ③ COMMUNITY GOAL
+   Stored at community/goal — tracks a shared counter.
+   ─────────────────────────────────────────────────────────── */
+const COMMUNITY_GOALS = [
+    { id: 'kind_reactions', label: '💚 Send 1,000 Kindness Reactions this week', field: 'kindReactions', target: 1000 },
+    { id: 'support_posts',  label: '🕶️ 200 Anonymous Support Posts this month',  field: 'anonPosts',     target: 200  },
+    { id: 'challenges',     label: '🎯 500 Daily Challenges completed today',    field: 'challengesDone', target: 500  },
+];
+
+async function snxLoadCommunityGoal() {
+    const goalEl = COMMUNITY_GOALS[0]; // rotate later
+    const lbl  = document.getElementById('snxGoalLabel');
+    const cnt  = document.getElementById('snxGoalCount');
+    const bar  = document.getElementById('snxGoalBar');
+    const cta  = document.getElementById('snxGoalCta');
+    if (!lbl) return;
+    lbl.textContent = goalEl.label;
+    try {
+        const snap = await getDoc(doc(_comDb, 'community', 'goal'));
+        const val  = snap.exists() ? (snap.data()[goalEl.field] || 0) : 0;
+        const pct  = Math.min(100, Math.round((val / goalEl.target) * 100));
+        if (cnt) cnt.textContent = `${val.toLocaleString()} / ${goalEl.target.toLocaleString()}`;
+        if (bar) bar.style.width = pct + '%';
+        if (cta) {
+            if (pct >= 100) {
+                cta.innerHTML = '🎉 <strong style="color:#39FF14">Goal reached!</strong> Amazing work, Nexus community!';
+            } else {
+                cta.textContent = `${100 - pct}% left — every action counts!`;
+            }
+        }
+    } catch(_) {
+        if (cnt) cnt.textContent = '—';
+    }
+}
+
+async function snxIncrementGoalField(field) {
+    try {
+        await setDoc(doc(_comDb, 'community', 'goal'), { [field]: increment(1) }, { merge: true });
+    } catch(_) {}
+}
+
+/* ───────────────────────────────────────────────────────────
+   ④ MENTAL HEALTH SUPPORT ROOMS
+   ─────────────────────────────────────────────────────────── */
+const SUPPORT_ROOMS = [
+    { id: 'anxiety',    emoji: '😤', name: 'Anxiety & Stress',     desc: 'Share coping strategies and support each other through tough moments.' },
+    { id: 'depression', emoji: '💙', name: 'Depression Support',   desc: 'A gentle space for those carrying heavy feelings. You are not alone.' },
+    { id: 'grief',      emoji: '🕊️', name: 'Grief & Loss',          desc: 'For those processing loss of any kind. Share and be heard.' },
+    { id: 'positivity', emoji: '🌈', name: 'Positivity Corner',    desc: 'Share wins, gratitude, and uplifting moments. All sizes welcome!' },
+    { id: 'motivation', emoji: '🔥', name: 'Motivation & Goals',   desc: 'Accountability, encouragement, and celebrating your progress.' },
+    { id: 'general',    emoji: '💬', name: 'General Support',      desc: 'Open chat — talk about anything on your mind in a safe space.' },
+];
+
+let _snxActiveRoomId    = null;
+let _snxRoomUnsub       = null;
+
+function snxRenderRooms() {
+    const grid = document.getElementById('snxRoomsGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    SUPPORT_ROOMS.forEach(room => {
+        const tile = document.createElement('div');
+        tile.className = 'snx-room-tile' + (_snxActiveRoomId === room.id ? ' active-room' : '');
+        tile.id = 'snxRoomTile_' + room.id;
+        tile.innerHTML = `
+            <div class="snx-room-emoji">${room.emoji}</div>
+            <div class="snx-room-name">${_esc(room.name)}</div>
+            <div class="snx-room-desc">${_esc(room.desc)}</div>`;
+        tile.onclick = () => snxJoinRoom(room.id, room.name, room.emoji);
+        grid.appendChild(tile);
+    });
+}
+
+window.snxJoinRoom = function(roomId, roomName, roomEmoji) {
+    // Deactivate old room
+    if (_snxRoomUnsub) { _snxRoomUnsub(); _snxRoomUnsub = null; }
+
+    _snxActiveRoomId = roomId;
+    snxRenderRooms(); // re-render to show active state
+
+    const chatArea  = document.getElementById('snxRoomChatArea');
+    const chatTitle = document.getElementById('snxRoomChatTitle');
+    const msgs      = document.getElementById('snxRoomChatMsgs');
+    if (!chatArea) return;
+
+    chatArea.classList.add('open');
+    chatArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (chatTitle) chatTitle.textContent = roomEmoji + ' ' + roomName;
+    if (msgs) msgs.innerHTML = '<div class="empty-state" style="font-size:12px;">Loading…</div>';
+
+    // Mark challenge done for joining a room
+    snxMarkChallengeDone('join_room');
+
+    // Subscribe to live messages (last 50, ordered by time)
+    const msgsRef = collection(_comDb, 'supportRooms', roomId, 'messages');
+    const q = query(msgsRef, orderBy('ts', 'asc'), limit(50));
+    _snxRoomUnsub = onSnapshot(q, snap => {
+        if (!msgs) return;
+        if (snap.empty) {
+            msgs.innerHTML = '<div class="empty-state" style="font-size:12px;">No messages yet. Say hello 👋</div>';
+            return;
+        }
+        msgs.innerHTML = '';
+        snap.forEach(d => {
+            const m = d.data();
+            const isAnon = !!m.anon;
+            const el = document.createElement('div');
+            el.className = 'snx-room-msg';
+            const avatarStyle = (!isAnon && m.avatar)
+                ? `background-image:url('${_esc(m.avatar)}');background:#0B1F3A;`
+                : 'background:linear-gradient(135deg,#3d0080,#7c3cf8);';
+            const initial = isAnon ? '🕶️' : _esc((m.authorName||'?')[0].toUpperCase());
+            el.innerHTML = `
+                <div class="snx-room-msg-avatar" style="${avatarStyle}">${(!isAnon && m.avatar) ? '' : initial}</div>
+                <div class="snx-room-msg-body">
+                    <div class="snx-room-msg-name ${isAnon ? 'anon' : ''}">${isAnon ? '🕶️ Anonymous' : _esc(m.authorName || 'Member')}</div>
+                    <div class="snx-room-msg-text">${_esc(m.text)}</div>
+                    <div class="snx-room-msg-time">${_fmtAgo(m.ts)}</div>
+                </div>`;
+            msgs.appendChild(el);
+        });
+        msgs.scrollTop = msgs.scrollHeight;
+    }, () => {
+        if (msgs) msgs.innerHTML = '<div class="empty-state" style="font-size:12px;color:#ff6688;">Could not load messages.</div>';
+    });
+};
+
+window.snxLeaveRoom = function() {
+    if (_snxRoomUnsub) { _snxRoomUnsub(); _snxRoomUnsub = null; }
+    _snxActiveRoomId = null;
+    const chatArea = document.getElementById('snxRoomChatArea');
+    if (chatArea) chatArea.classList.remove('open');
+    snxRenderRooms();
+};
+
+window.snxSendRoomMsg = async function() {
+    const user = _currentUser();
+    if (!user) { if (typeof toastNotification === 'function') toastNotification('Sign in to chat.'); return; }
+    if (!_snxActiveRoomId) return;
+
+    const input  = document.getElementById('snxRoomMsgInput');
+    const isAnon = document.getElementById('snxRoomAnonCheck')?.checked;
+    const text   = input ? input.value.trim() : '';
+    if (!text) return;
+
+    input.value = '';
+    try {
+        const userData = window.userData || {};
+        await addDoc(collection(_comDb, 'supportRooms', _snxActiveRoomId, 'messages'), {
+            text,
+            anon:       isAnon ? true : false,
+            authorUid:  isAnon ? null : user.uid,
+            authorName: isAnon ? null : (userData.displayName || user.email.split('@')[0]),
+            avatar:     isAnon ? null : (userData.avatar || ''),
+            ts:         serverTimestamp()
+        });
+    } catch(e) {
+        if (typeof toastNotification === 'function') toastNotification('Send failed: ' + e.message);
+    }
+};
+
+/* ───────────────────────────────────────────────────────────
+   ⑤ KINDNESS BADGES
+   Definitions + evaluation against user's activity stats.
+   ─────────────────────────────────────────────────────────── */
+const KINDNESS_BADGES = [
+    {
+        id:  'first_kind',  icon: '💚', name: 'First Act of Kindness',
+        req: 'Complete your first Daily Challenge.',
+        earned: (u) => {
+            const cc = u.communityChallenges || {};
+            return Object.values(cc).some(arr => Array.isArray(arr) && arr.length > 0);
+        }
+    },
+    {
+        id:  'supporter',   icon: '🤝', name: 'Supporter',
+        req: 'Complete 7 Daily Challenges across any days.',
+        earned: (u) => {
+            const cc = u.communityChallenges || {};
+            const total = Object.values(cc).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+            return total >= 7;
+        }
+    },
+    {
+        id:  'kind_streak', icon: '🔥', name: 'Kindness Streak',
+        req: 'Completed a challenge 3 days in a row.',
+        earned: (u) => {
+            const cc = u.communityChallenges || {};
+            const keys = Object.keys(cc).filter(k => cc[k]?.length > 0).sort();
+            let streak = 1;
+            for (let i = 1; i < keys.length; i++) {
+                const diff = (new Date(keys[i]) - new Date(keys[i-1])) / 86400000;
+                if (diff === 1) { streak++; if (streak >= 3) return true; }
+                else streak = 1;
+            }
+            return false;
+        }
+    },
+    {
+        id:  'voice_heard', icon: '📣', name: 'Voice Heard',
+        req: 'Posted at least one Anonymous Support post.',
+        earned: (u) => (u.anonPostCount || 0) >= 1
+    },
+    {
+        id:  'room_guide',  icon: '🧠', name: 'Room Guide',
+        req: 'Visited a Support Room on 3 different days.',
+        earned: (u) => (u.roomVisitDays || []).length >= 3
+    },
+    {
+        id:  'react_100',   icon: '⚡', name: 'Energy Booster',
+        req: 'Sent 5 or more Community Support Reactions.',
+        earned: (u) => (u.communityReactCount || 0) >= 5
+    },
+    {
+        id:  'nexus_heart', icon: '💜', name: 'Nexus Heart',
+        req: 'Earned all other Kindness Badges.',
+        earned: (u) => KINDNESS_BADGES.slice(0,-1).every(b => b.earned(u))
+    },
+];
+
+async function snxCheckKindnessBadges() {
+    const user = _currentUser();
+    if (!user) return;
+    try {
+        const snap = await getDoc(doc(_comDb, 'users', user.uid));
+        if (!snap.exists()) return;
+        const u = snap.data();
+        const currentBadges = u.badges || [];
+        const newBadges = [];
+
+        KINDNESS_BADGES.forEach(b => {
+            if (b.earned(u) && !currentBadges.includes(b.name)) {
+                newBadges.push(b.name);
+            }
+        });
+
+        if (newBadges.length > 0) {
+            await updateDoc(doc(_comDb, 'users', user.uid), {
+                badges: arrayUnion(...newBadges)
+            });
+            newBadges.forEach(n => {
+                if (typeof toastNotification === 'function')
+                    toastNotification('🏅 New badge earned: ' + n + '!');
+            });
+        }
+
+        snxRenderKindnessBadges(u);
+    } catch(_) {}
+}
+
+function snxRenderKindnessBadges(userData) {
+    const grid = document.getElementById('snxKbadgeGrid');
+    if (!grid) return;
+    const userBadges = userData?.badges || [];
+    grid.innerHTML = '';
+    KINDNESS_BADGES.forEach(b => {
+        const hasEarned = b.earned(userData || {});
+        const tile = document.createElement('div');
+        tile.className = 'snx-kbadge-tile ' + (hasEarned ? 'earned' : 'locked');
+        tile.innerHTML = `
+            ${hasEarned ? '<span class="snx-kbadge-earned-tag">✓ Earned</span>' : ''}
+            <div class="snx-kbadge-icon">${b.icon}</div>
+            <div class="snx-kbadge-name">${_esc(b.name)}</div>
+            <div class="snx-kbadge-req">${_esc(b.req)}</div>`;
+        grid.appendChild(tile);
+    });
+}
+
+async function snxLoadKindnessBadges() {
+    const user = _currentUser();
+    if (!user) { snxRenderKindnessBadges({}); return; }
+    try {
+        const snap = await getDoc(doc(_comDb, 'users', user.uid));
+        snxRenderKindnessBadges(snap.exists() ? snap.data() : {});
+        snxCheckKindnessBadges();
+    } catch(_) { snxRenderKindnessBadges({}); }
+}
+
+/* ───────────────────────────────────────────────────────────
+   ⑥ COMMUNITY SUPPORT REACTIONS
+   Global reaction counters stored at community/reactions.
+   ─────────────────────────────────────────────────────────── */
+const SUPPORT_REACTIONS = [
+    { emoji: '💚', label: 'We got you',  key: 'care'      },
+    { emoji: '🤗', label: 'Big hug',     key: 'hug'       },
+    { emoji: '💪', label: 'Stay strong', key: 'strength'  },
+    { emoji: '✨', label: 'You shine',   key: 'shine'     },
+    { emoji: '🌈', label: 'Brighter days',key: 'rainbow'  },
+    { emoji: '🕊️', label: 'Peace',       key: 'peace'     },
+];
+
+let _snxReactDoc = null;
+
+async function snxLoadReactions() {
+    const row = document.getElementById('snxCommunityReactRow');
+    const tot = document.getElementById('snxReactTotal');
+    if (!row) return;
+
+    // Build buttons with skeleton counts first
+    row.innerHTML = '';
+    SUPPORT_REACTIONS.forEach(r => {
+        const btn = document.createElement('button');
+        btn.className = 'snx-react-btn';
+        btn.id = 'snxReactBtn_' + r.key;
+        btn.setAttribute('data-key', r.key);
+        btn.innerHTML = `${r.emoji} ${_esc(r.label)} <span class="snx-react-count" id="snxReactCnt_${r.key}">…</span>`;
+        btn.onclick = () => snxSendReaction(r.key);
+        row.appendChild(btn);
+    });
+
+    // Live snapshot
+    onSnapshot(doc(_comDb, 'community', 'reactions'), snap => {
+        const data = snap.exists() ? snap.data() : {};
+        let total = 0;
+        SUPPORT_REACTIONS.forEach(r => {
+            const cnt = data[r.key] || 0;
+            total += cnt;
+            const el = document.getElementById('snxReactCnt_' + r.key);
+            if (el) el.textContent = cnt.toLocaleString();
+        });
+        if (tot) tot.textContent = `🌍 ${total.toLocaleString()} total reactions sent by this community`;
+    });
+
+    // Mark user's reacted keys (per-session via sessionStorage for simplicity)
+    _snxRestoreReactedState();
+}
+
+function _snxRestoreReactedState() {
+    const reacted = JSON.parse(sessionStorage.getItem('snx_reacted') || '[]');
+    reacted.forEach(key => {
+        const btn = document.getElementById('snxReactBtn_' + key);
+        if (btn) btn.classList.add('reacted');
+    });
+}
+
+window.snxSendReaction = async function(key) {
+    const user = _currentUser();
+    if (!user) { if (typeof toastNotification === 'function') toastNotification('Sign in to send a reaction.'); return; }
+
+    // Rate-limit: one per key per session
+    const reacted = JSON.parse(sessionStorage.getItem('snx_reacted') || '[]');
+    if (reacted.includes(key)) {
+        if (typeof toastNotification === 'function') toastNotification('You already sent this reaction 💚');
+        return;
+    }
+    reacted.push(key);
+    sessionStorage.setItem('snx_reacted', JSON.stringify(reacted));
+
+    const btn = document.getElementById('snxReactBtn_' + key);
+    if (btn) btn.classList.add('reacted');
+
+    try {
+        await setDoc(doc(_comDb, 'community', 'reactions'), { [key]: increment(1) }, { merge: true });
+        // Increment user's react count for badge tracking
+        await updateDoc(doc(_comDb, 'users', user.uid), { communityReactCount: increment(1) });
+        // Increment community goal
+        await snxIncrementGoalField('kindReactions');
+        snxCheckKindnessBadges();
+        snxMarkChallengeDone('react_support');
+        if (typeof toastNotification === 'function') toastNotification('💚 Reaction sent to the community!');
+    } catch(e) {
+        if (typeof toastNotification === 'function') toastNotification('Could not send: ' + e.message);
+    }
+};
+
+/* ───────────────────────────────────────────────────────────
+   ⑦ ANONYMOUS SUPPORT POSTS
+   Stored at community/anonPosts — authorUid is never exposed
+   in any query; text and a random anon alias are stored.
+   ─────────────────────────────────────────────────────────── */
+const ANON_ALIASES = [
+    'Quiet Star', 'Gentle Wind', 'Blue Wave', 'Night Owl', 'Silver Moon',
+    'Calm River', 'Hidden Light', 'Soft Echo', 'Brave Soul', 'Kind Heart',
+    'Wandering Cloud', 'Distant Shore', 'Warm Ember', 'Still Water', 'Open Sky',
+];
+function _anonAlias() {
+    return ANON_ALIASES[Math.floor(Math.random() * ANON_ALIASES.length)];
+}
+
+let _anonLastDoc = null;
+let _anonAllLoaded = false;
+const ANON_PAGE_SIZE = 8;
+const ANON_REACT_TYPES = [
+    { emoji: '💚', label: 'I hear you',   key: 'hear'   },
+    { emoji: '🤗', label: 'Big hug',      key: 'hug'    },
+    { emoji: '💪', label: 'Stay strong',  key: 'strong' },
+    { emoji: '🕊️', label: 'Peace',        key: 'peace'  },
+];
+
+window.snxSubmitAnonPost = async function() {
+    const user = _currentUser();
+    if (!user) { if (typeof toastNotification === 'function') toastNotification('Sign in to post.'); return; }
+    const ta = document.getElementById('snxAnonPostInput');
+    const text = ta ? ta.value.trim() : '';
+    if (!text) { if (typeof toastNotification === 'function') toastNotification('Write something first 💚'); return; }
+    if (text.length > 600) { if (typeof toastNotification === 'function') toastNotification('Max 600 characters.'); return; }
+
+    try {
+        await addDoc(collection(_comDb, 'community', 'anonPosts', 'posts'), {
+            text,
+            alias:    _anonAlias(),
+            ts:       serverTimestamp(),
+            reactions: { hear: 0, hug: 0, strong: 0, peace: 0 }
+        });
+        // Track anon post count on user doc (uid never stored on the anon post itself)
+        await updateDoc(doc(_comDb, 'users', user.uid), { anonPostCount: increment(1) });
+        await snxIncrementGoalField('anonPosts');
+        if (ta) ta.value = '';
+        snxMarkChallengeDone('anon_support');
+        snxCheckKindnessBadges();
+        _anonLastDoc = null;
+        _anonAllLoaded = false;
+        snxLoadAnonPosts();
+        if (typeof toastNotification === 'function') toastNotification('🕶️ Posted anonymously. You\'re not alone 💚');
+    } catch(e) {
+        if (typeof toastNotification === 'function') toastNotification('Post failed: ' + e.message);
+    }
+};
+
+async function snxLoadAnonPosts(append) {
+    const listEl = document.getElementById('snxAnonPostsList');
+    const moreWrap = document.getElementById('snxAnonLoadMoreWrap');
+    if (!listEl) return;
+
+    if (!append) {
+        listEl.innerHTML = '<div class="empty-state" style="font-size:12px;">Loading…</div>';
+        _anonLastDoc = null;
+        _anonAllLoaded = false;
+    }
+
+    try {
+        let q = query(
+            collection(_comDb, 'community', 'anonPosts', 'posts'),
+            orderBy('ts', 'desc'),
+            limit(ANON_PAGE_SIZE)
+        );
+        if (append && _anonLastDoc) q = query(
+            collection(_comDb, 'community', 'anonPosts', 'posts'),
+            orderBy('ts', 'desc'),
+            startAfter(_anonLastDoc),
+            limit(ANON_PAGE_SIZE)
+        );
+
+        const snap = await getDocs(q);
+        if (!append) listEl.innerHTML = '';
+
+        if (snap.empty && !append) {
+            listEl.innerHTML = '<div class="empty-state">No support posts yet. Be the first to share 💚</div>';
+            if (moreWrap) moreWrap.style.display = 'none';
+            return;
+        }
+
+        // Track user's reacted posts per session
+        const reactedPosts = JSON.parse(sessionStorage.getItem('snx_anon_reacted') || '{}');
+
+        snap.forEach(d => {
+            _anonLastDoc = d;
+            const p = d.data();
+            const reactions = p.reactions || {};
+            const card = document.createElement('div');
+            card.className = 'snx-anon-post-card';
+            card.id = 'snxAnonPost_' + d.id;
+
+            const reactBtns = ANON_REACT_TYPES.map(r => {
+                const count   = reactions[r.key] || 0;
+                const hasReacted = (reactedPosts[d.id] || []).includes(r.key);
+                return `<button class="snx-react-btn ${hasReacted ? 'reacted' : ''}"
+                                 onclick="snxAnonReact('${d.id}','${r.key}',this)"
+                                 style="font-size:12px;padding:4px 10px;">
+                            ${r.emoji} ${_esc(r.label)}
+                            <span class="snx-react-count">${count}</span>
+                        </button>`;
+            }).join('');
+
+            card.innerHTML = `
+                <div class="snx-anon-post-header">
+                    <div class="snx-anon-avatar">🕶️</div>
+                    <span class="snx-anon-name">${_esc(p.alias || 'Anonymous Nexus Member')}</span>
+                    <span class="snx-anon-time">${_fmtAgo(p.ts)}</span>
+                </div>
+                <div class="snx-anon-text">${_esc(p.text)}</div>
+                <div class="snx-anon-reactions-row">
+                    <div class="snx-reactions-row">${reactBtns}</div>
+                </div>`;
+            listEl.appendChild(card);
+        });
+
+        _anonAllLoaded = snap.size < ANON_PAGE_SIZE;
+        if (moreWrap) moreWrap.style.display = _anonAllLoaded ? 'none' : '';
+
+        // Mark challenge for reading anon posts
+        snxMarkChallengeDone('anon_support');
+    } catch(e) {
+        if (!append) listEl.innerHTML = `<div class="empty-state" style="color:#ff6688;">Could not load posts: ${_esc(e.message)}</div>`;
+    }
+}
+
+window.snxLoadMoreAnonPosts = function() { snxLoadAnonPosts(true); };
+
+window.snxAnonReact = async function(postId, reactionKey, btn) {
+    const user = _currentUser();
+    if (!user) { if (typeof toastNotification === 'function') toastNotification('Sign in to react.'); return; }
+
+    const reactedPosts = JSON.parse(sessionStorage.getItem('snx_anon_reacted') || '{}');
+    if ((reactedPosts[postId] || []).includes(reactionKey)) {
+        if (typeof toastNotification === 'function') toastNotification('You already sent this reaction.');
+        return;
+    }
+    // Mark locally
+    if (!reactedPosts[postId]) reactedPosts[postId] = [];
+    reactedPosts[postId].push(reactionKey);
+    sessionStorage.setItem('snx_anon_reacted', JSON.stringify(reactedPosts));
+
+    btn.classList.add('reacted');
+    const cntEl = btn.querySelector('.snx-react-count');
+    if (cntEl) cntEl.textContent = (parseInt(cntEl.textContent) || 0) + 1;
+
+    try {
+        await updateDoc(doc(_comDb, 'community', 'anonPosts', 'posts', postId), {
+            [`reactions.${reactionKey}`]: increment(1)
+        });
+    } catch(_) {}
+};
+
+/* ───────────────────────────────────────────────────────────
+   INIT — called by navTo when the community page opens
+   ─────────────────────────────────────────────────────────── */
+window.snxInitCommunityPage = function() {
+    snxLoadQotd();
+    snxLoadChallenges();
+    snxLoadCommunityGoal();
+    snxRenderRooms();
+    snxLoadKindnessBadges();
+    snxLoadReactions();
+    snxLoadAnonPosts();
+};
+</script>
+
 
 <!-- ═══════════════════════════════════════════════════════════
      STORM ROOMS — Firebase Realtime DB + canvas + full engine
