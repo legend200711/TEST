@@ -3393,6 +3393,184 @@ body::after {
     color: #f87; font-size: 13px; cursor: pointer; transition: background .15s;
 }
 .pc-reset-btn:hover { background: rgba(255,60,60,0.1); }
+
+/* ══════════════════════════════════════════════════════════════
+   RETRO ARCADE SYSTEM
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Arcade sidebar layout ── */
+.arcade-layout {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 14px;
+    align-items: start;
+}
+@media (max-width: 680px) {
+    .arcade-layout { grid-template-columns: 1fr; }
+    .arcade-sidebar { display: none !important; }
+}
+
+/* ── Game launcher grid ── */
+.arcade-game-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.arcade-game-tile {
+    background: linear-gradient(160deg,#0a1a2e,#0d2040);
+    border: 1.5px solid rgba(0,174,239,0.2);
+    border-radius: 12px;
+    padding: 16px 10px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .18s, transform .12s, box-shadow .18s;
+    user-select: none;
+    position: relative;
+    overflow: hidden;
+}
+.arcade-game-tile:hover {
+    border-color: #00AEEF;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 18px rgba(0,174,239,0.22);
+}
+.arcade-game-tile.active-tile {
+    border-color: #39FF14;
+    box-shadow: 0 0 14px rgba(57,255,20,0.28);
+}
+.arcade-tile-icon { font-size: 30px; display: block; margin-bottom: 6px; }
+.arcade-tile-name { font-size: 12px; font-weight: 700; color: #cde; }
+.arcade-tile-badge {
+    position: absolute; top: 6px; right: 8px;
+    font-size: 10px; background: #39FF14; color: #041020;
+    border-radius: 6px; padding: 1px 5px; font-weight: 700;
+}
+
+/* ── Game canvas area ── */
+.arcade-canvas-wrap {
+    background: #040d1a;
+    border: 1.5px solid rgba(0,174,239,0.22);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    display: none;
+    margin-bottom: 14px;
+}
+.arcade-canvas-wrap.active { display: block; }
+.arcade-canvas-wrap canvas {
+    display: block;
+    width: 100%;
+    image-rendering: pixelated;
+}
+.arcade-canvas-hud {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(0,5,15,0.7);
+    font-size: 13px; font-weight: 700;
+}
+.arcade-hud-score  { color: #00AEEF; }
+.arcade-hud-best   { color: #39FF14; }
+.arcade-hud-life   { color: #ff6644; }
+.arcade-canvas-overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(4,13,26,0.82);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+    gap: 10px;
+}
+.arcade-canvas-overlay.hidden { display: none; }
+.arcade-overlay-title { font-size: 22px; font-weight: 900; color: #fff; letter-spacing: 2px; }
+.arcade-overlay-sub   { font-size: 13px; color: #8ac; }
+.arcade-overlay-score { font-size: 18px; font-weight: 700; color: #00AEEF; }
+.arcade-play-btn {
+    padding: 9px 28px; background: linear-gradient(90deg,#005fa3,#00AEEF);
+    border: none; border-radius: 20px; color: #fff; font-size: 13px;
+    font-weight: 700; cursor: pointer; transition: opacity .15s; margin-top: 4px;
+}
+.arcade-play-btn:hover { opacity: .88; }
+
+/* ── Arcade sidebar ── */
+.arcade-sidebar { position: sticky; top: 14px; }
+.arcade-sidebar-card {
+    background: linear-gradient(160deg,#081526,#050e1d);
+    border: 1px solid rgba(0,174,239,0.18);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+.arcade-sidebar-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: #445566; font-weight: 700; margin-bottom: 10px;
+}
+/* Scoreboard rows */
+.arcade-score-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0; border-bottom: 1px solid rgba(0,50,100,0.3);
+    font-size: 12px;
+}
+.arcade-score-row:last-child { border-bottom: none; }
+.arcade-score-rank { color: #556; font-weight: 700; width: 18px; flex-shrink: 0; font-size: 11px; }
+.arcade-score-rank.gold   { color: #ffd700; }
+.arcade-score-rank.silver { color: #c0c8d0; }
+.arcade-score-rank.bronze { color: #cd7f32; }
+.arcade-score-avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #0B1F3A; border: 1px solid rgba(0,174,239,0.4);
+    background-size: cover; background-position: center;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #00AEEF; flex-shrink: 0;
+}
+.arcade-score-name { flex: 1; color: #bcd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.arcade-score-name:hover { color: #00AEEF; }
+.arcade-score-pts  { color: #00AEEF; font-weight: 700; flex-shrink: 0; }
+.arcade-score-empty { color: #334; font-size: 12px; text-align: center; padding: 10px 0; }
+
+/* Recent matches */
+.arcade-match-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 0; border-bottom: 1px solid rgba(0,50,100,0.25);
+    font-size: 11px; color: #7a9ab0;
+}
+.arcade-match-row:last-child { border-bottom: none; }
+.arcade-match-result { font-weight: 700; width: 28px; flex-shrink: 0; }
+.arcade-match-result.win  { color: #39FF14; }
+.arcade-match-result.loss { color: #ff4444; }
+.arcade-match-result.draw { color: #ffaa00; }
+.arcade-match-info { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arcade-match-pts  { color: #8ab; }
+
+/* Challenge button */
+.arcade-challenge-btn {
+    width: 100%; padding: 8px; border-radius: 8px;
+    background: linear-gradient(90deg,#1a3a00,#254d00);
+    border: 1px solid rgba(57,255,20,0.3); color: #39FF14;
+    font-size: 12px; font-weight: 700; cursor: pointer;
+    transition: background .15s; margin-top: 2px;
+}
+.arcade-challenge-btn:hover { background: linear-gradient(90deg,#254d00,#336600); }
+.arcade-challenge-btn:disabled { opacity: .45; cursor: default; }
+
+/* Game-select tabs inside arcade */
+.arcade-game-tabs {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.arcade-game-tab {
+    padding: 5px 12px; border-radius: 14px; font-size: 12px; cursor: pointer;
+    border: 1.5px solid rgba(0,174,239,0.2); background: rgba(0,20,60,0.5);
+    color: #7a9ab0; transition: border-color .15s, color .15s;
+    user-select: none;
+}
+.arcade-game-tab:hover   { border-color: #00AEEF; color: #cde; }
+.arcade-game-tab.active  { border-color: #39FF14; color: #fff; background: rgba(57,255,20,0.1); }
+
+/* Challenge notification badge on arcade tab */
+#tabArcadeLink .arcade-challenge-notif {
+    display: inline-block; background: #ff4444; color: #fff;
+    border-radius: 8px; font-size: 10px; padding: 0 5px;
+    margin-left: 4px; font-weight: 700; vertical-align: middle;
+}
 </style>
 
 <body>
@@ -3811,6 +3989,7 @@ body::after {
     <div class="profile-tabs">
         <button class="tab-btn active" id="tabWallLink" onclick="switchProfileTab('wall')">📝 Wall</button>
         <button class="tab-btn" id="tabMessagesLink" onclick="switchProfileTab('messages')" style="display:none;">💬 Message</button>
+        <button class="tab-btn" id="tabArcadeLink" onclick="switchProfileTab('arcade')">🕹 Arcade</button>
     </div>
 
     <!-- Wall tab -->
@@ -3826,6 +4005,74 @@ body::after {
 
     <!-- Messages tab placeholder (hidden by CSS — chat is now in the modal) -->
     <div id="tabContentMessages" style="display:none;"></div>
+
+    <!-- ── Arcade tab ── -->
+    <div id="tabContentArcade" style="display:none;">
+        <div class="section-card">
+
+            <!-- Game selector tabs -->
+            <div class="arcade-game-tabs">
+                <span class="arcade-game-tab active" data-game="snake"    onclick="arcadeSwitchGame('snake')">🐍 Snake</span>
+                <span class="arcade-game-tab"         data-game="breakout" onclick="arcadeSwitchGame('breakout')">🧱 Breakout</span>
+                <span class="arcade-game-tab"         data-game="pong"     onclick="arcadeSwitchGame('pong')">🏓 Pong</span>
+            </div>
+
+            <div class="arcade-layout">
+                <!-- Left: canvas + launcher -->
+                <div>
+                    <!-- Canvas area (shown once a game is selected) -->
+                    <div class="arcade-canvas-wrap" id="arcadeCanvasWrap">
+                        <div class="arcade-canvas-hud">
+                            <span class="arcade-hud-score" id="arcadeHudScore">Score: 0</span>
+                            <span id="arcadeHudGameName" style="color:#556;font-size:11px;"></span>
+                            <span class="arcade-hud-best"  id="arcadeHudBest">Best: 0</span>
+                        </div>
+                        <canvas id="arcadeCanvas" width="400" height="280"></canvas>
+                        <!-- start / game-over overlay -->
+                        <div class="arcade-canvas-overlay" id="arcadeOverlay">
+                            <div class="arcade-overlay-title" id="arcadeOverlayTitle">🕹 ARCADE</div>
+                            <div class="arcade-overlay-sub"   id="arcadeOverlaySub">Choose a game above</div>
+                            <div class="arcade-overlay-score" id="arcadeOverlayScore" style="display:none;"></div>
+                            <button class="arcade-play-btn"   id="arcadePlayBtn" onclick="arcadeStartGame()" style="display:none;">▶ Play</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: sidebar -->
+                <div class="arcade-sidebar">
+                    <!-- Scoreboard -->
+                    <div class="arcade-sidebar-card">
+                        <div class="arcade-sidebar-title">🏆 Top Scores — <span id="arcadeScoreboardGame">Snake</span></div>
+                        <div id="arcadeScoreboard">
+                            <div class="arcade-score-empty">Loading…</div>
+                        </div>
+                    </div>
+
+                    <!-- Recent matches -->
+                    <div class="arcade-sidebar-card">
+                        <div class="arcade-sidebar-title">⚔️ Recent Matches</div>
+                        <div id="arcadeRecentMatches">
+                            <div class="arcade-score-empty">No matches yet.</div>
+                        </div>
+                    </div>
+
+                    <!-- Challenge -->
+                    <div class="arcade-sidebar-card" id="arcadeChallengeCard" style="display:none;">
+                        <div class="arcade-sidebar-title">🎯 Challenge</div>
+                        <div style="font-size:12px;color:#8ab;margin-bottom:8px;" id="arcadeChallengeInfo">Beat their high score!</div>
+                        <button class="arcade-challenge-btn" id="arcadeChallengeBtn" onclick="arcadeSendChallenge()">⚡ Challenge</button>
+                    </div>
+
+                    <!-- Incoming challenges -->
+                    <div class="arcade-sidebar-card" id="arcadeIncomingCard" style="display:none;">
+                        <div class="arcade-sidebar-title">📩 Challenges</div>
+                        <div id="arcadeIncomingList"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
 
 </div>
 
@@ -6430,6 +6677,7 @@ body::after {
 
   window.viewProfile = async function(uid) {
       activeProfileUid = uid;
+      window._arcadeProfileUid = uid;  // expose for arcade challenge system
       show('profile');
       // Highlight Profile nav item without closing sidebar
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active-nav'));
@@ -6668,6 +6916,8 @@ body::after {
   window._firestoreDoc       = doc;
   window._firestoreDb        = db;
   window._getCurrentUser     = () => currentUser;
+  // Expose additional helpers for arcade scoreboard queries
+  window._snxFirestoreHelpers = { getDocs, collection, query, orderBy, limit, arrayUnion };
 
   async function submitWallPost() {
       let text = document.getElementById("wallInput").value.trim();
@@ -8228,7 +8478,7 @@ function toastNotification(msg) {
 }
 function switchProfileTab(t) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    ['tabContentWall','tabContentMessages'].forEach(id => {
+    ['tabContentWall','tabContentMessages','tabContentArcade'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -8244,6 +8494,12 @@ function switchProfileTab(t) {
             const inp = document.getElementById('ipcModalInput');
             if (inp && !inp.disabled) inp.focus();
         }, 150);
+    } else if (t === 'arcade') {
+        const tl = document.getElementById('tabArcadeLink');
+        if (tl) tl.classList.add('active');
+        const el = document.getElementById('tabContentArcade');
+        if (el) el.style.display = 'block';
+        arcadeOnTabOpen();
     }
 }
 
@@ -8522,6 +8778,675 @@ async function resetProfileCustomization() {
     await updateDoc(docFn(db, 'users', user.uid), { profileCustomization: null });
     closeCustomizeModal();
     if (typeof toastNotification === 'function') toastNotification('Profile customization reset.');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RETRO ARCADE ENGINE
+   ══════════════════════════════════════════════════════════════ */
+
+// ── State ──
+const ARCADE = {
+    currentGame: 'snake',
+    running: false,
+    score: 0,
+    bestScores: { snake: 0, breakout: 0, pong: 0 },
+    rafId: null,
+    canvas: null,
+    ctx: null,
+    // game-specific state objects reset on each play
+    snake: null,
+    breakout: null,
+    pong: null,
+    // who's profile we're viewing
+    profileUid: null,
+    isSelf: false
+};
+
+const ARCADE_NAMES = { snake: '🐍 Snake', breakout: '🧱 Breakout', pong: '🏓 Pong' };
+
+// ── Called when the Arcade tab is opened ──
+function arcadeOnTabOpen() {
+    ARCADE.canvas = document.getElementById('arcadeCanvas');
+    ARCADE.ctx    = ARCADE.canvas ? ARCADE.canvas.getContext('2d') : null;
+    ARCADE.profileUid = window._arcadeProfileUid || null;
+    const me = window._getCurrentUser && window._getCurrentUser();
+    ARCADE.isSelf = me && ARCADE.profileUid === me.uid;
+
+    // Show canvas wrap
+    const wrap = document.getElementById('arcadeCanvasWrap');
+    if (wrap) wrap.classList.add('active');
+
+    // Load best scores from localStorage
+    ['snake','breakout','pong'].forEach(g => {
+        const stored = parseInt(localStorage.getItem('snx_arcade_best_' + g) || '0', 10);
+        ARCADE.bestScores[g] = stored;
+    });
+
+    arcadeSwitchGame(ARCADE.currentGame, true);
+    arcadeLoadScoreboard(ARCADE.currentGame);
+    arcadeLoadRecentMatches();
+    arcadeLoadIncomingChallenges();
+
+    // Show/hide challenge card
+    const cc = document.getElementById('arcadeChallengeCard');
+    if (cc) cc.style.display = (ARCADE.profileUid && !ARCADE.isSelf) ? '' : 'none';
+    if (ARCADE.profileUid && !ARCADE.isSelf) {
+        const ci = document.getElementById('arcadeChallengeInfo');
+        if (ci) ci.textContent = 'Challenge this player in ' + ARCADE_NAMES[ARCADE.currentGame] + '!';
+    }
+}
+
+// ── Switch game ──
+function arcadeSwitchGame(game, silent) {
+    if (ARCADE.running) arcadeStopGame();
+    ARCADE.currentGame = game;
+
+    // Update tabs
+    document.querySelectorAll('.arcade-game-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.game === game);
+    });
+
+    // Update HUD label
+    const nameEl = document.getElementById('arcadeHudGameName');
+    if (nameEl) nameEl.textContent = ARCADE_NAMES[game];
+
+    // Update scoreboard header
+    const sbGame = document.getElementById('arcadeScoreboardGame');
+    if (sbGame) sbGame.textContent = ARCADE_NAMES[game];
+
+    // Update challenge info
+    const ci = document.getElementById('arcadeChallengeInfo');
+    if (ci && ARCADE.profileUid && !ARCADE.isSelf)
+        ci.textContent = 'Challenge this player in ' + ARCADE_NAMES[game] + '!';
+
+    // Update best HUD
+    _arcadeUpdateHud(0);
+
+    // Show start overlay
+    _arcadeShowOverlay(ARCADE_NAMES[game], 'Press ▶ Play to start', null, true);
+
+    if (!silent) {
+        arcadeLoadScoreboard(game);
+    }
+}
+
+// ── Start game ──
+function arcadeStartGame() {
+    if (!ARCADE.canvas || !ARCADE.ctx) return;
+    _arcadeHideOverlay();
+    ARCADE.running = true;
+    ARCADE.score = 0;
+    _arcadeUpdateHud(0);
+
+    if (ARCADE.currentGame === 'snake')    _snakeInit();
+    else if (ARCADE.currentGame === 'breakout') _breakoutInit();
+    else if (ARCADE.currentGame === 'pong')     _pongInit();
+}
+
+// ── Stop / game over ──
+function arcadeStopGame(isFinal) {
+    ARCADE.running = false;
+    if (ARCADE.rafId) { cancelAnimationFrame(ARCADE.rafId); ARCADE.rafId = null; }
+
+    if (isFinal) {
+        const best = ARCADE.bestScores[ARCADE.currentGame];
+        if (ARCADE.score > best) {
+            ARCADE.bestScores[ARCADE.currentGame] = ARCADE.score;
+            localStorage.setItem('snx_arcade_best_' + ARCADE.currentGame, ARCADE.score);
+            _arcadeUpdateHud(ARCADE.score);
+            // Save to Firestore
+            arcadeSaveScore(ARCADE.currentGame, ARCADE.score);
+        }
+        _arcadeShowOverlay('GAME OVER', 'Press ▶ Play to try again', ARCADE.score, true);
+        arcadeLoadScoreboard(ARCADE.currentGame);
+    }
+}
+
+function _arcadeUpdateHud(score) {
+    const se = document.getElementById('arcadeHudScore');
+    const be = document.getElementById('arcadeHudBest');
+    if (se) se.textContent = 'Score: ' + score;
+    if (be) be.textContent = 'Best: '  + ARCADE.bestScores[ARCADE.currentGame];
+}
+
+function _arcadeShowOverlay(title, sub, score, showBtn) {
+    const ov = document.getElementById('arcadeOverlay');
+    if (!ov) return;
+    ov.classList.remove('hidden');
+    document.getElementById('arcadeOverlayTitle').textContent = title;
+    document.getElementById('arcadeOverlaySub').textContent   = sub || '';
+    const scoreEl = document.getElementById('arcadeOverlayScore');
+    if (score !== null && score !== undefined) {
+        scoreEl.style.display = '';
+        scoreEl.textContent = 'Score: ' + score;
+    } else {
+        scoreEl.style.display = 'none';
+    }
+    const btn = document.getElementById('arcadePlayBtn');
+    if (btn) btn.style.display = showBtn ? '' : 'none';
+}
+
+function _arcadeHideOverlay() {
+    const ov = document.getElementById('arcadeOverlay');
+    if (ov) ov.classList.add('hidden');
+}
+
+// ── Keyboard input ──
+const _arcadeKeys = {};
+document.addEventListener('keydown', e => { _arcadeKeys[e.key] = true; });
+document.addEventListener('keyup',   e => { _arcadeKeys[e.key] = false; });
+
+// ── Touch / click on canvas ──
+document.addEventListener('DOMContentLoaded', () => {
+    const c = document.getElementById('arcadeCanvas');
+    if (!c) return;
+    c.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (!ARCADE.running) return;
+        if (ARCADE.currentGame === 'pong') _pongTouchHandler(e);
+    }, { passive: false });
+});
+
+/* ════════════════════
+   SNAKE
+   ════════════════════ */
+function _snakeInit() {
+    const W = 400, H = 280, SZ = 20;
+    const cols = Math.floor(W / SZ), rows = Math.floor(H / SZ);
+    let dir = { x: 1, y: 0 }, nextDir = { x: 1, y: 0 };
+    let snake = [{ x: Math.floor(cols / 2), y: Math.floor(rows / 2) }];
+    let food = _snakeNewFood(snake, cols, rows);
+    let score = 0;
+    let lastTime = 0, interval = 130;
+
+    function _snakeNewFood(s, c, r) {
+        let f;
+        do { f = { x: Math.floor(Math.random() * c), y: Math.floor(Math.random() * r) }; }
+        while (s.some(p => p.x === f.x && p.y === f.y));
+        return f;
+    }
+
+    // Key handling
+    const _snakeKey = e => {
+        if (!ARCADE.running || ARCADE.currentGame !== 'snake') return;
+        const map = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
+                      w:[0,-1], s:[0,1], a:[-1,0], d:[1,0] };
+        const nd = map[e.key];
+        if (nd && !(nd[0] === -dir.x && nd[1] === -dir.y)) {
+            nextDir = { x: nd[0], y: nd[1] };
+            e.preventDefault();
+        }
+    };
+    document.addEventListener('keydown', _snakeKey);
+
+    function loop(ts) {
+        if (!ARCADE.running) { document.removeEventListener('keydown', _snakeKey); return; }
+        ARCADE.rafId = requestAnimationFrame(loop);
+        if (ts - lastTime < interval) return;
+        lastTime = ts;
+        dir = { ...nextDir };
+
+        // Move
+        const head = { x: (snake[0].x + dir.x + cols) % cols, y: (snake[0].y + dir.y + rows) % rows };
+        if (snake.some(p => p.x === head.x && p.y === head.y)) {
+            document.removeEventListener('keydown', _snakeKey);
+            arcadeStopGame(true);
+            return;
+        }
+        snake.unshift(head);
+        if (head.x === food.x && head.y === food.y) {
+            score++;
+            ARCADE.score = score;
+            _arcadeUpdateHud(score);
+            interval = Math.max(55, 130 - score * 4);
+            food = _snakeNewFood(snake, cols, rows);
+        } else {
+            snake.pop();
+        }
+
+        // Draw
+        const ctx = ARCADE.ctx;
+        ctx.fillStyle = '#020a14';
+        ctx.fillRect(0, 0, W, H);
+        // Grid
+        ctx.strokeStyle = 'rgba(0,60,120,0.18)';
+        ctx.lineWidth = .5;
+        for (let x = 0; x <= W; x += SZ) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = 0; y <= H; y += SZ) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+        // Food
+        ctx.fillStyle = '#ff4444';
+        ctx.shadowColor = '#ff2222';
+        ctx.shadowBlur = 8;
+        ctx.fillRect(food.x * SZ + 2, food.y * SZ + 2, SZ - 4, SZ - 4);
+        ctx.shadowBlur = 0;
+        // Snake
+        snake.forEach((p, i) => {
+            ctx.fillStyle = i === 0 ? '#39FF14' : `rgba(57,255,${Math.max(20, 200 - i * 8)},0.9)`;
+            ctx.fillRect(p.x * SZ + 1, p.y * SZ + 1, SZ - 2, SZ - 2);
+        });
+    }
+    ARCADE.rafId = requestAnimationFrame(loop);
+}
+
+/* ════════════════════
+   BREAKOUT
+   ════════════════════ */
+function _breakoutInit() {
+    const W = 400, H = 280;
+    const ROWS = 5, COLS = 10, BW = 34, BH = 12, PAD = 3;
+    const OFFX = (W - COLS * (BW + PAD) + PAD) / 2, OFFY = 30;
+    let bricks = [];
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const colors = ['#ff4444','#ff8800','#ffcc00','#39FF14','#00AEEF'];
+        bricks.push({ x: OFFX + c * (BW + PAD), y: OFFY + r * (BH + PAD), alive: true, color: colors[r] });
+    }
+    let paddle = { x: W / 2 - 40, y: H - 22, w: 80, h: 10 };
+    let ball   = { x: W / 2, y: H - 50, vx: 3.5, vy: -3.5, r: 7 };
+    let score  = 0;
+    let totalBricks = ROWS * COLS;
+
+    // Mouse / touch paddle control
+    const _brMouseMove = e => {
+        if (!ARCADE.running) return;
+        const rect = ARCADE.canvas.getBoundingClientRect();
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const scale = W / rect.width;
+        paddle.x = cx * scale - paddle.w / 2;
+        paddle.x = Math.max(0, Math.min(W - paddle.w, paddle.x));
+    };
+    ARCADE.canvas.addEventListener('mousemove', _brMouseMove);
+    ARCADE.canvas.addEventListener('touchmove', _brMouseMove, { passive: true });
+
+    function loop() {
+        if (!ARCADE.running) {
+            ARCADE.canvas.removeEventListener('mousemove', _brMouseMove);
+            ARCADE.canvas.removeEventListener('touchmove', _brMouseMove);
+            return;
+        }
+        ARCADE.rafId = requestAnimationFrame(loop);
+
+        // Keyboard paddle
+        if (_arcadeKeys['ArrowLeft']  || _arcadeKeys['a']) paddle.x = Math.max(0, paddle.x - 7);
+        if (_arcadeKeys['ArrowRight'] || _arcadeKeys['d']) paddle.x = Math.min(W - paddle.w, paddle.x + 7);
+
+        ball.x += ball.vx; ball.y += ball.vy;
+        // Wall bounce
+        if (ball.x - ball.r < 0)   { ball.x = ball.r;   ball.vx *= -1; }
+        if (ball.x + ball.r > W)   { ball.x = W - ball.r; ball.vx *= -1; }
+        if (ball.y - ball.r < 0)   { ball.y = ball.r;   ball.vy *= -1; }
+        // Floor = lose
+        if (ball.y + ball.r > H) {
+            ARCADE.canvas.removeEventListener('mousemove', _brMouseMove);
+            ARCADE.canvas.removeEventListener('touchmove', _brMouseMove);
+            arcadeStopGame(true);
+            return;
+        }
+        // Paddle bounce
+        if (ball.y + ball.r > paddle.y && ball.y - ball.r < paddle.y + paddle.h &&
+            ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
+            ball.vy = -Math.abs(ball.vy);
+            ball.vx += ((ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2)) * 1.5;
+        }
+        // Brick collision
+        for (const b of bricks) {
+            if (!b.alive) continue;
+            if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + BW &&
+                ball.y + ball.r > b.y && ball.y - ball.r < b.y + BH) {
+                b.alive = false; ball.vy *= -1; score++; totalBricks--;
+                ARCADE.score = score;
+                _arcadeUpdateHud(score);
+                if (totalBricks === 0) {
+                    ARCADE.canvas.removeEventListener('mousemove', _brMouseMove);
+                    ARCADE.canvas.removeEventListener('touchmove', _brMouseMove);
+                    arcadeStopGame(true);
+                    return;
+                }
+                break;
+            }
+        }
+
+        // Draw
+        const ctx = ARCADE.ctx;
+        ctx.fillStyle = '#020a14';
+        ctx.fillRect(0, 0, W, H);
+        // Bricks
+        bricks.forEach(b => {
+            if (!b.alive) return;
+            ctx.fillStyle = b.color;
+            ctx.shadowColor = b.color;
+            ctx.shadowBlur = 4;
+            ctx.fillRect(b.x, b.y, BW, BH);
+        });
+        ctx.shadowBlur = 0;
+        // Paddle
+        ctx.fillStyle = '#00AEEF';
+        ctx.shadowColor = '#00AEEF'; ctx.shadowBlur = 8;
+        ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+        ctx.shadowBlur = 0;
+        // Ball
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#fff'; ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    ARCADE.rafId = requestAnimationFrame(loop);
+}
+
+/* ════════════════════
+   PONG (vs CPU)
+   ════════════════════ */
+function _pongInit() {
+    const W = 400, H = 280, PH = 60, PW = 10, BALL_R = 7;
+    let player = { y: H / 2 - PH / 2, score: 0 };
+    let cpu    = { y: H / 2 - PH / 2, score: 0, speed: 2.8 };
+    let ball   = { x: W / 2, y: H / 2, vx: 4 * (Math.random() > .5 ? 1 : -1), vy: 3 * (Math.random() > .5 ? 1 : -1) };
+    let gameScore = 0;
+
+    const _pongMouseMove = e => {
+        if (!ARCADE.running) return;
+        const rect = ARCADE.canvas.getBoundingClientRect();
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        player.y = cy * (H / rect.height) - PH / 2;
+        player.y = Math.max(0, Math.min(H - PH, player.y));
+    };
+    ARCADE.canvas.addEventListener('mousemove', _pongMouseMove);
+    ARCADE.canvas.addEventListener('touchmove', _pongMouseMove, { passive: true });
+
+    function loop() {
+        if (!ARCADE.running) {
+            ARCADE.canvas.removeEventListener('mousemove', _pongMouseMove);
+            ARCADE.canvas.removeEventListener('touchmove', _pongMouseMove);
+            return;
+        }
+        ARCADE.rafId = requestAnimationFrame(loop);
+
+        // Keyboard
+        if (_arcadeKeys['ArrowUp']   || _arcadeKeys['w']) player.y = Math.max(0, player.y - 6);
+        if (_arcadeKeys['ArrowDown'] || _arcadeKeys['s']) player.y = Math.min(H - PH, player.y + 6);
+
+        // CPU AI
+        const cpuCenter = cpu.y + PH / 2;
+        if (cpuCenter < ball.y - 5) cpu.y = Math.min(H - PH, cpu.y + cpu.speed);
+        else if (cpuCenter > ball.y + 5) cpu.y = Math.max(0, cpu.y - cpu.speed);
+
+        ball.x += ball.vx; ball.y += ball.vy;
+        if (ball.y - BALL_R < 0)   { ball.y = BALL_R;   ball.vy *= -1; }
+        if (ball.y + BALL_R > H)   { ball.y = H - BALL_R; ball.vy *= -1; }
+
+        // Player paddle (left)
+        if (ball.x - BALL_R < PW + 6 && ball.y > player.y && ball.y < player.y + PH) {
+            ball.x = PW + 6 + BALL_R; ball.vx = Math.abs(ball.vx) * 1.05;
+            ball.vy += ((ball.y - (player.y + PH / 2)) / (PH / 2)) * 1.5;
+            gameScore++; ARCADE.score = gameScore; _arcadeUpdateHud(gameScore);
+            cpu.speed = Math.min(6, 2.8 + gameScore * 0.15);
+        }
+        // CPU paddle (right)
+        if (ball.x + BALL_R > W - PW - 6 && ball.y > cpu.y && ball.y < cpu.y + PH) {
+            ball.x = W - PW - 6 - BALL_R; ball.vx = -Math.abs(ball.vx);
+        }
+
+        // Scoring
+        if (ball.x - BALL_R < 0) { // CPU wins point
+            ARCADE.canvas.removeEventListener('mousemove', _pongMouseMove);
+            ARCADE.canvas.removeEventListener('touchmove', _pongMouseMove);
+            arcadeStopGame(true);
+            return;
+        }
+        if (ball.x + BALL_R > W) { // Player wins point — reset
+            ball = { x: W / 2, y: H / 2, vx: -4, vy: 3 * (Math.random() > .5 ? 1 : -1) };
+        }
+
+        // Draw
+        const ctx = ARCADE.ctx;
+        ctx.fillStyle = '#020a14';
+        ctx.fillRect(0, 0, W, H);
+        // Center line
+        ctx.setLineDash([8, 8]); ctx.strokeStyle = 'rgba(0,174,239,0.15)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke();
+        ctx.setLineDash([]);
+        // Paddles
+        ctx.fillStyle = '#00AEEF'; ctx.shadowColor = '#00AEEF'; ctx.shadowBlur = 8;
+        ctx.fillRect(6, player.y, PW, PH);
+        ctx.fillStyle = '#ff4444'; ctx.shadowColor = '#ff4444';
+        ctx.fillRect(W - PW - 6, cpu.y, PW, PH);
+        ctx.shadowBlur = 0;
+        // Ball
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 12;
+        ctx.fill(); ctx.shadowBlur = 0;
+        // Score labels
+        ctx.fillStyle = 'rgba(0,174,239,0.5)'; ctx.font = '28px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(gameScore, W / 2 - 40, 30);
+    }
+    ARCADE.rafId = requestAnimationFrame(loop);
+}
+
+function _pongTouchHandler(e) {
+    // touch to move player paddle — handled by existing touchmove listener
+}
+
+/* ════════════════════
+   FIRESTORE SCORE OPS
+   ════════════════════ */
+
+async function arcadeSaveScore(game, score) {
+    const updateDoc = window._firestoreUpdateDoc;
+    const docFn     = window._firestoreDoc;
+    const db        = window._firestoreDb;
+    const user      = window._getCurrentUser && window._getCurrentUser();
+    if (!updateDoc || !docFn || !db || !user) return;
+
+    // Scores are stored on the user doc as arcadeScores.{game}
+    const field = 'arcadeScores.' + game;
+    try {
+        // Only write if new score is higher
+        const { getDoc: getDocFn } = await Promise.resolve({ getDoc: window._snxGetDoc });
+        const snap = await getDocFn(docFn(db, 'users', user.uid));
+        const existing = (snap.data()?.arcadeScores || {})[game] || 0;
+        if (score > existing) {
+            const upd = {}; upd[field] = score;
+            await updateDoc(docFn(db, 'users', user.uid), upd);
+        }
+        // Always append to recentMatches array (cap at 10)
+        const me = snap.data() || {};
+        const matches = (me.arcadeMatches || []).filter(m => m.game === game);
+        const upd2 = { arcadeMatches: (me.arcadeMatches || []).concat([{
+            game, score, ts: Date.now(),
+            displayName: me.displayName || me.username || '?',
+            uid: user.uid
+        }]).slice(-20) };
+        await updateDoc(docFn(db, 'users', user.uid), upd2);
+    } catch(e) { /* best-effort */ }
+}
+
+async function arcadeLoadScoreboard(game) {
+    const el = document.getElementById('arcadeScoreboard');
+    if (!el) return;
+    el.innerHTML = '<div class="arcade-score-empty">Loading…</div>';
+
+    const db   = window._firestoreDb;
+    const user = window._getCurrentUser && window._getCurrentUser();
+    if (!db || !user) {
+        el.innerHTML = '<div class="arcade-score-empty">Sign in to see scores.</div>';
+        return;
+    }
+
+    try {
+        const { getDocs, collection, query, orderBy, limit } = window._snxFirestoreHelpers || {};
+        if (!getDocs) { el.innerHTML = '<div class="arcade-score-empty">—</div>'; return; }
+
+        const field = 'arcadeScores.' + game;
+        const q = query(
+            collection(db, 'users'),
+            orderBy(field, 'desc'),
+            limit(8)
+        );
+        const snap = await getDocs(q);
+        const rows = [];
+        snap.forEach(d => {
+            const u = d.data();
+            const s = (u.arcadeScores || {})[game];
+            if (s > 0) rows.push({ name: u.displayName || u.username, avatar: u.avatar || '', score: s, uid: d.id });
+        });
+
+        if (rows.length === 0) {
+            el.innerHTML = '<div class="arcade-score-empty">No scores yet — be the first!</div>';
+            return;
+        }
+        el.innerHTML = rows.map((r, i) => {
+            const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+            const avatarStyle = r.avatar
+                ? `background-image:url('${r.avatar}');background-size:cover;background-position:center;`
+                : '';
+            const letter = (r.name || '?')[0].toUpperCase();
+            return `<div class="arcade-score-row">
+                <span class="arcade-score-rank ${rankClass}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)}</span>
+                <div class="arcade-score-avatar" style="${avatarStyle}">${r.avatar ? '' : letter}</div>
+                <span class="arcade-score-name" onclick="viewProfile('${r.uid}')">${r.name || 'Unknown'}</span>
+                <span class="arcade-score-pts">${r.score}</span>
+            </div>`;
+        }).join('');
+    } catch(e) {
+        el.innerHTML = '<div class="arcade-score-empty">—</div>';
+    }
+}
+
+async function arcadeLoadRecentMatches() {
+    const el = document.getElementById('arcadeRecentMatches');
+    if (!el) return;
+    const user = window._getCurrentUser && window._getCurrentUser();
+    const db   = window._firestoreDb;
+    if (!user || !db || !window._snxGetDoc) return;
+
+    try {
+        const snap = await window._snxGetDoc(window._firestoreDoc(db, 'users', user.uid));
+        const matches = ((snap.data() || {}).arcadeMatches || []).reverse().slice(0, 8);
+        if (matches.length === 0) {
+            el.innerHTML = '<div class="arcade-score-empty">No matches yet.</div>';
+            return;
+        }
+        el.innerHTML = matches.map(m => {
+            const best = ARCADE.bestScores[m.game] || 0;
+            const isWin = m.score >= best && m.score > 0;
+            const resultCls = m.score > 0 ? 'win' : 'loss';
+            const gameName = ARCADE_NAMES[m.game] || m.game;
+            const d = new Date(m.ts);
+            const timeStr = d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+            return `<div class="arcade-match-row">
+                <span class="arcade-match-result ${resultCls}">${m.score > 0 ? 'WIN' : 'LOSS'}</span>
+                <span class="arcade-match-info">${gameName} — ${timeStr}</span>
+                <span class="arcade-match-pts">${m.score}</span>
+            </div>`;
+        }).join('');
+    } catch(e) { /* best-effort */ }
+}
+
+async function arcadeLoadIncomingChallenges() {
+    const user = window._getCurrentUser && window._getCurrentUser();
+    const db   = window._firestoreDb;
+    if (!user || !db || !window._snxGetDoc) return;
+
+    try {
+        const snap = await window._snxGetDoc(window._firestoreDoc(db, 'users', user.uid));
+        const challenges = ((snap.data() || {}).arcadeChallenges || []).filter(c => !c.accepted && !c.dismissed);
+        const card = document.getElementById('arcadeIncomingCard');
+        const list = document.getElementById('arcadeIncomingList');
+        if (!card || !list) return;
+        if (challenges.length === 0) { card.style.display = 'none'; return; }
+        card.style.display = '';
+        list.innerHTML = challenges.map((c, i) => `
+            <div class="arcade-match-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:6px 0;">
+                <div style="font-size:12px;color:#cde;font-weight:700;">${c.fromName || 'Someone'} challenged you!</div>
+                <div style="font-size:11px;color:#778;">Play ${ARCADE_NAMES[c.game] || c.game} — their score: ${c.score || 0}</div>
+                <div style="display:flex;gap:6px;margin-top:4px;">
+                    <button class="arcade-play-btn" style="padding:4px 14px;font-size:11px;" onclick="arcadeAcceptChallenge(${i},'${c.game}',${c.score})">Accept</button>
+                    <button style="padding:4px 10px;font-size:11px;background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.3);color:#f88;border-radius:12px;cursor:pointer;" onclick="arcadeDismissChallenge(${i})">Dismiss</button>
+                </div>
+            </div>`).join('');
+        // Show badge on tab
+        const tabLink = document.getElementById('tabArcadeLink');
+        if (tabLink) {
+            let badge = tabLink.querySelector('.arcade-challenge-notif');
+            if (!badge) { badge = document.createElement('span'); badge.className = 'arcade-challenge-notif'; tabLink.appendChild(badge); }
+            badge.textContent = challenges.length;
+        }
+    } catch(e) { /* best-effort */ }
+}
+
+async function arcadeSendChallenge() {
+    const user  = window._getCurrentUser && window._getCurrentUser();
+    const db    = window._firestoreDb;
+    const uid   = ARCADE.profileUid;
+    if (!user || !db || !uid || !window._firestoreUpdateDoc || !window._firestoreDoc) return;
+
+    const myBest = ARCADE.bestScores[ARCADE.currentGame];
+    const btn = document.getElementById('arcadeChallengeBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sent!'; }
+
+    try {
+        const { arrayUnion } = window._snxFirestoreHelpers || {};
+        if (!arrayUnion) { if (btn) { btn.disabled = false; btn.textContent = '⚡ Challenge'; } return; }
+        await window._firestoreUpdateDoc(window._firestoreDoc(db, 'users', uid), {
+            arcadeChallenges: arrayUnion({
+                fromUid:   user.uid,
+                fromName:  (window.userData && window.userData.displayName) || 'Someone',
+                fromAvatar:(window.userData && window.userData.avatar) || '',
+                game:      ARCADE.currentGame,
+                score:     myBest,
+                ts:        Date.now(),
+                accepted:  false,
+                dismissed: false
+            })
+        });
+        if (typeof toastNotification === 'function') toastNotification('Challenge sent! ⚡');
+        // Also push a notification
+        if (typeof window.sendPushToUser === 'function') {
+            window.sendPushToUser(uid, {
+                title: '⚡ Arcade Challenge!',
+                body:  `${(window.userData && window.userData.displayName) || 'Someone'} challenged you in ${ARCADE_NAMES[ARCADE.currentGame]}!`,
+                type:  'challenge',
+                url:   '/'
+            });
+        }
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Challenge'; }
+    }
+}
+
+async function arcadeAcceptChallenge(idx, game, targetScore) {
+    // Switch to the game and start playing
+    arcadeSwitchGame(game);
+    if (typeof toastNotification === 'function') toastNotification(`Beat ${targetScore} pts in ${ARCADE_NAMES[game] || game}!`);
+    // Mark accepted in Firestore
+    const user = window._getCurrentUser && window._getCurrentUser();
+    const db   = window._firestoreDb;
+    if (user && db && window._snxGetDoc && window._firestoreUpdateDoc && window._firestoreDoc) {
+        try {
+            const snap = await window._snxGetDoc(window._firestoreDoc(db, 'users', user.uid));
+            const challenges = ((snap.data() || {}).arcadeChallenges || []);
+            if (challenges[idx]) challenges[idx].accepted = true;
+            await window._firestoreUpdateDoc(window._firestoreDoc(db, 'users', user.uid), { arcadeChallenges: challenges });
+        } catch(e) { /* best-effort */ }
+    }
+    arcadeLoadIncomingChallenges();
+}
+
+async function arcadeDismissChallenge(idx) {
+    const user = window._getCurrentUser && window._getCurrentUser();
+    const db   = window._firestoreDb;
+    if (user && db && window._snxGetDoc && window._firestoreUpdateDoc && window._firestoreDoc) {
+        try {
+            const snap = await window._snxGetDoc(window._firestoreDoc(db, 'users', user.uid));
+            const challenges = ((snap.data() || {}).arcadeChallenges || []);
+            if (challenges[idx]) challenges[idx].dismissed = true;
+            await window._firestoreUpdateDoc(window._firestoreDoc(db, 'users', user.uid), { arcadeChallenges: challenges });
+        } catch(e) { /* best-effort */ }
+    }
+    arcadeLoadIncomingChallenges();
 }
 
 /* ── Friends tabs ── */
