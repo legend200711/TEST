@@ -13306,3 +13306,49 @@ function _stormStopCanvas() {
     window.removeEventListener('resize', _stormResizeCanvas);
     const cv = document.getElementById('storm-canvas');
     if (cv) { const ctx = cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height); }
+}
+
+/* Wire navTo hook: start/stop canvas when entering/leaving page */
+const _origNavTo = window.navTo;
+if (_origNavTo) {
+    window.navTo = function(pageId) {
+        _origNavTo(pageId);
+        if (pageId === 'stormRoomsPage' && _stormRoom) _stormStartCanvas();
+        if (pageId !== 'stormRoomsPage' && _stormCanvasRAF) _stormStopCanvas();
+    };
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     PWA: Install Banner
+     Shown by script.js when the beforeinstallprompt event fires.
+     Hidden by default; script.js adds class .visible to show it.
+     ═══════════════════════════════════════════════════════════ -->
+<div id="pwa-install-banner" role="complementary" aria-label="Install app">
+  <div class="banner-icon" aria-hidden="true">🌑</div>
+  <div class="banner-text">
+    <div class="banner-title">Add to Home Screen</div>
+    <div class="banner-sub">Install Shadow Nexus Social for the full experience</div>
+  </div>
+  <button class="banner-install" onclick="snxInstallApp()" aria-label="Install app">Install</button>
+  <button class="banner-dismiss" onclick="snxDismissInstallBanner()" aria-label="Dismiss">✕</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     PWA: Update Available Toast
+     Shown by script.js when a new service worker is waiting.
+     ═══════════════════════════════════════════════════════════ -->
+<div id="pwa-update-toast" role="alert" aria-live="polite">
+  <span class="update-icon" aria-hidden="true">⚡</span>
+  <span class="update-text">New version available!</span>
+  <button class="update-btn" aria-label="Update app now">Update</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Shared JavaScript utilities (SW registration, PWA install,
+     online/offline detection, helper functions)
+     ═══════════════════════════════════════════════════════════ -->
+<script src="script.js"></script>
+
+</body>
+</html>
