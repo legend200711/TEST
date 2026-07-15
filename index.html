@@ -12670,8 +12670,8 @@ function arcadeStartGame() {
     _arcadeStopLoop();
     _arcadeRunning = true;
 
-    // Use requestAnimationFrame so the browser has painted the modal and the
-    // canvas wrap has real dimensions before we size the canvas and start the loop.
+    // Wait for the browser to paint the modal so the canvas wrap has real
+    // dimensions before we size the canvas and start the game loop.
     requestAnimationFrame(() => {
         _arcadeResizeCanvas();
         switch (_arcadeGame) {
@@ -12693,8 +12693,7 @@ function _arcadeResizeCanvas() {
     if (!_arcadeCanvas) return;
     const wrap = document.getElementById('arcadeCanvasWrap');
     if (!wrap) return;
-    // clientWidth can be 0 if the modal hasn't painted yet — fall back to
-    // the modal card width or a safe default so games never get a 0-size canvas.
+    // Use offsetWidth as fallback — clientWidth can be 0 before first paint
     const W = wrap.clientWidth  || wrap.offsetWidth  || 520;
     const H = wrap.clientHeight || wrap.offsetHeight || 360;
     if (W > 0) _arcadeCanvas.width  = W;
