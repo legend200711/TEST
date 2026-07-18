@@ -559,12 +559,12 @@ input:focus, textarea:focus, select:focus {
 .post-media-preview:hover { opacity: 0.92; box-shadow: 0 0 16px rgba(0,120,255,0.3); }
 
 .post-author-link {
-    color: #00aaff; cursor: pointer; font-weight: bold;
+    color: #00aaff; cursor: default; font-weight: bold;
     max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     display: inline-block; vertical-align: middle;
     text-shadow: 0 0 8px rgba(0,160,255,0.4);
 }
-.post-author-link:hover { text-decoration: underline; color: #00d4ff; }
+.post-author-link:hover { color: #00aaff; }
 .post-expiry { font-size: 10px; color: #3a5a7a; background: rgba(0,20,50,0.5); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
 .post-expiry.expiry-soon { color: #ffaa44; background: rgba(255,170,68,0.1); border: 1px solid rgba(255,170,68,0.25); }
 
@@ -586,6 +586,11 @@ input:focus, textarea:focus, select:focus {
 .liked { border-color: #ff3366 !important; color: #ff3366 !important; background: rgba(255,30,80,0.08) !important; }
 .btn-del-post { border-color: rgba(255,51,102,0.3) !important; color: #ff5577 !important; }
 .btn-del-post:hover { border-color: #ff3366 !important; color: #ff3366 !important; background: rgba(255,51,102,0.08) !important; }
+/* Founder-only delete button for Shadow Bot posts */
+.btn-del-bot-post { border-color: rgba(180,60,255,0.35) !important; color: #cc77ff !important; font-size: 11px !important; padding: 4px 8px !important; }
+.btn-del-bot-post:hover { border-color: rgba(200,80,255,0.7) !important; color: #ee99ff !important; background: rgba(160,40,255,0.10) !important; }
+/* Feed loading spinner */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* Comments */
 .commentBox { margin-top: 10px; border-top: 1px solid rgba(0,60,120,0.3); padding-top: 6px; }
@@ -1784,11 +1789,14 @@ img.post-media-preview::before {
     box-shadow: 0 2px 16px rgba(0,60,160,0.12);
 }
 .chat-header-avatar {
-    width: 38px; height: 38px; border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     background: #0B1F3A; background-size: cover; background-position: center;
     cursor: pointer; transition: opacity 0.15s;
     border: 2px solid rgba(0,174,239,0.38);
     position: relative; flex-shrink: 0;
+    /* Larger tap area on mobile — extends hit-zone without changing visual size */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 .chat-header-avatar:hover { opacity: 0.8; }
 .chat-header-online {
@@ -1798,6 +1806,10 @@ img.post-media-preview::before {
 }
 .chat-header-online.online { background: #00ff88; box-shadow: 0 0 6px rgba(0,255,136,0.8); }
 .chat-header-info { flex: 1; min-width: 0; }
+/* Connection-state colour coding in the header status line */
+.chat-header-status-connected    { color: #39FF14; }
+.chat-header-status-reconnecting { color: #f0b429; }
+.chat-header-status-failed       { color: #ff4466; }
 /* Chat header name: plain label, not clickable */
 .chat-header-name { font-size: 14px; font-weight: bold; color: #eee; cursor: default; }
 .chat-header-status { font-size: 11px; color: #3a6a8a; margin-top: 1px; }
@@ -1902,10 +1914,25 @@ img.post-media-preview::before {
 
 .chat-empty-state {
     flex: 1; display: flex; align-items: center; justify-content: center;
-    color: #333; font-size: 13px; text-align: center; padding: 20px;
+    color: #5a80a8; font-size: 13px; text-align: center; padding: 20px;
     flex-direction: column; gap: 8px;
 }
 .chat-empty-state span { font-size: 36px; }
+
+/* ── Reconnecting spinner dots (used in chat error state) ── */
+@keyframes snxDotPulse {
+    0%,80%,100% { transform: scale(0.6); opacity: 0.4; }
+    40%         { transform: scale(1);   opacity: 1; }
+}
+.snx-reconnect-spinner {
+    display: inline-flex; gap: 5px; align-items: center; margin-top: 8px;
+}
+.snx-reconnect-spinner span {
+    width: 8px; height: 8px; background: #00AEEF; border-radius: 50%;
+    animation: snxDotPulse 1.2s infinite ease-in-out;
+}
+.snx-reconnect-spinner span:nth-child(2) { animation-delay: 0.2s; }
+.snx-reconnect-spinner span:nth-child(3) { animation-delay: 0.4s; }
 
 /* ── Chat footer — ALWAYS visible when a chat is open ── */
 .chat-footer {
@@ -3467,8 +3494,8 @@ input:focus, textarea:focus, select:focus {
     border-color: rgba(0,174,239,0.44);
     box-shadow: 0 0 22px rgba(0,174,239,0.13);
 }
-.post-author-link { color: #00AEEF; text-shadow: 0 0 8px rgba(0,174,239,0.45); }
-.post-author-link:hover { color: #39FF14; }
+.post-author-link { color: #00AEEF; text-shadow: 0 0 8px rgba(0,174,239,0.45); cursor: default; }
+.post-author-link:hover { color: #00AEEF; }
 
 /* ── Reaction buttons ── */
 .react-btn { background: rgba(11,31,58,0.80); border: 1px solid rgba(0,100,180,0.32); color: #7aaac8; }
@@ -3855,6 +3882,447 @@ input:focus, textarea:focus, select:focus {
     border: 1px solid rgba(0,174,239,0.42);
     box-shadow: 0 0 60px rgba(0,174,239,0.22);
 }
+</style>
+
+<style id="shadow-chat-bot-styles">
+/* ════════════════════════════════════════════
+   SHADOW CHAT BOT — Admin dashboard UI
+   ════════════════════════════════════════════ */
+
+/* Bot avatar pill */
+.scb-avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #003a8a 0%, #071428 100%);
+    border: 2.5px solid rgba(0,174,239,0.72);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+    box-shadow: 0 0 18px rgba(0,174,239,0.5);
+    animation: blueFlame 3s infinite;
+}
+
+/* Status badge */
+.scb-status-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    border: 1px solid; flex-shrink: 0; white-space: nowrap;
+    transition: all 0.3s ease;
+}
+.scb-status-badge.online {
+    background: rgba(0,60,20,0.55); border-color: rgba(57,255,20,0.55);
+    color: #66ffaa;
+    animation: scbOnlinePulse 2s ease-in-out infinite;
+}
+.scb-status-badge.offline {
+    background: rgba(40,10,10,0.55); border-color: rgba(255,60,60,0.45);
+    color: #ff9999;
+}
+@keyframes scbOnlinePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(57,255,20,0.3); }
+    50%      { box-shadow: 0 0 0 4px rgba(57,255,20,0); }
+}
+
+/* Action buttons */
+.scb-btn {
+    font-size: 12px; font-weight: 700; padding: 6px 14px;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.18s ease; flex-shrink: 0;
+}
+.scb-btn-on {
+    background: rgba(0,60,20,0.55); border: 1px solid rgba(57,255,20,0.55);
+    color: #66ffaa;
+}
+.scb-btn-on:hover { background: rgba(0,90,30,0.7); box-shadow: 0 0 12px rgba(57,255,20,0.3); color: #aaffcc; }
+.scb-btn-off {
+    background: rgba(0,20,55,0.6); border: 1px solid rgba(0,174,239,0.45);
+    color: #00AEEF;
+}
+.scb-btn-off:hover { background: rgba(0,60,140,0.4); box-shadow: 0 0 12px rgba(0,174,239,0.3); }
+.scb-btn-stop {
+    background: rgba(60,5,5,0.6); border: 1px solid rgba(255,60,60,0.5);
+    color: #ff9999;
+}
+.scb-btn-stop:hover { background: rgba(100,10,10,0.75); box-shadow: 0 0 12px rgba(255,40,40,0.3); color: #ffcccc; }
+
+/* Stats row */
+.scb-stats-row {
+    display: flex; gap: 12px; flex-wrap: wrap;
+}
+.scb-stat {
+    flex: 1; min-width: 80px; background: rgba(0,10,30,0.6);
+    border: 1px solid rgba(0,174,239,0.22); border-radius: 10px;
+    padding: 11px 12px; text-align: center;
+}
+.scb-stat-num {
+    font-size: 22px; font-weight: 800; color: #00AEEF;
+    text-shadow: 0 0 10px rgba(0,174,239,0.42); line-height: 1;
+}
+.scb-stat-label {
+    font-size: 10px; color: #3a6a9a; margin-top: 3px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+}
+
+/* Bot history entry */
+.scb-history-entry {
+    padding: 10px 12px; border-bottom: 1px solid rgba(0,51,102,0.25);
+    display: flex; gap: 10px; align-items: flex-start; font-size: 12px;
+}
+.scb-history-entry:last-child { border-bottom: none; }
+.scb-history-ts   { color: #3a5a7a; flex-shrink: 0; font-size: 10px; white-space: nowrap; min-width: 68px; }
+.scb-history-type {
+    font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px;
+    flex-shrink: 0; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.scb-history-type.positive    { background: rgba(0,174,239,0.12); border: 1px solid rgba(0,174,239,0.3); color: #6abcdd; }
+.scb-history-type.motivational{ background: rgba(57,255,20,0.10); border: 1px solid rgba(57,255,20,0.28); color: #66ffaa; }
+.scb-history-type.welcome     { background: rgba(255,200,50,0.10); border: 1px solid rgba(255,200,50,0.3); color: #ffe566; }
+.scb-history-type.safety      { background: rgba(255,51,102,0.10); border: 1px solid rgba(255,51,102,0.28); color: #ff88aa; }
+.scb-history-type.discussion  { background: rgba(170,80,255,0.10); border: 1px solid rgba(170,80,255,0.28); color: #cc88ff; }
+.scb-history-type.milestone   { background: rgba(255,165,0,0.10); border: 1px solid rgba(255,165,0,0.28); color: #ffc066; }
+.scb-history-body { flex: 1; color: #9bbdd8; line-height: 1.5; }
+.scb-history-del {
+    background: none; border: none; color: #334; cursor: pointer;
+    font-size: 12px; padding: 2px 5px; border-radius: 4px; flex-shrink: 0;
+    transition: color 0.15s, background 0.15s; line-height: 1;
+}
+.scb-history-del:hover { color: #ff4466; background: rgba(255,51,102,0.1); }
+
+/* ── Message Manager extras ── */
+.scb-mm-toolbar {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 0 10px; border-bottom: 1px solid rgba(0,80,160,0.18);
+    margin-bottom: 10px;
+}
+.scb-mm-toolbar select,
+.scb-mm-toolbar input[type="text"] {
+    background: rgba(0,10,30,0.7); border: 1px solid rgba(0,174,239,0.28);
+    color: #c8e0f8; border-radius: 8px; padding: 5px 9px;
+    font-size: 11px; outline: none; min-width: 0;
+}
+.scb-mm-toolbar input[type="text"] { flex: 1; min-width: 110px; }
+.scb-mm-btn {
+    font-size: 11px; font-weight: 700; padding: 5px 10px;
+    border-radius: 8px; cursor: pointer; border: 1px solid;
+    transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+}
+.scb-mm-btn-del  { background: rgba(180,20,20,0.18); border-color: rgba(255,60,60,0.45);  color: #ff8899; }
+.scb-mm-btn-del:hover  { background: rgba(220,30,30,0.35); color: #ffbbcc; }
+.scb-mm-btn-hide { background: rgba(0,40,80,0.35);  border-color: rgba(0,174,239,0.35);   color: #6aaccc; }
+.scb-mm-btn-hide:hover { background: rgba(0,60,120,0.5);  color: #aaddff; }
+.scb-mm-btn-edit { background: rgba(50,0,120,0.35); border-color: rgba(140,80,255,0.45);  color: #cc88ff; }
+.scb-mm-btn-edit:hover { background: rgba(80,0,160,0.5);  color: #ddaaff; }
+.scb-mm-btn-nuke { background: rgba(120,0,0,0.45);  border-color: rgba(255,30,30,0.6);    color: #ffaaaa; }
+.scb-mm-btn-nuke:hover { background: rgba(180,0,0,0.6);   color: #ffdddd; }
+.scb-mm-btn-restore { background: rgba(0,80,20,0.35); border-color: rgba(57,255,20,0.4); color: #88ffaa; }
+.scb-mm-btn-restore:hover { background: rgba(0,120,30,0.55); color: #aaffcc; }
+.scb-mm-sel-all {
+    width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: #00AEEF;
+}
+.scb-mm-tabs {
+    display: flex; border-bottom: 1px solid rgba(0,80,160,0.22); margin-bottom: 12px;
+}
+.scb-mm-tab {
+    font-size: 11px; font-weight: 700; padding: 6px 14px; cursor: pointer;
+    border: none; background: none; color: #4a7a9a;
+    border-bottom: 2px solid transparent; border-radius: 0; transition: color 0.15s;
+}
+.scb-mm-tab.active { color: #00AEEF; border-bottom-color: #00AEEF; }
+.scb-mm-count {
+    display: inline-block; background: rgba(0,174,239,0.18); color: #6abcdd;
+    border-radius: 8px; font-size: 10px; font-weight: 700; padding: 1px 6px;
+    margin-left: 4px; vertical-align: middle;
+}
+.scb-history-entry.scb-hidden-entry { opacity: 0.45; }
+.scb-hidden-badge {
+    font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 6px;
+    background: rgba(0,40,80,0.5); border: 1px solid rgba(0,174,239,0.3);
+    color: #4a8aaa; flex-shrink: 0; white-space: nowrap;
+}
+.scb-history-entry input[type="checkbox"] { accent-color: #00AEEF; cursor: pointer; flex-shrink: 0; margin-top: 1px; }
+/* Edit modal */
+#scbEditModal {
+    display: none; position: fixed; inset: 0; z-index: 9600;
+    background: rgba(0,4,14,0.82); backdrop-filter: blur(6px);
+    align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+}
+#scbEditModal.open { display: flex; }
+.scb-edit-card {
+    background: #0d1e3a; border: 1px solid rgba(0,174,239,0.45); border-radius: 16px;
+    max-width: 460px; width: 100%; padding: 22px 20px;
+    box-shadow: 0 0 50px rgba(0,174,239,0.2);
+    animation: deleteModalIn 0.22s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+.scb-edit-card h4 { margin: 0 0 12px; font-size: 14px; color: #00AEEF; font-weight: 800; }
+.scb-edit-card textarea {
+    width: 100%; box-sizing: border-box; min-height: 90px;
+    resize: vertical; font-size: 13px; margin-bottom: 10px;
+}
+.scb-edit-card .scb-edit-footer {
+    display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+}
+
+/* Bot post on the feed — teal left-border to distinguish from user posts */
+.postBox.scb-post {
+    border-left: 3px solid rgba(0,174,239,0.6);
+    background: rgba(0,18,45,0.92);
+}
+.scb-post-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+}
+.scb-post-badge {
+    font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+    background: linear-gradient(135deg, #002255, #004499);
+    border: 1px solid rgba(0,174,239,0.55); color: #88ccff;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ════════════════════════════════════════════════════
+   SHADOW CHAT BOT — Welcome Pop-up
+   ════════════════════════════════════════════════════ */
+
+/* Backdrop */
+#scbWelcomeModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    background: rgba(0,4,14,0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+#scbWelcomeModal.scw-visible {
+    display: flex;
+    animation: scwFadeIn 0.3s ease both;
+}
+#scbWelcomeModal.scw-hiding {
+    animation: scwFadeOut 0.32s ease both;
+}
+
+/* Card — supports accent colour override via CSS var */
+.scb-welcome-card {
+    --scw-accent: #00AEEF;
+    background: #0d2444;
+    border: 1px solid rgba(0,174,239,0.45);
+    border-radius: 20px;
+    max-width: 390px;
+    width: 100%;
+    padding: 28px 24px 22px;
+    box-shadow: 0 0 70px rgba(0,174,239,0.22), 0 20px 60px rgba(0,0,0,0.55);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    animation: scwSlideIn 0.35s cubic-bezier(0.34,1.38,0.64,1) both;
+}
+.scb-welcome-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--scw-accent), transparent);
+    opacity: 0.8;
+}
+
+/* Avatar */
+.scb-welcome-avatar {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #003a8a 0%, #071428 100%);
+    border: 2.5px solid rgba(0,174,239,0.72);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px;
+    margin: 0 auto 14px;
+    box-shadow: 0 0 28px rgba(0,174,239,0.55);
+    animation: blueFlame 3s infinite;
+}
+
+/* Label */
+.scb-welcome-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--scw-accent);
+    margin-bottom: 6px;
+    opacity: 0.9;
+}
+
+/* Headline */
+.scb-welcome-headline {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.3;
+}
+
+/* Body */
+.scb-welcome-body {
+    font-size: 13.5px;
+    color: #9bbdd8;
+    line-height: 1.75;
+    margin: 0 0 18px;
+}
+
+/* Auto-close progress bar */
+.scb-welcome-progress-wrap {
+    height: 3px;
+    background: rgba(0,174,239,0.12);
+    border-radius: 2px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    display: none; /* shown only when auto-close is active */
+}
+.scb-welcome-progress-wrap.scw-active { display: block; }
+.scb-welcome-progress-bar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, var(--scw-accent), rgba(57,255,20,0.8));
+    transform-origin: left;
+    transition: none; /* driven by JS setInterval */
+}
+
+/* CTA button */
+.scb-welcome-cta {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #003d99, #0066cc);
+    border: 1px solid rgba(0,174,239,0.65);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-bottom: 12px;
+    transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.scb-welcome-cta:hover {
+    opacity: 0.9;
+    box-shadow: 0 0 16px rgba(0,174,239,0.35);
+}
+.scb-welcome-cta:active { transform: scale(0.97); }
+
+/* Close button */
+.scb-welcome-close {
+    position: absolute;
+    top: 12px; right: 14px;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(0,40,80,0.7);
+    border: 1px solid rgba(0,174,239,0.25);
+    color: #6a8aaa;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+    padding: 0; line-height: 1;
+}
+.scb-welcome-close:hover {
+    background: rgba(255,60,80,0.18);
+    border-color: rgba(255,60,80,0.4);
+    color: #ff7788;
+}
+
+/* "Don't show today" label */
+.scb-welcome-skip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #3a6a8a;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.scb-welcome-skip input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    accent-color: var(--scw-accent);
+    cursor: pointer;
+}
+
+/* Keyframes */
+@keyframes scwFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scwFadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes scwSlideIn {
+    from { opacity: 0; transform: scale(0.88) translateY(16px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* Animation: slide-up variant */
+.scb-welcome-card.scw-anim-slide {
+    animation: scwSlideIn 0.35s cubic-bezier(0.34,1.38,0.64,1) both;
+}
+/* Animation: bounce variant */
+.scb-welcome-card.scw-anim-bounce {
+    animation: scwBounce 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes scwBounce {
+    from { opacity: 0; transform: scale(0.7) translateY(30px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+/* Animation: fade-only variant */
+.scb-welcome-card.scw-anim-fade {
+    animation: scwFadeInCard 0.4s ease both;
+}
+@keyframes scwFadeInCard {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* Founder preview badge */
+.scw-preview-badge {
+    position: absolute;
+    top: -1px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,200,50,0.18);
+    border: 1px solid rgba(255,200,50,0.45);
+    color: #ffe566;
+    font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 10px;
+    border-radius: 0 0 8px 8px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* Welcome pop-up admin settings panel */
+.scw-admin-section {
+    background: rgba(0,10,30,0.5);
+    border: 1px solid rgba(0,174,239,0.18);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+}
+.scw-admin-section h4 {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: #00d4ff;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 800;
+}
+.scw-msg-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0,60,120,0.22);
+    font-size: 12px;
+    color: #9bbdd8;
+}
+.scw-msg-item:last-child { border-bottom: none; }
+.scw-msg-item-text { flex: 1; line-height: 1.5; word-break: break-word; }
+.scw-msg-item-del {
+    background: none; border: none;
+    color: #334; font-size: 12px; cursor: pointer;
+    padding: 2px 5px; border-radius: 4px; flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+}
+.scw-msg-item-del:hover { color: #ff4466; background: rgba(255,51,102,0.1); }
 </style>
 
 <style id="mood-sandbox-styles">
@@ -7018,6 +7486,7 @@ body.arcade-fs-ios body::after { display:none !important; }
     <button class="admin-tab" onclick="switchAdminTab('roles')">👑 Staff Roles</button>
     <button class="admin-tab" onclick="switchAdminTab('appeals')">📩 Appeals</button>
     <button class="admin-tab" onclick="switchAdminTab('aisafety')">🤖 AI Safety</button>
+    <button class="admin-tab" onclick="switchAdminTab('shadowbot')">🤖 Shadow Bot</button>
 </div>
 
 <!-- ══════════════════════════════════
@@ -7483,6 +7952,239 @@ body.arcade-fs-ios body::after { display:none !important; }
 
 </div>
 
+<!-- ══════════════════════════════════
+     TAB: SHADOW CHAT BOT
+══════════════════════════════════ -->
+<div class="admin-tab-content" id="adminTab-shadowbot">
+
+  <!-- Bot Status Dashboard -->
+  <div class="section-card scb-card" style="margin-bottom:16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="scb-avatar">🤖</div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#fff;">Shadow Chat Bot</div>
+          <div style="font-size:11px;color:#6a90b8;margin-top:2px;">AI Community Safety &amp; Positivity System</div>
+        </div>
+        <span class="scb-status-badge" id="scbStatusBadge">⬤ Offline</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="scb-btn scb-btn-on" id="scbBtnEnable" onclick="scbToggleBot(true)">▶ Enable Bot</button>
+        <button class="scb-btn scb-btn-off" id="scbBtnDisable" onclick="scbToggleBot(false)">⏹ Disable Bot</button>
+        <button class="scb-btn scb-btn-stop" id="scbBtnEmergency" onclick="scbEmergencyStop()">🚨 Emergency Stop</button>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="scb-stats-row">
+      <div class="scb-stat"><div class="scb-stat-num" id="scbStatWelcome">0</div><div class="scb-stat-label">Welcome Msgs</div></div>
+      <div class="scb-stat"><div class="scb-stat-num" id="scbStatPosted">0</div><div class="scb-stat-label">Posts Today</div></div>
+      <div class="scb-stat"><div class="scb-stat-num" id="scbStatSafety">0</div><div class="scb-stat-label">Safety Events</div></div>
+      <div class="scb-stat"><div class="scb-stat-num" id="scbStatTotal">0</div><div class="scb-stat-label">Total Posts</div></div>
+    </div>
+
+    <!-- Next scheduled post -->
+    <div style="margin-top:12px;font-size:12px;color:#6a90b8;">
+      Next scheduled post: <span id="scbNextPost" style="color:#39FF14;font-weight:700;">—</span>
+      &nbsp;&nbsp;
+      <button onclick="scbPostNow()" style="font-size:11px;padding:4px 12px;border-radius:10px;border-color:rgba(57,255,20,0.5);color:#39FF14;background:rgba(57,255,20,0.07);">⚡ Post Now</button>
+    </div>
+  </div>
+
+  <!-- Bot Settings -->
+  <div class="section-card" style="margin-bottom:16px;">
+    <h3 style="margin:0 0 14px;font-size:13px;color:#00d4ff;text-transform:uppercase;letter-spacing:0.8px;">⚙️ Bot Settings</h3>
+
+    <div class="settings-row">
+      <div class="settings-label">Posts Per Day<small>How many positive messages the bot posts daily (1–24)</small></div>
+      <input type="number" id="scbPostsPerDay" min="1" max="24" value="4" style="width:70px;margin:0;text-align:center;font-size:13px;" oninput="scbMarkDirty()">
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Welcome Messages<small>Greet each user once per session</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scbWelcomeEnabled" class="notif-toggle-cb" checked onchange="scbMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Safety Detection<small>Detect &amp; respond to negative language</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scbSafetyEnabled" class="notif-toggle-cb" checked onchange="scbMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Birthday Celebrations<small>Congratulate users on their birthday</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scbBirthdayEnabled" class="notif-toggle-cb" onchange="scbMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Milestone Celebrations<small>Celebrate community milestones &amp; streaks</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scbMilestoneEnabled" class="notif-toggle-cb" checked onchange="scbMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Daily Discussion Questions<small>Post a question to spark conversation</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scbDiscussionEnabled" class="notif-toggle-cb" checked onchange="scbMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <div class="settings-row" style="border-bottom:none;">
+      <div class="settings-label">Pause Scheduled Posts<small>Temporarily stop automatic posting</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scbPaused" class="notif-toggle-cb" onchange="scbMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <button onclick="scbSaveSettings()" style="margin-top:12px;width:100%;padding:9px;font-size:13px;border-radius:10px;background:linear-gradient(135deg,#003d99,#0066cc);border-color:rgba(0,174,239,0.65);color:#fff;" id="scbSaveBtn">💾 Save Settings</button>
+  </div>
+
+  <!-- ── Welcome Pop-up Settings ── -->
+  <div class="section-card" style="margin-bottom:16px;border-color:rgba(0,174,239,0.30);">
+    <h3 style="margin:0 0 14px;font-size:13px;color:#00d4ff;text-transform:uppercase;letter-spacing:0.8px;">🎉 Welcome Pop-up Settings</h3>
+
+    <div class="settings-row">
+      <div class="settings-label">Enable Welcome Pop-up<small>Show a greeting when users visit</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scwEnabled" class="notif-toggle-cb" checked onchange="scwMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Frequency<small>How often to show the pop-up</small></div>
+      <select id="scwFrequency" onchange="scwMarkDirty()" style="margin:0;width:auto;min-width:140px;font-size:12px;padding:6px 10px;">
+        <option value="everyVisit">Every visit</option>
+        <option value="oncePerDay" selected>Once per day</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Auto-close after (seconds)<small>0 = never auto-close</small></div>
+      <input type="number" id="scwDisplaySeconds" min="0" max="60" value="8" style="width:65px;margin:0;text-align:center;font-size:13px;" oninput="scwMarkDirty()">
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Animation style</div>
+      <select id="scwAnimation" onchange="scwMarkDirty()" style="margin:0;width:auto;min-width:140px;font-size:12px;padding:6px 10px;">
+        <option value="slide" selected>Slide &amp; scale</option>
+        <option value="bounce">Bounce</option>
+        <option value="fade">Fade only</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Accent colour</div>
+      <input type="color" id="scwAccentColor" value="#00AEEF" onchange="scwMarkDirty()" style="width:40px;height:30px;margin:0;padding:2px;border-radius:6px;border:1px solid rgba(0,174,239,0.4);background:transparent;cursor:pointer;">
+    </div>
+    <div class="settings-row" style="border-bottom:none;">
+      <div class="settings-label">Play sound on open<small>A soft chime when the pop-up appears</small></div>
+      <label class="notif-toggle-wrap"><input type="checkbox" id="scwSound" class="notif-toggle-cb" onchange="scwMarkDirty()"><span class="notif-toggle-slider"></span></label>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+      <button id="scwSaveBtn" onclick="scwSaveSettings()" style="flex:1;padding:9px;font-size:13px;border-radius:10px;background:linear-gradient(135deg,#003d99,#0066cc);border-color:rgba(0,174,239,0.65);color:#fff;">💾 Save Pop-up Settings</button>
+      <button onclick="scwPreview()" style="padding:9px 14px;font-size:13px;border-radius:10px;border-color:rgba(57,255,20,0.45);color:#39FF14;background:rgba(57,255,20,0.06);">👁 Preview</button>
+    </div>
+  </div>
+
+  <!-- ── Welcome Messages Library ── -->
+  <div class="section-card" style="margin-bottom:16px;">
+    <h3 style="margin:0 0 10px;font-size:13px;color:#00d4ff;text-transform:uppercase;letter-spacing:0.8px;">💬 Welcome Message Library</h3>
+    <p style="font-size:12px;color:#6a90b8;margin:0 0 10px;line-height:1.6;">Use <code style="background:rgba(0,174,239,0.1);padding:1px 5px;border-radius:4px;color:#39FF14;">{username}</code> to insert the user's name. One message is chosen at random each visit or day.</p>
+    <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;">
+      <textarea id="scwNewMsg" rows="2" placeholder="💙 Welcome back, {username}! We're so glad you're here." style="font-size:13px;resize:vertical;flex:1;min-width:200px;margin:0;"></textarea>
+      <button onclick="scwAddMessage()" style="padding:8px 14px;font-size:12px;border-radius:10px;border-color:rgba(57,255,20,0.5);color:#39FF14;background:rgba(57,255,20,0.07);flex-shrink:0;align-self:flex-end;">➕ Add</button>
+    </div>
+    <div id="scwMsgList" style="max-height:260px;overflow-y:auto;">
+      <div style="font-size:12px;color:#3a5a7a;text-align:center;padding:12px;">Loading messages…</div>
+    </div>
+  </div>
+
+  <!-- Legacy single welcome message (fallback) -->
+  <div class="section-card" style="margin-bottom:16px;border-color:rgba(0,80,160,0.2);">
+    <h3 style="margin:0 0 10px;font-size:13px;color:#5a8aaa;text-transform:uppercase;letter-spacing:0.8px;">👋 Legacy Fallback Welcome Message</h3>
+    <p style="font-size:12px;color:#4a6a8a;margin:0 0 10px;line-height:1.6;">Used when the message library above is empty. Use <code style="background:rgba(0,174,239,0.08);padding:1px 5px;border-radius:4px;color:#39FF14;">{username}</code> for the user's name.</p>
+    <textarea id="scbWelcomeMsg" rows="3" placeholder="Welcome to Shadow Nexus, {username}! 💙 We're glad you're here. Remember: you matter, and this is a safe space." style="font-size:13px;resize:vertical;margin-bottom:10px;"></textarea>
+    <button onclick="scbSaveWelcomeMsg()" style="font-size:12px;padding:6px 16px;border-radius:10px;border-color:rgba(0,174,239,0.55);color:#00AEEF;">💾 Save</button>
+    <button onclick="scbPreviewWelcome()" style="font-size:12px;padding:6px 16px;border-radius:10px;margin-left:8px;border-color:rgba(57,255,20,0.45);color:#39FF14;background:rgba(57,255,20,0.06);">👁 Preview</button>
+  </div>
+
+  <!-- Create Custom Message -->
+  <div class="section-card" style="margin-bottom:16px;">
+    <h3 style="margin:0 0 10px;font-size:13px;color:#00d4ff;text-transform:uppercase;letter-spacing:0.8px;">✍️ Create Custom Message</h3>
+    <textarea id="scbCustomMsgText" rows="3" placeholder="Type a custom positive message for the bot to post…" style="font-size:13px;resize:vertical;margin-bottom:8px;"></textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <select id="scbCustomMsgType" style="margin:0;width:auto;min-width:130px;font-size:12px;padding:6px 10px;">
+        <option value="positive">💙 Positive</option>
+        <option value="motivational">🌟 Motivational</option>
+        <option value="discussion">💬 Discussion</option>
+        <option value="safety">🛡️ Safety Tip</option>
+        <option value="milestone">🎉 Milestone</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6a90b8;cursor:pointer;">
+        <input type="checkbox" id="scbCustomMsgPin" style="width:auto;margin:0;cursor:pointer;"> 📌 Pin this message
+      </label>
+      <button onclick="scbAddCustomMessage()" style="font-size:12px;padding:6px 14px;border-radius:10px;border-color:rgba(57,255,20,0.5);color:#39FF14;background:rgba(57,255,20,0.07);">➕ Add Message</button>
+      <button onclick="scbPostNowCustom()" style="font-size:12px;padding:6px 14px;border-radius:10px;border-color:rgba(0,174,239,0.5);color:#00AEEF;background:rgba(0,174,239,0.07);">⚡ Post Now</button>
+    </div>
+  </div>
+
+  <!-- Pinned Daily Message -->
+  <div class="section-card" style="margin-bottom:16px;border-color:rgba(255,200,50,0.28);">
+    <h3 style="margin:0 0 10px;font-size:13px;color:#ffe566;text-transform:uppercase;letter-spacing:0.8px;">📌 Pinned Daily Message</h3>
+    <div id="scbPinnedMsgDisplay" style="font-size:13px;color:#9bbdd8;font-style:italic;margin-bottom:8px;">No message pinned.</div>
+    <button onclick="scbClearPinnedMsg()" style="font-size:11px;padding:4px 12px;border-radius:8px;border-color:rgba(255,51,102,0.4);color:#ff6680;background:rgba(255,51,102,0.06);">🗑 Clear Pinned</button>
+  </div>
+
+  <!-- ── Message Manager ── -->
+  <div class="section-card" style="margin-bottom:16px;">
+
+    <!-- Header row -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <h3 style="margin:0;font-size:13px;color:#00d4ff;text-transform:uppercase;letter-spacing:0.8px;">📋 Message Manager</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="scb-mm-btn scb-mm-btn-nuke" onclick="scbMsgDeleteAll()">🗑 Delete All</button>
+        <button class="scb-mm-btn scb-mm-btn-del"  onclick="scbMsgDeleteToday()">🗓 Delete Today</button>
+        <button onclick="scbLoadHistory()" style="font-size:11px;padding:5px 10px;border-radius:8px;">🔄 Refresh</button>
+      </div>
+    </div>
+
+    <!-- Tabs: Live | Hidden | Recycle Bin | Founder Log -->
+    <div class="scb-mm-tabs">
+      <button class="scb-mm-tab active" id="scbMmTabLive"    onclick="scbMmSwitchTab('live')">Live <span class="scb-mm-count" id="scbMmCountLive">0</span></button>
+      <button class="scb-mm-tab"        id="scbMmTabHidden"  onclick="scbMmSwitchTab('hidden')">Hidden <span class="scb-mm-count" id="scbMmCountHidden">0</span></button>
+      <button class="scb-mm-tab"        id="scbMmTabBin"     onclick="scbMmSwitchTab('bin')">🗑 Bin <span class="scb-mm-count" id="scbMmCountBin">0</span></button>
+      <button class="scb-mm-tab"        id="scbMmTabLog"     onclick="scbMmSwitchTab('log')">📜 Log <span class="scb-mm-count" id="scbMmCountLog">0</span></button>
+    </div>
+
+    <!-- Toolbar (search + bulk actions) -->
+    <div class="scb-mm-toolbar" id="scbMmToolbar">
+      <input type="checkbox" class="scb-mm-sel-all" id="scbMmSelAll" title="Select all" onchange="scbMmToggleAll(this.checked)">
+      <input type="text" id="scbMmSearch" placeholder="🔍 Search messages…" oninput="scbMmApplyFilter()">
+      <select id="scbMmFilterType" onchange="scbMmApplyFilter()" style="min-width:105px;">
+        <option value="">All types</option>
+        <option value="positive">💙 Positive</option>
+        <option value="motivational">🌟 Motivational</option>
+        <option value="discussion">💬 Discussion</option>
+        <option value="safety">🛡️ Safety</option>
+        <option value="welcome">👋 Welcome</option>
+        <option value="milestone">🎉 Milestone</option>
+      </select>
+      <select id="scbMmFilterDate" onchange="scbMmApplyFilter()" style="min-width:90px;">
+        <option value="">All dates</option>
+        <option value="today">Today</option>
+        <option value="week">This week</option>
+      </select>
+      <button class="scb-mm-btn scb-mm-btn-hide" onclick="scbMsgHideSelected()">👁 Hide</button>
+      <button class="scb-mm-btn scb-mm-btn-del"  onclick="scbMsgDeleteSelected()">🗑 Delete</button>
+    </div>
+
+    <!-- List -->
+    <div id="scbHistoryList"><div class="empty-state" style="padding:20px 0;">No bot posts yet.</div></div>
+
+  </div>
+
+</div><!-- end adminTab-shadowbot -->
+
+<!-- ── Edit Message Modal ── -->
+<div id="scbEditModal">
+  <div class="scb-edit-card">
+    <h4>✏️ Edit Bot Message</h4>
+    <div style="font-size:10px;color:#3a6a8a;margin-bottom:8px;">
+      Edits update the <code style="color:#66ffaa;background:rgba(57,255,20,0.07);padding:0 4px;border-radius:3px;">botHistory</code> log entry only.
+      The live feed post is not changed (delete &amp; re-post to update it there).
+    </div>
+    <textarea id="scbEditText" rows="4" placeholder="Message text…"></textarea>
+    <div class="scb-edit-footer">
+      <button onclick="scbEditModalClose()" style="font-size:12px;padding:6px 14px;border-radius:9px;border-color:rgba(0,174,239,0.3);color:#6a90b8;">Cancel</button>
+      <button onclick="scbEditModalSave()" style="font-size:12px;padding:6px 16px;border-radius:9px;background:linear-gradient(135deg,#003d99,#0066cc);border-color:rgba(0,174,239,0.65);color:#fff;font-weight:700;">💾 Save Edit</button>
+    </div>
+  </div>
+</div>
+
+</div>
+
 </div><!-- end adminPage -->
 
 <!-- ═══════════════════════════════════════════════════════════
@@ -7767,7 +8469,7 @@ body.arcade-fs-ios body::after { display:none !important; }
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-  import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, onSnapshot, arrayUnion, runTransaction, where, getDocs, writeBatch, increment, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, getDoc, getDocFromCache, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, onSnapshot, arrayUnion, runTransaction, where, getDocs, writeBatch, increment, serverTimestamp, enableNetwork, disableNetwork } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
   import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js";
 
   const firebaseConfig = {
@@ -7805,7 +8507,7 @@ body.arcade-fs-ios body::after { display:none !important; }
       db, doc, getDoc, setDoc, updateDoc, deleteDoc,
       collection, addDoc, query, orderBy, limit,
       onSnapshot, arrayUnion, where, getDocs, writeBatch, increment,
-      serverTimestamp,
+      serverTimestamp, enableNetwork, disableNetwork,
   };
 
   // ── Auth-ready queue — lets non-module scripts register callbacks that
@@ -8076,22 +8778,52 @@ body.arcade-fs-ios body::after { display:none !important; }
   });
 
   // ── Network reconnect: when the browser comes back online, restore presence
-  //    and re-open the active DM chat if one was open. ──
-  window.addEventListener('online', () => {
+  //    and re-open the active DM chat if one was open.
+  //    Wait for enableNetwork() to complete (set by _snxFirestoreNetworkMonitor)
+  //    before reopening the chat so Firestore is actually ready. ──
+  window.addEventListener('online', async () => {
       console.log('[SNX] Network reconnected — restoring presence');
+      // Small delay so _snxFirestoreNetworkMonitor's enableNetwork() can run first
+      await new Promise(r => setTimeout(r, 800));
       if (currentUser) {
-          // Re-mark user as online in Firestore
           try { updateDoc(doc(db, "users", currentUser.uid), { status: "online", lastSeen: Date.now() }); } catch(_) {}
-          // Re-open the active DM chat channel so messages resume
+          _snxSetChatConnState('connected');
           if (activeChatTargetUid && typeof window.establishDirectMessageChannel === 'function') {
               window.establishDirectMessageChannel(activeChatTargetUid);
           }
-          // Re-open the profile chat modal if it was open
           if (typeof window._m_tgtUid !== 'undefined' && window._m_tgtUid && typeof window.ipcOpen === 'function') {
               window.ipcOpen(window._m_tgtUid);
           }
       }
   });
+
+  window.addEventListener('offline', () => {
+      _snxSetChatConnState('offline');
+  });
+
+  /* ── Chat connection-state helper ─────────────────────────────────────
+     Updates the chat header status bar to show 🟢 / 🟡 / 🔴 when no
+     conversation partner is selected (i.e. before a chat is opened).
+     Does nothing while a chat is open (the live onSnapshot controls it).
+  ─────────────────────────────────────────────────────────────────── */
+  function _snxSetChatConnState(state) {
+      // Only update the placeholder text — don't overwrite an active chat partner's status
+      if (activeChatTargetUid) return;
+      const el = document.getElementById('chatHeaderStatus');
+      if (!el) return;
+      el.className = 'chat-header-status';
+      if (state === 'connected') {
+          el.textContent = '🟢 Connected';
+          el.classList.add('chat-header-status-connected');
+      } else if (state === 'reconnecting') {
+          el.textContent = '🟡 Reconnecting…';
+          el.classList.add('chat-header-status-reconnecting');
+      } else if (state === 'offline') {
+          el.textContent = '🔴 Offline — messages will sync when back online';
+          el.classList.add('chat-header-status-failed');
+      }
+  }
+  window._snxSetChatConnState = _snxSetChatConnState;
 
   // ── visualViewport: shrink the chat card when the mobile keyboard appears
   //    so the footer + send button are never hidden behind the keyboard. ──
@@ -8308,6 +9040,10 @@ body.arcade-fs-ios body::after { display:none !important; }
           // Start push notifications (requests permission if not yet granted)
           window._snxInitPush = initPushNotifications;
           setTimeout(initPushNotifications, 2500);
+          // ── Shadow Chat Bot init (welcome + safety watcher) ──
+          if (typeof window.scbInit === 'function') {
+              window.scbInit(user, userData).catch(() => {});
+          }
 
       } else {
           // Dismiss the auth gate unconditionally — we now know the auth state.
@@ -8373,6 +9109,42 @@ body.arcade-fs-ios body::after { display:none !important; }
           }
       }
   });
+
+  /* ── Firebase connection loss detection + auto-reconnect ──────────────
+     Tracks browser online/offline state and re-enables the Firestore
+     network when connectivity is restored so queued writes flush.
+     NOTE: We intentionally do NOT call disableNetwork() on offline —
+     doing so cancels pending Promises (e.g. getDoc inside a chat open)
+     and prevents onSnapshot from serving local cache.  Firestore handles
+     its own offline queuing automatically without disableNetwork().
+  ─────────────────────────────────────────────────────────────────── */
+  (function _snxFirestoreNetworkMonitor() {
+    // Expose so the online handler below can await re-enable before reopening chat
+    window._snxFsNetworkEnabled = true;
+
+    async function _onNetworkRestored() {
+      if (window._snxFsNetworkEnabled) return;
+      try {
+        await enableNetwork(db);
+        window._snxFsNetworkEnabled = true;
+        console.log('[SNX] Firestore network re-enabled — pending writes flushed.');
+        toastNotification('📶 Back online — syncing…');
+      } catch(e) {
+        console.warn('[SNX] enableNetwork error:', e);
+        window._snxFsNetworkEnabled = true; // assume OK so chat can retry
+      }
+    }
+
+    function _onNetworkLost() {
+      // Mark as disabled so the online handler knows to re-enable first
+      // Do NOT call disableNetwork() — it cancels in-flight Promises
+      window._snxFsNetworkEnabled = false;
+      console.log('[SNX] Browser went offline — Firestore will serve from cache.');
+    }
+
+    window.addEventListener('online',  _onNetworkRestored);
+    window.addEventListener('offline', _onNetworkLost);
+  })();
 
   /* ── Sync maintenance status badge + toggle in Founder Controls ── */
   function _syncMaintUI(isOn) {
@@ -8671,14 +9443,33 @@ body.arcade-fs-ios body::after { display:none !important; }
            + ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
 
+  // ── Bot identity constant — kept here so initTimelineStream and
+  //    scheduleExpiredPostCleanup can reference it without depending on
+  //    the Shadow Chat Bot IIFE which runs after this module script. ──
+  const BOT_UID = 'shadow-chat-bot';
+
   function initTimelineStream() {
       // Tear down any existing listener before (re)subscribing with a new limit
       if (feedUnsubscribe) { feedUnsubscribe(); feedUnsubscribe = null; }
+
+      // Show a loading skeleton while the first snapshot is in flight
+      const _feedContainer = document.getElementById("feedPosts");
+      if (_feedContainer && !_feedContainer.querySelector('.postBox')) {
+          _feedContainer.innerHTML = `
+            <div id="feedLoadingState" style="text-align:center;padding:48px 20px;color:#3a5a7a;">
+                <div style="font-size:32px;margin-bottom:14px;animation:spin 1.2s linear infinite;display:inline-block;">⚡</div>
+                <div style="font-size:14px;color:#4a7aaa;margin-top:8px;">Loading the Eclipse…</div>
+            </div>`;
+      }
 
       const qElements = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(scrollLimit));
       feedUnsubscribe = onSnapshot(qElements, (snapshot) => {
           const container = document.getElementById("feedPosts");
           const nowMs = Date.now();
+
+          // Clear loading state on first real snapshot
+          const loadingEl = container.querySelector('#feedLoadingState');
+          if (loadingEl) loadingEl.remove();
 
           // Filter out expired posts (48h TTL) — they may still be in Firestore until
           // the background cleanup runs, so we skip them here silently.
@@ -8718,8 +9509,10 @@ body.arcade-fs-ios body::after { display:none !important; }
               const post = pDoc.data();
               if (!incomingIds.has(pDoc.id)) return;
 
-              const isLiked = post.likedBy?.includes(currentUser.uid);
-              const isOwner = post.uid === currentUser.uid;
+              const isLiked   = post.likedBy?.includes(currentUser.uid);
+              const isOwner   = post.uid === currentUser.uid;
+              const isBotPost = (post.uid === BOT_UID || post.isBot === true);
+              const isFounderViewing = window._snxRole === 'founder';
               // Show "X time ago" beneath the author name
               const ageLabel = `<span style="font-size:11px;color:#4a7a9a;white-space:nowrap;">${_postTimeAgo(post.createdAt || post.timestamp)}</span>`;
 
@@ -8800,6 +9593,10 @@ body.arcade-fs-ios body::after { display:none !important; }
                       if (commentBox) commentBox.dataset.count = newCount;
                   }
 
+                  // 4. Comment count badge in action row
+                  const commCountEl = existingEl.querySelector(`#comm-count-${pDoc.id}`);
+                  if (commCountEl) commCountEl.textContent = (post.comments || []).length;
+
                   // 4. Keep post in correct DOM position (cheap — only moves if out of order)
                   const posIdx = finalOrderedIds.indexOf(pDoc.id);
                   const children = [...container.children];
@@ -8824,7 +9621,7 @@ body.arcade-fs-ios body::after { display:none !important; }
                         <div style="font-size:11px;color:#00cc66;margin-bottom:6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
                             🔄 <b>${escFeed(post.authorName)}</b>${reposterBadges} reposted
                             <span style="color:#3a6a9a;">· original by</span>
-                            <b class="post-author-link" style="font-size:11px;" onclick="viewProfile('${post.originalAuthorUid}')">${escFeed(post.originalAuthorName)} (@${escFeed(post.originalAuthorHandle)})</b>${origBadges}
+                            <b class="post-author-link" style="font-size:11px;">${escFeed(post.originalAuthorName)} (@${escFeed(post.originalAuthorHandle)})</b>${origBadges}
                         </div>`;
                   }
 
@@ -8850,7 +9647,7 @@ body.arcade-fs-ios body::after { display:none !important; }
                         <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:80%;">
                             <div class="post-author-avatar" style="${avatarStyle}" onclick="viewProfile('${authorUid}')" title="View profile" data-uid="${authorUid}">${authorAvatar ? '' : escFeed(avatarInitial)}</div>
                             <span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;">
-                                <b class="post-author-link" onclick="viewProfile('${authorUid}')">${escFeed(authorName)} (@${escFeed(authorHandle)})</b>${primaryBadges}${authorMoodHtml}
+                                <b class="post-author-link">${escFeed(authorName)} (@${escFeed(authorHandle)})</b>${primaryBadges}${authorMoodHtml}
                             </span>
                         </div>
                         <div style="display:flex;align-items:center;gap:6px;">
@@ -8862,14 +9659,16 @@ body.arcade-fs-ios body::after { display:none !important; }
                     ${buildTaggedStrip(post.taggedUsers || [], pDoc.id, post.uid)}
                     <div class="action-row">
                         <button class="react-btn ${isLiked ? 'liked' : ''}" id="like-btn-${pDoc.id}" onclick="processPostReaction('${pDoc.id}','like',this)">❤️ <span class="like-count">${post.likes || 0}</span></button>
+                        <button class="react-btn" id="comm-toggle-${pDoc.id}" onclick="toggleCommentBox('${pDoc.id}')">💬 <span id="comm-count-${pDoc.id}">${(post.comments || []).length}</span></button>
                         ${!post.isRepost ? `<button class="react-btn" id="repost-btn-${pDoc.id}" onclick="processPostReaction('${pDoc.id}','repost',this)">🔄 <span class="repost-count">${post.repostCount || 0}</span></button>` : ''}
                         <button class="react-btn" onclick="sharePostItem('${pDoc.id}')">🔗 Share</button>
-                        ${isOwner ? `<button class="react-btn btn-del-post" onclick="window.deleteTimelinePost('${pDoc.id}')">🗑️ Delete</button>` : ''}
+                        ${isOwner && !isBotPost ? `<button class="react-btn btn-del-post" onclick="window.deleteTimelinePost('${pDoc.id}')">🗑️ Delete</button>` : ''}
+                        ${isBotPost && isFounderViewing ? `<button class="react-btn btn-del-bot-post" title="Delete Shadow Bot message (Founder only)" onclick="window.deleteBotPost('${pDoc.id}')">🤖🗑 Delete Bot Msg</button>` : ''}
                     </div>
                     <div class="commentBox" id="comments-${pDoc.id}" data-count="0"></div>
-                    <div class="comment-input-row">
+                    <div class="comment-input-row" id="comm-input-row-${pDoc.id}">
                         <input id="input-comm-${pDoc.id}" placeholder="Write a comment…" autocomplete="off">
-                        <button class="comment-submit-btn" onclick="submitPostComment('${pDoc.id}')">Post</button>
+                        <button class="comment-submit-btn" id="comm-submit-${pDoc.id}" onclick="submitPostComment('${pDoc.id}')">Post</button>
                     </div>
                   `;
 
@@ -8883,6 +9682,28 @@ body.arcade-fs-ios body::after { display:none !important; }
                   if (cb) cb.dataset.count = (post.comments || []).length;
               }
           });
+      }, (feedErr) => {
+          // ── Firestore error handler ──
+          // Fires on permission denial, missing index, or network failure.
+          // Without this, the feed silently stays blank with no user feedback.
+          console.error('[Feed] onSnapshot error:', feedErr.code || feedErr.message || feedErr);
+          const container = document.getElementById("feedPosts");
+          if (!container) return;
+          // Only replace the loading placeholder — don't wipe live posts on a transient error
+          const loadingEl = container.querySelector('#feedLoadingState');
+          if (loadingEl) loadingEl.remove();
+          if (!container.querySelector('.postBox')) {
+              const isPermission = feedErr.code === 'permission-denied';
+              container.innerHTML = `
+                <div style="text-align:center;padding:48px 20px;color:#3a5a7a;">
+                    <div style="font-size:36px;margin-bottom:14px;">${isPermission ? '🔒' : '📡'}</div>
+                    <div style="font-size:14px;font-weight:700;color:#ff6680;margin-bottom:8px;">
+                        ${isPermission ? 'Access denied — please sign out and sign back in.' : 'Could not load posts — check your connection.'}
+                    </div>
+                    <div style="font-size:12px;color:#3a5a7a;margin-bottom:16px;">${(feedErr.message || feedErr.code || 'Unknown error').replace(/</g,'&lt;')}</div>
+                    <button onclick="initTimelineStream()" style="padding:8px 20px;border-radius:20px;border:1px solid rgba(0,174,239,0.5);background:rgba(0,30,70,0.7);color:#00AEEF;font-size:12px;cursor:pointer;">🔄 Retry</button>
+                </div>`;
+          }
       });
   }
 
@@ -8975,6 +9796,22 @@ body.arcade-fs-ios body::after { display:none !important; }
       toastNotification("Post deleted.");
   };
 
+  // Delete a Shadow Bot post — founder only (enforced client-side AND by Firestore rules)
+  window.deleteBotPost = async (id) => {
+      if (window._snxRole !== 'founder') {
+          toastNotification('⛔ Founder access only.');
+          return;
+      }
+      if (!confirm('Delete this Shadow Bot message? This cannot be undone.')) return;
+      try {
+          await deleteDoc(doc(db, 'posts', id));
+          toastNotification('🤖🗑 Shadow Bot message deleted.');
+      } catch (err) {
+          console.error('[deleteBotPost]', err);
+          toastNotification('❌ Delete failed: ' + (err.message || 'unknown error'));
+      }
+  };
+
   /* ═══════════════════════════════════════════════════════════════
      BACKGROUND 24-HOUR POST CLEANUP
      Silently removes expired posts and their associated data.
@@ -8989,6 +9826,11 @@ body.arcade-fs-ios body::after { display:none !important; }
           const batch = writeBatch(db);
           let count = 0;
           snap.forEach(pDoc => {
+              const d = pDoc.data();
+              // Skip Shadow Bot posts — only the Founder can delete those,
+              // and they expire naturally; a non-founder cleanup would throw
+              // PERMISSION_DENIED and abort the entire batch.
+              if (d.uid === BOT_UID || d.isBot === true) return;
               batch.delete(doc(db, 'posts', pDoc.id));
               count++;
           });
@@ -9235,6 +10077,7 @@ body.arcade-fs-ios body::after { display:none !important; }
   }
 
   window.processPostReaction = async (postId, type, element) => {
+      if (!currentUser) { toastNotification("You must be logged in to react."); return; }
       const ref = doc(db, "posts", postId);
 
       // Floating reaction visual
@@ -9249,6 +10092,8 @@ body.arcade-fs-ios body::after { display:none !important; }
       setTimeout(() => floatEl.remove(), 1000);
 
       if (type === 'like') {
+          // Prevent double-tap spam — disable button during transaction
+          element.disabled = true;
           // Optimistically update the button while Firestore transaction completes
           const likeBtn = document.getElementById(`like-btn-${postId}`);
           const wasLiked = likeBtn && likeBtn.classList.contains('liked');
@@ -9259,29 +10104,43 @@ body.arcade-fs-ios body::after { display:none !important; }
               else          { likeBtn.classList.add('liked');    countEl.textContent = cur + 1; }
           }
           let postOwnerUid = null;
-          await runTransaction(db, async (transaction) => {
-              const sfDoc = await transaction.get(ref);
-              const data = sfDoc.data();
-              postOwnerUid = data.uid;
-              let arr = data.likedBy || [];
-              const idx = arr.indexOf(currentUser.uid);
-              if (idx > -1) {
-                  arr.splice(idx, 1);
+          try {
+              await runTransaction(db, async (transaction) => {
+                  const sfDoc = await transaction.get(ref);
+                  if (!sfDoc.exists()) throw new Error('post-not-found');
+                  const data = sfDoc.data();
+                  postOwnerUid = data.uid;
+                  let arr = Array.isArray(data.likedBy) ? [...data.likedBy] : [];
+                  const idx = arr.indexOf(currentUser.uid);
+                  if (idx > -1) {
+                      arr.splice(idx, 1);
+                  } else {
+                      arr.push(currentUser.uid);
+                  }
                   transaction.update(ref, { likedBy: arr, likes: arr.length });
-              } else {
-                  arr.push(currentUser.uid);
-                  transaction.update(ref, { likedBy: arr, likes: arr.length });
-              }
-          });
-          // Send like notification to post owner (only on like, not unlike)
-          if (!wasLiked && postOwnerUid && postOwnerUid !== currentUser.uid) {
-              await pushNotification(postOwnerUid, {
-                  type: 'like',
-                  fromUid: currentUser.uid,
-                  fromName: userData.displayName,
-                  fromAvatar: userData.avatar || '',
-                  postId
               });
+              // Send like notification to post owner (only on like, not unlike)
+              if (!wasLiked && postOwnerUid && postOwnerUid !== currentUser.uid) {
+                  pushNotification(postOwnerUid, {
+                      type: 'like',
+                      fromUid: currentUser.uid,
+                      fromName: userData.displayName,
+                      fromAvatar: userData.avatar || '',
+                      postId
+                  }).catch(() => {});
+              }
+          } catch(e) {
+              console.error('[SNX] Like failed:', e);
+              // Roll back optimistic UI
+              if (likeBtn) {
+                  const countEl = likeBtn.querySelector('.like-count');
+                  const cur = parseInt(countEl.textContent) || 0;
+                  if (wasLiked) { likeBtn.classList.add('liked');    countEl.textContent = cur + 1; }
+                  else          { likeBtn.classList.remove('liked'); countEl.textContent = Math.max(0, cur - 1); }
+              }
+              toastNotification("Could not save like — please try again.");
+          } finally {
+              element.disabled = false;
           }
       } else if (type === 'repost') {
           await handleRepost(postId, element);
@@ -9486,7 +10345,9 @@ body.arcade-fs-ios body::after { display:none !important; }
   }
 
   window.submitPostComment = async (id) => {
+      if (!currentUser) { toastNotification("You must be logged in to comment."); return; }
       const el = document.getElementById(`input-comm-${id}`);
+      const btn = document.getElementById(`comm-submit-${id}`);
       const txt = el.value.trim();
       if (!txt) return;
       // ── AI Safety scan ──
@@ -9494,38 +10355,50 @@ body.arcade-fs-ios body::after { display:none !important; }
           const _blocked = await window.snxAIScan(txt, 'comment');
           if (_blocked) { el.value = txt; return; }  // restore text so user can edit
       }
+      // Optimistic UI: clear input + show loading state
       el.value = "";
-      await updateDoc(doc(db, "posts", id), {
-          comments: arrayUnion({
-              authorUid:       currentUser.uid,
-              author:          userData.displayName,
-              authorBadges:    userData.badges || [],
-              authorRole:      userData.role   || 'member',
-              authorMoodType:  (userData.profileCustom?.moodType  || userData.moodType  || ''),
-              authorMoodValue: (userData.profileCustom?.moodValue || userData.moodValue || ''),
-              text:            txt,
-              ts:              Date.now()
-          })
-      });
-      // Send comment notification to post owner
+      el.disabled = true;
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
       try {
-          const postSnap = await getDoc(doc(db, "posts", id));
-          if (postSnap.exists()) {
-              const postData = postSnap.data();
-              if (postData.uid !== currentUser.uid) {
-                  await pushNotification(postData.uid, {
-                      type: 'comment',
-                      fromUid: currentUser.uid,
-                      fromName: userData.displayName,
-                      fromAvatar: userData.avatar || '',
-                      postId: id,
-                      commentText: txt.substring(0, 60)
-                  });
+          await updateDoc(doc(db, "posts", id), {
+              comments: arrayUnion({
+                  authorUid:       currentUser.uid,
+                  author:          userData.displayName,
+                  authorBadges:    userData.badges || [],
+                  authorRole:      userData.role   || 'member',
+                  authorMoodType:  (userData.profileCustom?.moodType  || userData.moodType  || ''),
+                  authorMoodValue: (userData.profileCustom?.moodValue || userData.moodValue || ''),
+                  text:            txt,
+                  ts:              Date.now()
+              })
+          });
+          // Send comment notification to post owner (best-effort)
+          try {
+              const postSnap = await getDoc(doc(db, "posts", id));
+              if (postSnap.exists()) {
+                  const postData = postSnap.data();
+                  if (postData.uid !== currentUser.uid) {
+                      pushNotification(postData.uid, {
+                          type: 'comment',
+                          fromUid: currentUser.uid,
+                          fromName: userData.displayName,
+                          fromAvatar: userData.avatar || '',
+                          postId: id,
+                          commentText: txt.substring(0, 60)
+                      });
+                  }
               }
-          }
-          // Detect @mentions in the comment text (isComment = true)
-          detectAndNotifyMentions(txt, id, true);
-      } catch(e) { /* best-effort */ }
+              detectAndNotifyMentions(txt, id, true);
+          } catch(_) { /* best-effort */ }
+      } catch(e) {
+          console.error('[SNX] Comment save failed:', e);
+          toastNotification("Could not save comment — please try again.");
+          el.value = txt; // restore text so user doesn't lose it
+      } finally {
+          el.disabled = false;
+          if (btn) { btn.disabled = false; btn.textContent = "Post"; }
+          el.focus();
+      }
   };
 
   // Delete a single comment by its stable ts+authorUid key — race-condition-safe transaction
@@ -9579,6 +10452,24 @@ body.arcade-fs-ios body::after { display:none !important; }
           box.appendChild(d);
       });
   }
+
+  /* ── toggleCommentBox — show/hide the comment box + input for a post ── */
+  window.toggleCommentBox = function(postId) {
+      const inputRow = document.getElementById(`comm-input-row-${postId}`);
+      const commBox  = document.getElementById(`comments-${postId}`);
+      const commCount = parseInt((document.getElementById(`comm-count-${postId}`) || {}).textContent || '0');
+      // Always show if there are comments; otherwise toggle
+      if (!inputRow) return;
+      const isHidden = inputRow.style.display === 'none';
+      if (isHidden) {
+          inputRow.style.display = '';
+          if (commBox && commCount > 0) commBox.style.display = 'block';
+          const inp = document.getElementById(`input-comm-${postId}`);
+          if (inp) inp.focus();
+      } else {
+          inputRow.style.display = 'none';
+      }
+  };
 
   // ── Wire comment input Enter key (delegated — works for dynamically created inputs) ──
   document.getElementById("feedPosts").addEventListener("keydown", (e) => {
@@ -10803,7 +11694,7 @@ body.arcade-fs-ios body::after { display:none !important; }
 
   // Open a chat panel with a given user
   window.establishDirectMessageChannel = async function(targetUid) {
-      if(targetUid === currentUser.uid) return;
+      if (!currentUser || targetUid === currentUser.uid) return;
 
       const channelId = [currentUser.uid, targetUid].sort().join('_');
       activeChatChannelId = channelId;
@@ -10811,20 +11702,48 @@ body.arcade-fs-ios body::after { display:none !important; }
 
       navTo('messagesInbox');
 
-      // Ensure chat doc exists
-      await setDoc(doc(db, "chats", channelId), {
+      // Show spinner immediately — will be replaced by messages or empty-state
+      const chatBox = document.getElementById('chatBoxContainer');
+      if (chatBox) chatBox.innerHTML = '<div class="chat-empty-state"><div class="snx-reconnect-spinner"><span></span><span></span><span></span></div><br>Connecting…</div>';
+      const sendInput = document.getElementById('msgInputBox');
+      if (sendInput) { sendInput.placeholder = 'Type a message…'; sendInput.disabled = false; }
+
+      // ── Step 1: Fetch partner profile — try cache first (instant, works offline),
+      //    then fall back to a server read with an 8 s timeout so we never hang. ──
+      let tData;
+      try {
+          // Cache hit — returns immediately even if offline
+          const cached = await getDocFromCache(doc(db, "users", targetUid));
+          tData = cached.exists() ? cached.data() : null;
+      } catch(_) { tData = null; }
+
+      if (!tData) {
+          try {
+              // Server read with timeout so a slow/no network doesn't block forever
+              const serverRead = getDoc(doc(db, "users", targetUid));
+              const timeout    = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000));
+              const snap = await Promise.race([serverRead, timeout]);
+              tData = snap.exists() ? snap.data() : null;
+          } catch(_) { tData = null; }
+      }
+
+      // Final fallback — still open the chat even if we can't load the profile
+      if (!tData) {
+          tData = { displayName: targetUid.substring(0, 8), avatar: '', status: 'offline', mood: '' };
+      }
+
+      // ── Step 2: Fire-and-forget setDoc to ensure the chat doc exists.
+      //    We do NOT await this — the onSnapshot below serves from local cache
+      //    immediately and will update when the server write completes.
+      setDoc(doc(db, "chats", channelId), {
           participants: [currentUser.uid, targetUid],
           initialized: true,
           [`unread_${currentUser.uid}`]: 0
-      }, { merge: true });
+      }, { merge: true }).catch(e => {
+          console.error('[DM] setDoc error:', e.code || e.message || e);
+      });
 
-      // Fetch partner profile
-      const targetSnap = await getDoc(doc(db, "users", targetUid));
-      const tData = targetSnap.exists()
-          ? targetSnap.data()
-          : { displayName: targetUid.substring(0,8), avatar: '', status: 'offline', mood: '' };
-
-      // Populate chat header — only the avatar is tappable, name is plain text
+      // ── Step 3: Populate chat header ──
       const hAvatar = document.getElementById("chatHeaderAvatar");
       hAvatar.style.backgroundImage = tData.avatar ? `url('${tData.avatar}')` : '';
       hAvatar.style.cursor = 'pointer';
@@ -10836,20 +11755,19 @@ body.arcade-fs-ios body::after { display:none !important; }
       hName.style.cursor = 'default';
       hName.title = '';
       hName.onclick = null;
-      // Header status updated live below ↓
+      // Show 🟡 while we wait for the first snapshot
+      document.getElementById("chatHeaderStatus").textContent = '🟡 Connecting…';
 
-      // Show footer + panel — use classes, never inline style, so CSS media queries stay in control
+      // ── Step 4: Show the chat panel ──
       document.getElementById("chatFooter").classList.remove("footer-hidden");
       document.getElementById("chatEmptyState").style.display = "none";
       document.getElementById("msgLayout").classList.add("chat-open");
-      // Remove any lingering inline display override so CSS flex rules take over
       document.getElementById("msgChatPanel").style.display = "";
 
-      // Highlight active conv item
       document.querySelectorAll('.conv-item').forEach(el =>
           el.classList.toggle('active-conv', el.dataset.uid === targetUid));
 
-      // Live online status listener for the chat header
+      // ── Step 5: Live online-status listener for the chat header ──
       if(activeChatStatusUnsub) { activeChatStatusUnsub(); activeChatStatusUnsub = null; }
       activeChatStatusUnsub = onSnapshot(doc(db, "users", targetUid), (uSnap) => {
           if(!uSnap.exists()) return;
@@ -10859,15 +11777,30 @@ body.arcade-fs-ios body::after { display:none !important; }
           document.getElementById("chatHeaderStatus").textContent = isOn ? '🟢 Online' : (u.mood || '⚫ Offline');
       });
 
-      // Teardown previous chat listener
+      // ── Step 6: Attach messages listener — serves from local cache instantly,
+      //    no await needed. Handles doc-not-yet-existing (first open) gracefully. ──
       if(activeChatUnsubscribe) { activeChatUnsubscribe(); activeChatUnsubscribe = null; }
 
-      // Track whether this is the first snapshot delivery for this conversation
       let _firstSnapshot = true;
+      // Guard: if onSnapshot hasn't fired within 10 s, show a timeout message
+      const _snapTimeoutId = setTimeout(() => {
+          if (!_firstSnapshot) return; // already received a snapshot — cancel
+          const _cb = document.getElementById('chatBoxContainer');
+          if (_cb && activeChatTargetUid === targetUid) {
+              _cb.innerHTML = `<div class="chat-empty-state"><span style="font-size:22px;">🔴</span><br>Could not connect.<br><span style="font-size:11px;color:#3a6a8a;">Check your internet connection.</span><br><button onclick="window.establishDirectMessageChannel('${targetUid}')" style="margin-top:10px;padding:8px 18px;border-radius:20px;font-size:12px;cursor:pointer;">🔄 Retry</button></div>`;
+              document.getElementById('chatHeaderStatus').textContent = '🔴 Connection failed';
+          }
+      }, 10000);
 
-      // Real-time messages listener
       activeChatUnsubscribe = onSnapshot(doc(db, "chats", channelId), async (chatSnap) => {
-          if(!chatSnap.exists()) return;
+          clearTimeout(_snapTimeoutId); // snapshot arrived — cancel the timeout
+          // Doc doesn't exist yet (first-ever open, setDoc still in flight) — show empty state
+          if(!chatSnap.exists()) {
+              const msgContainer = document.getElementById("chatBoxContainer");
+              if (msgContainer) msgContainer.innerHTML = `<div class="chat-empty-state"><span>👋</span>Say hello to ${escapeHtml(tData.displayName)}!</div>`;
+              _firstSnapshot = false;
+              return;
+          }
           const cData = chatSnap.data();
           const list  = cData.messages || [];
           const isSeen = cData.readReceipt === true;
@@ -10995,6 +11928,24 @@ body.arcade-fs-ios body::after { display:none !important; }
                   try { await updateDoc(doc(db, "chats", channelId), upd); } catch(_) {}
               }
           }
+      }, (snapErr) => {
+          clearTimeout(_snapTimeoutId);
+          const errCode = snapErr.code || snapErr.message || 'network-error';
+          console.error('[DM] onSnapshot error:', errCode);
+          const chatBox = document.getElementById('chatBoxContainer');
+          if (chatBox && activeChatTargetUid === targetUid) {
+              chatBox.innerHTML = `<div class="chat-empty-state"><span style="font-size:22px;">🔴</span><br>Connection lost.<br><span style="font-size:11px;color:#3a6a8a;">${errCode}</span><br><button onclick="window.establishDirectMessageChannel('${targetUid}')" style="margin-top:10px;padding:8px 18px;border-radius:20px;font-size:12px;cursor:pointer;">🔄 Reconnect</button></div>`;
+          }
+          const hSt = document.getElementById('chatHeaderStatus');
+          if (hSt && activeChatTargetUid === targetUid) hSt.textContent = '🔴 Connection failed';
+          // Auto-retry after 5 s if this conversation is still the active one
+          setTimeout(() => {
+              if (activeChatTargetUid === targetUid && typeof window.establishDirectMessageChannel === 'function') {
+                  const hSt2 = document.getElementById('chatHeaderStatus');
+                  if (hSt2 && activeChatTargetUid === targetUid) hSt2.textContent = '🟡 Reconnecting…';
+                  window.establishDirectMessageChannel(targetUid);
+              }
+          }, 5000);
       });
 
       // Typing tracking (debounced) — replace previous handler to avoid stale closures
@@ -11246,6 +12197,9 @@ body.arcade-fs-ios body::after { display:none !important; }
       );
       const unsub = onSnapshot(q, async (snap) => {
           const inboxBox = document.getElementById("inboxChannelsList");
+          // Inbox snapshot received — clear any prior error state
+          const _inboxErr = document.getElementById('inboxConnError');
+          if (_inboxErr) _inboxErr.remove();
           let totalUnreadCount = 0;
 
           const convPromises = [];
@@ -11316,6 +12270,22 @@ body.arcade-fs-ios body::after { display:none !important; }
               badge.classList.remove('visible');
               if(topBadge) topBadge.style.display = 'none';
           }
+      }, (inboxErr) => {
+          // Inbox listener error — log it and show a subtle reconnect notice
+          console.error('[Inbox] onSnapshot error:', inboxErr.code || inboxErr.message || inboxErr);
+          const inboxBox = document.getElementById("inboxChannelsList");
+          if (inboxBox && !document.getElementById('inboxConnError')) {
+              const errEl = document.createElement('div');
+              errEl.id = 'inboxConnError';
+              errEl.style.cssText = 'padding:10px 14px;font-size:12px;color:#3a6a8a;text-align:center;';
+              errEl.innerHTML = `🔴 Inbox disconnected — <button onclick="if(typeof initInboxMonitor==='function'){inboxUnsubscribe&&inboxUnsubscribe();inboxUnsubscribe=initInboxMonitor();}" style="background:none;border:none;color:#00AEEF;cursor:pointer;font-size:12px;text-decoration:underline;">retry</button>`;
+              inboxBox.prepend(errEl);
+          }
+          // Auto-retry after 8 s
+          setTimeout(() => {
+              if (inboxUnsubscribe) { inboxUnsubscribe(); inboxUnsubscribe = null; }
+              inboxUnsubscribe = initInboxMonitor();
+          }, 8000);
       });
       return unsub; // stored by caller for teardown on sign-out
   }
@@ -11815,6 +12785,15 @@ body.arcade-fs-ios body::after { display:none !important; }
           }
           _mRender(cSnap.data(), _m_firstSnap);
           _m_firstSnap = false;
+      }, (snapErr) => {
+          // Log actual Firebase error and auto-retry
+          console.error('[Chat Modal] onSnapshot error:', snapErr.code || snapErr.message || snapErr);
+          if (_m_chId !== capturedChId) return;
+          if (msgBox) msgBox.innerHTML = `<div class="ipc-modal-empty"><div class="ipc-modal-empty-icon">📡</div><div class="ipc-modal-empty-text">Connection lost.<br><span style="font-size:11px;color:#3a6a8a;">${snapErr.code || 'network-error'}</span><br><button onclick="window.ipcOpen('${capturedTgtUid}')" style="margin-top:10px;padding:8px 18px;border-radius:20px;font-size:12px;cursor:pointer;">🔄 Retry</button></div></div>`;
+          // Auto-retry after 5 s
+          setTimeout(() => {
+              if (_m_chId === capturedChId && typeof window.ipcOpen === 'function') window.ipcOpen(capturedTgtUid);
+          }, 5000);
       });
 
       // ── Step 6: Activate the input ──
@@ -13370,6 +14349,12 @@ function show(p) {
 
 /* ── Navigate + highlight active nav item + close menu on mobile ── */
 function navTo(pageId) {
+    // ── Access control: Founder Panel is restricted to role='founder' ──
+    if (pageId === 'adminPage' && window._snxRole !== 'founder') {
+        if (typeof toastNotification === 'function') toastNotification('⛔ Access Denied — Founder access only.');
+        show('feed');
+        return;
+    }
     show(pageId);
     // Update active nav highlight
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active-nav'));
@@ -19834,6 +20819,1542 @@ window._snxArcadeSubscribeInvites = _subscribeInvites;
 
 </div>
 
+<!-- ════════════════════════════════════════════
+     SHADOW CHAT BOT WELCOME POP-UP
+     Shown to each logged-in user on visit (never posts to feed).
+     Fully controlled by Founder settings.
+     ════════════════════════════════════════════ -->
+
+<!-- Welcome pop-up backdrop -->
+<div id="scbWelcomeModal" role="dialog" aria-modal="true" aria-labelledby="scbWelcomeMsgHeadline" aria-hidden="true">
+  <div class="scb-welcome-card" id="scbWelcomeCard">
+
+    <!-- Close (✕) button -->
+    <button class="scb-welcome-close" id="scbWelcomeCloseBtn" title="Close" aria-label="Close welcome message">✕</button>
+
+    <!-- Bot avatar -->
+    <div class="scb-welcome-avatar">🤖</div>
+
+    <!-- Bot label -->
+    <div class="scb-welcome-label">Shadow Chat Bot</div>
+
+    <!-- Headline (personalised greeting) -->
+    <h3 class="scb-welcome-headline" id="scbWelcomeMsgHeadline">Welcome to Shadow Nexus! 💙</h3>
+
+    <!-- Message body -->
+    <p class="scb-welcome-body" id="scbWelcomeMsgBody">We're glad you're here. This is a safe space — no judgment, just connection. You matter, and your story matters. ✨</p>
+
+    <!-- Auto-close progress bar -->
+    <div class="scb-welcome-progress-wrap" id="scbWelcomeProgressWrap">
+      <div class="scb-welcome-progress-bar" id="scbWelcomeProgressBar"></div>
+    </div>
+
+    <!-- Action row -->
+    <button class="scb-welcome-cta" id="scbWelcomeCtaBtn">💙 Thanks, let's go!</button>
+
+    <!-- "Don't show today" -->
+    <label class="scb-welcome-skip" id="scbWelcomeSkipWrap">
+      <input type="checkbox" id="scbWelcomeDontShowToday"> Don't show this again today
+    </label>
+
+  </div>
+</div>
+
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   SHADOW CHAT BOT — AI Community Safety & Positivity System
+   ═══════════════════════════════════════════════════════════
+   Collections:
+     botConfig/settings         — global on/off + settings
+     botHistory/{docId}         — log of all bot posts/events
+   Posts are written to /posts just like user posts, using a
+   bot identity so they appear on the feed naturally.
+   ═══════════════════════════════════════════════════════════ */
+
+(function() {
+'use strict';
+
+/* ── Bot identity ── */
+const BOT_UID     = 'shadow-chat-bot';
+const BOT_NAME    = 'Shadow Chat Bot';
+const BOT_HANDLE  = 'shadowbot';
+const BOT_AVATAR  = ''; // empty = uses 🤖 emoji fallback in post render
+
+/* ── Positive message library ── */
+const SCB_POSITIVE = [
+  '💙 Never give up. You\'re stronger than you think.',
+  '💚 You are never alone. Someone cares about you.',
+  '🌟 Take today one step at a time.',
+  '🌙 Every small victory matters — celebrate them.',
+  '💙 Keep believing in yourself. You\'ve got this.',
+  '✨ You matter, and your story matters.',
+  '🕊️ This community believes in you. Keep going.',
+  '🌱 Growth takes time. Be patient with yourself.',
+  '💪 Hard times don\'t last. Stronger people do.',
+  '🌈 After every storm comes a rainbow. Hold on.',
+  '🔥 Your potential is limitless. Don\'t give up.',
+  '💫 You have survived 100% of your hardest days.',
+  '🤍 Be kind to yourself — you deserve it.',
+  '🌻 Every day is a new beginning. Start fresh.',
+  '⚡ Your light makes this community brighter.',
+  '🦋 Change can be beautiful. Embrace it.',
+  '🛡️ You are safe here. No judgment, just support.',
+  '🎯 One step forward is still progress.',
+  '🌊 It\'s okay to rest. Rest is productive too.',
+  '💖 Your feelings are valid. Always.',
+  '🌟 Someone in this community is grateful you\'re here.',
+  '🕯️ Even a small candle brightens the dark.',
+  '🎵 Your voice matters. Speak up, be heard.',
+  '🌠 Dream big. This community supports you.',
+  '💎 You are valuable exactly as you are.',
+  '🏆 Every expert was once a beginner. Keep learning.',
+  '🌍 Together we\'re stronger than apart.',
+  '💡 Your ideas can change the world. Share them.',
+  '🤗 You don\'t have to face it alone. We\'re here.',
+  '⭐ Your best is always enough. Always.',
+  '💙 Never give up. You\'re stronger than you think.',
+  '💚 You are never alone. Someone cares about you.',
+  '🌟 Take today one step at a time.',
+  '🌙 Every small victory matters.',
+  '💙 Keep believing in yourself.',
+  '✨ You matter, and your story matters.',
+];
+
+const SCB_MOTIVATIONAL = [
+  '🚀 Push past the doubt — your breakthrough is closer than you think!',
+  '💥 You are built for this. Keep moving forward.',
+  '🎖️ Champions are made in the moments they feel like quitting.',
+  '⚡ Consistency beats perfection every single time.',
+  '🌟 Your journey is unique. Compare to no one but yesterday\'s you.',
+  '🏋️ Growth happens outside your comfort zone. Take the leap.',
+  '🎯 One focused hour beats ten distracted hours.',
+  '🔑 Every locked door you face is teaching you something.',
+  '💫 Don\'t count the days — make the days count.',
+  '🌱 Plant seeds of effort today and harvest results tomorrow.',
+];
+
+const SCB_DISCUSSION = [
+  '💬 Daily Question: What\'s one thing you\'re grateful for today? Drop it below! 💙',
+  '💬 Daily Question: What\'s a small win you had recently? Share it — we want to celebrate with you! 🎉',
+  '💬 Daily Question: If you could give your past self one piece of advice, what would it be? 🌟',
+  '💬 Weekly Theme: This week is about *kindness*. What\'s one kind thing you\'ve done lately? 🤍',
+  '💬 Daily Question: What\'s something that made you smile today? 😊',
+  '💬 Community Check-in: How is everyone feeling today? Reply below — no judgment here. 💙',
+  '💬 Daily Question: What\'s your favourite way to relax and recharge? 🌿',
+  '💬 Weekly Theme: *Resilience Week* — share a challenge you overcame and how. You\'re an inspiration! 💪',
+  '💬 Daily Question: What\'s one goal you\'re working towards right now? Let us cheer you on! 🏆',
+  '💬 Daily Question: Name someone in your life you appreciate. You don\'t even have to tag them — just feel it. 💖',
+];
+
+const SCB_SAFETY_RESPONSES = [
+  '💙 Hey, it looks like things might be tough right now. You\'re not alone — we care about you.',
+  '🤍 Your feelings are valid. Please remember you have support here anytime you need it.',
+  '🛡️ This is a safe space. If you\'re struggling, please reach out — to someone here, or a trusted person in your life.',
+  '💚 We noticed some heavy words. It\'s okay to not be okay. But please know: you matter here.',
+  '🌟 Taking a break is perfectly okay. Step away, breathe, and come back when you\'re ready. We\'ll be here. 💙',
+  '🕊️ You are surrounded by people who care. You don\'t have to carry this alone.',
+];
+
+const SCB_MENTAL_HEALTH_RESOURCES = '💙 If you\'re in crisis or need to talk to someone:\n🇺🇸 Crisis Text Line: Text HOME to 741741\n🌍 International Association for Suicide Prevention: https://www.iasp.info/resources/Crisis_Centres/\n🤍 Remember: You deserve support. Reach out.';
+
+const SCB_HARMFUL_PATTERNS = [
+  /\b(hate myself|hate my life|want to die|kill myself|end it all|don't want to be here|can't go on|no reason to live|nobody cares about me|everyone hates me)\b/i,
+  /\b(worthless|hopeless|useless|i'm a burden|i'm nothing|nobody loves me|i give up|can't take it anymore)\b/i,
+  /\b(hurt myself|self harm|cutting myself|hurting myself)\b/i,
+];
+
+const SCB_NEGATIVE_PATTERNS = [
+  /\b(stupid|idiot|moron|retard|loser|trash|garbage|disgusting|pathetic|ugly|fat|freak)\b/i,
+  /\b(shut up|get lost|nobody asked|die|kys|go away|you suck|you're terrible|you're worthless)\b/i,
+];
+
+/* ── Module state ── */
+let _scbConfig = null;        // loaded from Firestore
+let _scbUnsub  = null;        // config listener
+let _scbSchedulerTimer = null;
+let _scbRecentMsgs = [];      // avoid repeating messages
+let _scbSettingsDirty = false;
+
+/* ── Helper: format relative time ── */
+function _scbRelTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - (typeof ts === 'object' && ts.toMillis ? ts.toMillis() : ts);
+  if (diff < 60000)   return 'just now';
+  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000)return Math.floor(diff/3600000) + 'h ago';
+  return Math.floor(diff/86400000) + 'd ago';
+}
+
+/* ── Helper: pick a non-repeating message from an array ── */
+function _scbPick(arr) {
+  const unused = arr.filter(m => !_scbRecentMsgs.includes(m));
+  const pool = unused.length ? unused : arr;
+  const msg = pool[Math.floor(Math.random() * pool.length)];
+  _scbRecentMsgs.push(msg);
+  if (_scbRecentMsgs.length > 8) _scbRecentMsgs.shift();
+  return msg;
+}
+
+/* ── Helper: get Firestore references (wait for Firebase init) ── */
+function _scbFs() {
+  return window._snxFirestore || null;
+}
+
+/* ── Write a bot post to Firestore /posts ── */
+async function _scbWritePost(text, type) {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, collection, addDoc } = fs;
+  const now = Date.now();
+  await addDoc(collection(db, 'posts'), {
+    uid:           BOT_UID,
+    authorName:    BOT_NAME,
+    authorHandle:  BOT_HANDLE,
+    authorAvatar:  BOT_AVATAR,
+    authorBadges:  ['bot'],
+    authorRole:    'bot',
+    isBot:         true,
+    botPostType:   type || 'positive',
+    text,
+    timestamp:     now,
+    createdAt:     now,
+    expiresAt:     now + 24 * 60 * 60 * 1000,
+    likes:         0,
+    likedBy:       [],
+    comments:      [],
+    repostCount:   0,
+    taggedUsers:   [],
+  });
+}
+
+/* ── Write an event to botHistory ── */
+async function _scbLogEvent(type, text, extra) {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, collection, addDoc } = fs;
+  await addDoc(collection(db, 'botHistory'), {
+    type, text,
+    ts: Date.now(),
+    ...(extra || {}),
+  });
+  _scbBumpStat('scbStatTotal');
+  if (type === 'welcome')    _scbBumpStat('scbStatWelcome');
+  if (type === 'safety')     _scbBumpStat('scbStatSafety');
+  if (['positive','motivational','discussion','milestone'].includes(type)) _scbBumpStat('scbStatPosted');
+}
+
+/* ── Bump a dashboard stat counter ── */
+function _scbBumpStat(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = (parseInt(el.textContent, 10) || 0) + 1;
+}
+
+/* ── Save config to Firestore (creates document if it doesn't exist) ── */
+async function _scbSaveConfig(patch) {
+  const fs = _scbFs();
+  if (!fs) throw new Error('Firebase not initialised');
+  const user = window._snxCurrentUser;
+  if (!user) throw new Error('Not signed in');
+  const { db, doc, setDoc } = fs;
+  // setDoc with merge:true creates the document automatically if absent
+  await setDoc(doc(db, 'botConfig', 'settings'), patch, { merge: true });
+}
+
+/* ── Load config and update UI ── */
+async function _scbLoadConfig() {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, getDoc } = fs;
+  try {
+    const snap = await getDoc(doc(db, 'botConfig', 'settings'));
+    // If the document doesn't exist yet, seed it with safe defaults
+    if (!snap.exists()) {
+      _scbConfig = { enabled: false, postsPerDay: 4, welcomeEnabled: true,
+                     safetyEnabled: true, milestoneEnabled: true, discussionEnabled: true,
+                     birthdayEnabled: false, paused: false };
+    } else {
+      _scbConfig = snap.data();
+    }
+    _scbApplyConfigToUI(_scbConfig);
+    _scbUpdateStatusBadge();
+    _scbLoadStats();
+    _scbLoadPinnedMsg();
+  } catch(e) {
+    console.warn('[SCB] loadConfig error:', e);
+  }
+}
+
+/* ── Apply config object to admin dashboard controls ── */
+function _scbApplyConfigToUI(cfg) {
+  if (!cfg) return;
+  const s = (id, val) => { const el = document.getElementById(id); if (el) el[el.type === 'checkbox' ? 'checked' : 'value'] = val; };
+  s('scbPostsPerDay',      cfg.postsPerDay    || 4);
+  s('scbWelcomeEnabled',   cfg.welcomeEnabled !== false);
+  s('scbSafetyEnabled',    cfg.safetyEnabled  !== false);
+  s('scbBirthdayEnabled',  !!cfg.birthdayEnabled);
+  s('scbMilestoneEnabled', cfg.milestoneEnabled !== false);
+  // Also sync the welcome pop-up settings panel
+  if (typeof _scwApplyConfigToUI === 'function') _scwApplyConfigToUI(cfg);
+  s('scbDiscussionEnabled',cfg.discussionEnabled !== false);
+  s('scbPaused',           !!cfg.paused);
+  const wmEl = document.getElementById('scbWelcomeMsg');
+  if (wmEl) wmEl.value = cfg.welcomeMessage || '';
+}
+
+/* ── Update the status badge in the admin UI ── */
+function _scbUpdateStatusBadge() {
+  const badge = document.getElementById('scbStatusBadge');
+  if (!badge) return;
+  // enabled must be explicitly true — anything else (false, undefined, null) = offline
+  const on = _scbConfig && _scbConfig.enabled === true;
+  badge.textContent = on ? '⬤ Bot Online' : '⬤ Bot Offline';
+  badge.className = 'scb-status-badge ' + (on ? 'online' : 'offline');
+  // Mirror state on the enable/disable buttons so it's clear which is active
+  const btnOn  = document.getElementById('scbBtnEnable');
+  const btnOff = document.getElementById('scbBtnDisable');
+  if (btnOn)  btnOn.style.opacity  = on ? '0.45' : '1';
+  if (btnOff) btnOff.style.opacity = on ? '1'    : '0.45';
+}
+
+/* ── Load today's stats from botHistory ── */
+async function _scbLoadStats() {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, collection, query, where, getDocs } = fs;
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  try {
+    const snap = await getDocs(query(collection(db,'botHistory'), where('ts','>=',todayStart.getTime())));
+    let welcome=0, posted=0, safety=0, total=0;
+    snap.forEach(d => {
+      const t = d.data().type || '';
+      total++;
+      if (t === 'welcome') welcome++;
+      if (t === 'safety')  safety++;
+      if (['positive','motivational','discussion','milestone'].includes(t)) posted++;
+    });
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    s('scbStatWelcome', welcome);
+    s('scbStatPosted',  posted);
+    s('scbStatSafety',  safety);
+    s('scbStatTotal',   total);
+  } catch(e) {}
+}
+
+/* ── Load and display pinned message ── */
+async function _scbLoadPinnedMsg() {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, getDoc } = fs;
+  try {
+    const snap = await getDoc(doc(db,'botConfig','pinned'));
+    const el = document.getElementById('scbPinnedMsgDisplay');
+    if (el) {
+      if (snap.exists() && snap.data().text) {
+        el.textContent = '"' + snap.data().text + '"';
+        el.style.fontStyle = 'italic';
+        el.style.color = '#ffe566';
+      } else {
+        el.textContent = 'No message pinned.';
+        el.style.color = '#9bbdd8';
+      }
+    }
+  } catch(e) {}
+}
+
+/* ── Schedule the next automatic post ── */
+function _scbScheduleNext() {
+  clearTimeout(_scbSchedulerTimer);
+  const cfg = _scbConfig;
+  if (!cfg || !cfg.enabled || cfg.paused) {
+    const el = document.getElementById('scbNextPost');
+    if (el) el.textContent = '— (bot off or paused)';
+    return;
+  }
+  const ppd = Math.max(1, Math.min(24, parseInt(cfg.postsPerDay) || 4));
+  const msPerPost = (24 * 60 * 60 * 1000) / ppd;
+  // Add ±10% jitter so posts don't pile up on the hour
+  const jitter = (Math.random() - 0.5) * msPerPost * 0.2;
+  const delay = Math.max(60000, msPerPost + jitter);
+  const nextTime = new Date(Date.now() + delay);
+  const el = document.getElementById('scbNextPost');
+  if (el) el.textContent = nextTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  _scbSchedulerTimer = setTimeout(() => {
+    _scbAutoPost();
+    _scbScheduleNext();
+  }, delay);
+}
+
+/* ── Pick message type for auto-post (weighted) ── */
+async function _scbAutoPost() {
+  const cfg = _scbConfig || {};
+  const roll = Math.random();
+  let text, type;
+
+  if (cfg.discussionEnabled !== false && roll < 0.25) {
+    text = _scbPick(SCB_DISCUSSION); type = 'discussion';
+  } else if (roll < 0.55) {
+    text = _scbPick(SCB_POSITIVE); type = 'positive';
+  } else {
+    text = _scbPick(SCB_MOTIVATIONAL); type = 'motivational';
+  }
+
+  try {
+    await _scbWritePost(text, type);
+    await _scbLogEvent(type, text);
+    if (typeof toastNotification === 'function') toastNotification('🤖 Shadow Bot posted: ' + text.slice(0, 50) + '…');
+  } catch(e) { console.warn('[SCB] autoPost error:', e); }
+}
+
+/* ══════════════════════════════════════
+   SAFETY DETECTION — watches new posts
+   ══════════════════════════════════════ */
+let _scbFeedUnsub = null;
+let _scbLastCheckedTs = Date.now();
+
+function _scbStartSafetyWatch() {
+  const fs = _scbFs();
+  if (!fs || _scbFeedUnsub) return;
+  const { db, collection, query, orderBy, limit, onSnapshot } = fs;
+  const q = query(collection(db,'posts'), orderBy('timestamp','desc'), limit(10));
+  _scbFeedUnsub = onSnapshot(q, snap => {
+    snap.docChanges().forEach(change => {
+      if (change.type !== 'added') return;
+      const d = change.doc.data();
+      // Only check human posts, ignore bot's own posts
+      if (d.uid === BOT_UID || d.isBot) return;
+      if (d.timestamp < _scbLastCheckedTs) return;
+      _scbLastCheckedTs = Date.now();
+      _scbAnalyzePost(d.text || '', d.uid, d.authorName);
+    });
+  }, () => { _scbFeedUnsub = null; });
+}
+
+function _scbStopSafetyWatch() {
+  if (_scbFeedUnsub) { _scbFeedUnsub(); _scbFeedUnsub = null; }
+}
+
+async function _scbAnalyzePost(text, authorUid, authorName) {
+  const cfg = _scbConfig || {};
+  if (cfg.safetyEnabled === false) return;
+
+  // Check for crisis-level language first
+  const isCrisis = SCB_HARMFUL_PATTERNS.some(p => p.test(text));
+  const isNegative = !isCrisis && SCB_NEGATIVE_PATTERNS.some(p => p.test(text));
+
+  if (!isCrisis && !isNegative) return;
+
+  const response = SCB_SAFETY_RESPONSES[Math.floor(Math.random() * SCB_SAFETY_RESPONSES.length)];
+  const fullResponse = isCrisis ? response + '\n\n' + SCB_MENTAL_HEALTH_RESOURCES : response;
+
+  try {
+    await _scbWritePost(fullResponse, 'safety');
+    await _scbLogEvent('safety', fullResponse, { triggeredBy: authorUid, triggerType: isCrisis ? 'crisis' : 'negative' });
+    // If repeated or crisis, log to aiModerationLog for mod review
+    if (isCrisis) {
+      const fs = _scbFs();
+      if (fs) {
+        const { db, collection, addDoc } = fs;
+        await addDoc(collection(db,'aiModerationLog'), {
+          type:         'safety-bot',
+          severity:     'crisis',
+          triggeredBy:  authorUid,
+          authorName:   authorName || '',
+          text:         text,
+          ts:           Date.now(),
+          botResponse:  fullResponse,
+        });
+      }
+    }
+  } catch(e) { console.warn('[SCB] safety response error:', e); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   WELCOME POP-UP SYSTEM
+   ══════════════════════════════════════════════════════════
+   • Reads welcome config from botConfig/settings (welcomePopup.*)
+   • Reads welcome message library from botConfig/welcomeMessages
+   • NEVER posts to the public feed
+   • Respects frequency, auto-close, animation, accent, sound
+   ══════════════════════════════════════════════════════════ */
+
+/* Default welcome messages shown when library is empty */
+const SCB_DEFAULT_WELCOME_MSGS = [
+  '💙 Welcome back, {username}! We\'re so glad you\'re here.',
+  '🌟 Hope you have an amazing day, {username}. You\'ve got this!',
+  '💚 Remember, {username}: you are never alone. The Shadow Nexus community is here for you.',
+  '✨ Keep moving forward, {username} — one step at a time.',
+  '🌙 Thanks for being part of Shadow Nexus Social, {username}.',
+  '💙 Hey {username}! We missed you. Welcome back! 🌑',
+  '🌟 {username}, your presence makes this community better. Glad you\'re here!',
+  '💫 A new day, a fresh start. Welcome back, {username}!',
+  '🔥 Stay legendary, {username}. Shadow Nexus is better with you in it.',
+  '🤍 {username}, this is your safe space. No judgment — just connection. 💙',
+];
+
+/* Auto-close timer reference */
+let _scwAutoCloseTimer   = null;
+let _scwProgressInterval = null;
+let _scwIsPreview        = false;
+
+/* ── Open the welcome pop-up ── */
+function _scwShowPopup(headline, bodyText, cfg, isPreview) {
+  const modal   = document.getElementById('scbWelcomeModal');
+  const card    = document.getElementById('scbWelcomeCard');
+  const h       = document.getElementById('scbWelcomeMsgHeadline');
+  const b       = document.getElementById('scbWelcomeMsgBody');
+  const progWrap = document.getElementById('scbWelcomeProgressWrap');
+  const progBar  = document.getElementById('scbWelcomeProgressBar');
+  const ctaBtn   = document.getElementById('scbWelcomeCtaBtn');
+  const closeBtn = document.getElementById('scbWelcomeCloseBtn');
+  const skipWrap = document.getElementById('scbWelcomeSkipWrap');
+  const skipCb   = document.getElementById('scbWelcomeDontShowToday');
+
+  if (!modal || !card) return;
+
+  _scwIsPreview = !!isPreview;
+
+  // Content
+  if (h) h.textContent = headline;
+  if (b) b.textContent = bodyText;
+
+  // Reset "don't show today" checkbox
+  if (skipCb) skipCb.checked = false;
+  // Hide skip option during preview
+  if (skipWrap) skipWrap.style.display = isPreview ? 'none' : '';
+
+  // Accent colour
+  const accent = (cfg && cfg.popupAccentColor) ? cfg.popupAccentColor : '#00AEEF';
+  card.style.setProperty('--scw-accent', accent);
+  // Apply border colour dynamically
+  card.style.borderColor = accent + '55';
+
+  // Animation class
+  const anim = (cfg && cfg.popupAnimation) ? cfg.popupAnimation : 'slide';
+  card.classList.remove('scw-anim-slide', 'scw-anim-bounce', 'scw-anim-fade');
+  card.classList.add('scw-anim-' + anim);
+
+  // Preview badge
+  const existingBadge = card.querySelector('.scw-preview-badge');
+  if (existingBadge) existingBadge.remove();
+  if (isPreview) {
+    const badge = document.createElement('div');
+    badge.className = 'scw-preview-badge';
+    badge.textContent = '👁 Preview Mode';
+    card.insertBefore(badge, card.firstChild);
+  }
+
+  // Sound
+  if (cfg && cfg.popupSound && !isPreview) {
+    _scwPlayChime();
+  }
+
+  // Show
+  modal.classList.remove('scw-hiding');
+  modal.classList.add('scw-visible');
+  modal.setAttribute('aria-hidden', 'false');
+
+  // Auto-close
+  clearTimeout(_scwAutoCloseTimer);
+  clearInterval(_scwProgressInterval);
+  const secs = (cfg && cfg.popupDisplaySeconds > 0) ? cfg.popupDisplaySeconds : 0;
+  if (secs > 0) {
+    if (progWrap && progBar) {
+      progWrap.classList.add('scw-active');
+      progBar.style.transform = 'scaleX(1)';
+      progBar.style.transition = 'none';
+      let elapsed = 0;
+      const tick = 80; // ms
+      _scwProgressInterval = setInterval(() => {
+        elapsed += tick;
+        const remaining = Math.max(0, 1 - elapsed / (secs * 1000));
+        progBar.style.transition = tick + 'ms linear';
+        progBar.style.transform  = 'scaleX(' + remaining + ')';
+        if (elapsed >= secs * 1000) {
+          clearInterval(_scwProgressInterval);
+        }
+      }, tick);
+    }
+    _scwAutoCloseTimer = setTimeout(() => _scwClosePopup(false), secs * 1000);
+  } else {
+    if (progWrap) progWrap.classList.remove('scw-active');
+  }
+
+  // Wire up close / CTA
+  if (ctaBtn) {
+    ctaBtn.onclick = () => _scwClosePopup(true);
+  }
+  if (closeBtn) {
+    closeBtn.onclick = () => _scwClosePopup(true);
+  }
+}
+
+/* ── Close the welcome pop-up with fade-out ── */
+function _scwClosePopup(userInitiated) {
+  const modal  = document.getElementById('scbWelcomeModal');
+  const skipCb = document.getElementById('scbWelcomeDontShowToday');
+  if (!modal) return;
+
+  clearTimeout(_scwAutoCloseTimer);
+  clearInterval(_scwProgressInterval);
+
+  // If user checked "don't show today", store today's date
+  if (userInitiated && !_scwIsPreview && skipCb && skipCb.checked) {
+    const today = new Date().toDateString();
+    localStorage.setItem('scw_skip_until', today);
+  }
+
+  modal.classList.add('scw-hiding');
+  setTimeout(() => {
+    modal.classList.remove('scw-visible', 'scw-hiding');
+    modal.setAttribute('aria-hidden', 'true');
+    const progWrap = document.getElementById('scbWelcomeProgressWrap');
+    if (progWrap) progWrap.classList.remove('scw-active');
+  }, 340);
+}
+
+/* ── Play a soft chime via Web Audio API ── */
+function _scwPlayChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.55);
+    osc.onended = () => ctx.close();
+  } catch(_) { /* Web Audio not available */ }
+}
+
+/* ── Should we show the pop-up right now? ── */
+function _scwShouldShow(user, cfg) {
+  if (!cfg) return false;
+  if (cfg.popupEnabled === false) return false;
+
+  const freq = cfg.popupFrequency || 'oncePerDay';
+  const today = new Date().toDateString();
+
+  // User explicitly said "don't show today"
+  if (localStorage.getItem('scw_skip_until') === today) return false;
+
+  if (freq === 'everyVisit') {
+    // Once per tab session
+    const key = 'scw_shown_session_' + user.uid;
+    if (sessionStorage.getItem(key)) return false;
+    sessionStorage.setItem(key, '1');
+    return true;
+  }
+
+  // oncePerDay — check localStorage for today's date
+  const shownKey = 'scw_shown_' + user.uid;
+  if (localStorage.getItem(shownKey) === today) return false;
+  localStorage.setItem(shownKey, today);
+  return true;
+}
+
+/* ── Pick a random welcome message from the library ── */
+function _scwPickMessage(messages, cfg, displayName) {
+  // messages: array of strings from Firestore, or empty
+  const pool = (messages && messages.length) ? messages
+    : (cfg && cfg.welcomeMessage ? [cfg.welcomeMessage] : SCB_DEFAULT_WELCOME_MSGS);
+
+  // Pick a message that hasn't been shown recently (stored per-user per-day)
+  const today = new Date().toDateString();
+  const histKey = 'scw_msg_hist_' + today;
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem(histKey) || '[]'); } catch(_) {}
+
+  const unused = pool.filter((_, i) => !hist.includes(i));
+  const eligiblePool = unused.length ? unused : pool;
+  const chosenIdx = Math.floor(Math.random() * eligiblePool.length);
+  const chosenMsg = eligiblePool[chosenIdx];
+
+  // Record the choice
+  const originalIdx = pool.indexOf(chosenMsg);
+  if (originalIdx >= 0 && !hist.includes(originalIdx)) {
+    hist.push(originalIdx);
+    try { localStorage.setItem(histKey, JSON.stringify(hist)); } catch(_) {}
+  }
+
+  return chosenMsg.replace(/{username}/gi, displayName);
+}
+
+/* ── Main trigger: called from scbInit ── */
+async function _scbTriggerWelcome(user, userData) {
+  const cfg = _scbConfig || {};
+
+  // Check the NEW popup-specific toggle first, then fall back to old welcomeEnabled
+  const popupEnabled = cfg.popupEnabled !== undefined ? cfg.popupEnabled : (cfg.welcomeEnabled !== false);
+  if (!popupEnabled) return;
+
+  const displayName = (userData && userData.displayName) || user.displayName || 'friend';
+
+  // Guard: should we show now?
+  if (!_scwShouldShow(user, { ...cfg, popupEnabled })) return;
+
+  // Load message library from Firestore
+  let messages = [];
+  const fs = _scbFs();
+  if (fs) {
+    try {
+      const { db, collection, getDocs, query, orderBy } = fs;
+      const snap = await getDocs(query(collection(db, 'botConfig', 'welcomeMessages', 'items'), orderBy('createdAt', 'asc')));
+      snap.forEach(d => {
+        const t = (d.data().text || '').trim();
+        if (t) messages.push(t);
+      });
+    } catch(_) { /* fall back to defaults */ }
+  }
+
+  const bodyText = _scwPickMessage(messages, cfg, displayName);
+
+  // Determine greeting headline (varies by time of day)
+  const hour = new Date().getHours();
+  let timeGreet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const headline = timeGreet + ', ' + displayName + '! 💙';
+
+  // Small delay so the page settles before pop-up appears
+  setTimeout(() => {
+    _scwShowPopup(headline, bodyText, cfg, false);
+  }, 1200);
+
+  // Log the welcome event (no feed post — private to this user)
+  try {
+    await _scbLogEvent('welcome', bodyText, { targetUid: user.uid, targetName: displayName });
+  } catch(_) {}
+}
+
+/* ══════════════════════════════════
+   ADMIN DASHBOARD FUNCTIONS (global)
+   ══════════════════════════════════ */
+
+/* Called when the Shadow Bot tab is opened */
+window.scbOpenDashboard = async function() {
+  await _scbLoadConfig();
+  scbLoadHistory();
+  scwLoadMessages();
+};
+
+/* Toggle bot on/off */
+window.scbToggleBot = async function(enable) {
+  // Auth guard — must be signed in AND must be Founder
+  const user = window._snxCurrentUser;
+  if (!user) {
+    if (typeof toastNotification === 'function') toastNotification('⚠️ You must be signed in to change bot status.');
+    return;
+  }
+  if (window._snxRole !== 'founder') {
+    if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only — bot controls are restricted.');
+    return;
+  }
+
+  // Disable both buttons + show loading state while saving
+  const btnOn  = document.getElementById('scbBtnEnable');
+  const btnOff = document.getElementById('scbBtnDisable');
+  const badge  = document.getElementById('scbStatusBadge');
+  if (btnOn)  { btnOn.disabled  = true; }
+  if (btnOff) { btnOff.disabled = true; }
+  const prevBadgeText = badge ? badge.textContent : '';
+  if (badge) { badge.textContent = '⏳ Saving…'; badge.className = 'scb-status-badge'; }
+
+  try {
+    await _scbSaveConfig({ enabled: enable, emergencyStopped: false });
+    _scbConfig = Object.assign({}, _scbConfig || {}, { enabled: enable, emergencyStopped: false });
+    _scbUpdateStatusBadge();
+
+    // Write an audit entry so the founder can trace every toggle
+    try {
+      const fs = _scbFs();
+      if (fs) {
+        const { db, collection, addDoc } = fs;
+        await addDoc(collection(db, 'aiToggleLog'), {
+          action:  enable ? 'bot_enabled' : 'bot_disabled',
+          by:      user.uid,
+          byEmail: user.email || '',
+          ts:      Date.now(),
+        });
+      }
+    } catch(_) { /* audit write is best-effort */ }
+
+    if (enable) {
+      _scbStartSafetyWatch();
+      _scbScheduleNext();
+    } else {
+      _scbStopSafetyWatch();
+      clearTimeout(_scbSchedulerTimer);
+      const el = document.getElementById('scbNextPost');
+      if (el) el.textContent = '— (bot disabled)';
+    }
+    if (typeof toastNotification === 'function')
+      toastNotification(enable ? '✅ Bot status updated successfully — Shadow Bot is now ONLINE.' : '✅ Bot status updated successfully — Shadow Bot is now offline.');
+  } catch(e) {
+    // Restore badge and show the exact Firebase error so it's debuggable
+    if (badge) { badge.textContent = prevBadgeText; badge.className = 'scb-status-badge ' + ((_scbConfig && _scbConfig.enabled) ? 'online' : 'offline'); }
+    const msg = (e && e.message) ? e.message : String(e);
+    console.error('[SCB] scbToggleBot error:', e);
+    if (typeof toastNotification === 'function') toastNotification('❌ Bot status error: ' + msg);
+  } finally {
+    // Always re-enable the buttons
+    if (btnOn)  btnOn.disabled  = false;
+    if (btnOff) btnOff.disabled = false;
+  }
+};
+
+/* Emergency stop */
+window.scbEmergencyStop = async function() {
+  const user = window._snxCurrentUser;
+  if (!user) { if (typeof toastNotification === 'function') toastNotification('⚠️ Must be signed in.'); return; }
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  if (!confirm('⚠️ Emergency Stop: This will immediately disable Shadow Chat Bot and stop all scheduled posts. Continue?')) return;
+  const btnStop = document.getElementById('scbBtnEmergency');
+  if (btnStop) { btnStop.disabled = true; btnStop.textContent = '⏳ Stopping…'; }
+  try {
+    await _scbSaveConfig({ enabled: false, paused: true, emergencyStopped: true });
+    _scbConfig = Object.assign({}, _scbConfig || {}, { enabled: false, paused: true, emergencyStopped: true });
+    _scbStopSafetyWatch();
+    clearTimeout(_scbSchedulerTimer);
+    _scbUpdateStatusBadge();
+    if (typeof toastNotification === 'function') toastNotification('🚨 Emergency Stop — Shadow Bot is now offline.');
+  } catch(e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    console.error('[SCB] emergencyStop error:', e);
+    if (typeof toastNotification === 'function') toastNotification('❌ Emergency stop failed: ' + msg);
+  } finally {
+    if (btnStop) { btnStop.disabled = false; btnStop.textContent = '🚨 Emergency Stop'; }
+  }
+};
+
+/* Mark settings dirty */
+window.scbMarkDirty = function() { _scbSettingsDirty = true; };
+
+/* Save settings */
+window.scbSaveSettings = async function() {
+  const user = window._snxCurrentUser;
+  if (!user) { if (typeof toastNotification === 'function') toastNotification('⚠️ Must be signed in.'); return; }
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  const g = id => document.getElementById(id);
+  const btn = document.getElementById('scbSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+  const patch = {
+    postsPerDay:       parseInt(g('scbPostsPerDay')?.value) || 4,
+    welcomeEnabled:    !!(g('scbWelcomeEnabled')?.checked),
+    safetyEnabled:     !!(g('scbSafetyEnabled')?.checked),
+    birthdayEnabled:   !!(g('scbBirthdayEnabled')?.checked),
+    milestoneEnabled:  !!(g('scbMilestoneEnabled')?.checked),
+    discussionEnabled: !!(g('scbDiscussionEnabled')?.checked),
+    paused:            !!(g('scbPaused')?.checked),
+  };
+  try {
+    await _scbSaveConfig(patch);
+    _scbConfig = Object.assign({}, _scbConfig || {}, patch);
+    _scbScheduleNext();
+    _scbSettingsDirty = false;
+    if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.disabled = false; btn.textContent = '💾 Save Settings'; }, 2000); }
+    if (typeof toastNotification === 'function') toastNotification('✅ Shadow Bot settings saved!');
+  } catch(e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    console.error('[SCB] saveSettings error:', e);
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Settings'; }
+    if (typeof toastNotification === 'function') toastNotification('❌ Save failed: ' + msg);
+  }
+};
+
+/* Save custom welcome message */
+window.scbSaveWelcomeMsg = async function() {
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  const el = document.getElementById('scbWelcomeMsg');
+  if (!el) return;
+  const msg = el.value.trim();
+  try {
+    await _scbSaveConfig({ welcomeMessage: msg });
+    _scbConfig = Object.assign({}, _scbConfig, { welcomeMessage: msg });
+    if (typeof toastNotification === 'function') toastNotification('✅ Welcome message saved!');
+  } catch(e) {
+    const _msg = (e && e.message) ? e.message : String(e);
+    console.error('[SCB] saveWelcomeMsg error:', e);
+    if (typeof toastNotification === 'function') toastNotification('❌ Failed to save welcome message: ' + _msg);
+  }
+};
+
+/* Legacy preview (uses new popup engine) */
+window.scbPreviewWelcome = function() {
+  const el = document.getElementById('scbWelcomeMsg');
+  const msg = (el ? el.value.trim() : '') || 'Welcome to Shadow Nexus, {username}! 💙';
+  const previewText = msg.replace(/{username}/gi, 'YourName');
+  _scwShowPopup('Hey, YourName! 💙', previewText, _scbConfig || {}, true);
+};
+
+/* ══════════════════════════════════════════════════════
+   WELCOME POP-UP ADMIN CONTROLS (Founder)
+   ══════════════════════════════════════════════════════ */
+
+/* Mark welcome settings dirty */
+window.scwMarkDirty = function() { /* just used to signal change, save is manual */ };
+
+/* Apply loaded config to welcome pop-up admin UI */
+function _scwApplyConfigToUI(cfg) {
+  if (!cfg) return;
+  const g = id => document.getElementById(id);
+  const s = (id, val) => { const el = g(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!val; else el.value = val; };
+  s('scwEnabled',        cfg.popupEnabled !== false);
+  s('scwFrequency',      cfg.popupFrequency      || 'oncePerDay');
+  s('scwDisplaySeconds', cfg.popupDisplaySeconds !== undefined ? cfg.popupDisplaySeconds : 8);
+  s('scwAnimation',      cfg.popupAnimation      || 'slide');
+  s('scwAccentColor',    cfg.popupAccentColor    || '#00AEEF');
+  s('scwSound',          !!cfg.popupSound);
+}
+
+/* Save welcome pop-up settings */
+window.scwSaveSettings = async function() {
+  const user = window._snxCurrentUser;
+  if (!user) { if (typeof toastNotification === 'function') toastNotification('⚠️ Must be signed in.'); return; }
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  const g   = id => document.getElementById(id);
+  const btn = g('scwSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+  const patch = {
+    popupEnabled:        !!(g('scwEnabled')?.checked),
+    popupFrequency:      g('scwFrequency')?.value        || 'oncePerDay',
+    popupDisplaySeconds: parseInt(g('scwDisplaySeconds')?.value) || 0,
+    popupAnimation:      g('scwAnimation')?.value        || 'slide',
+    popupAccentColor:    g('scwAccentColor')?.value      || '#00AEEF',
+    popupSound:          !!(g('scwSound')?.checked),
+  };
+  try {
+    await _scbSaveConfig(patch);
+    _scbConfig = Object.assign({}, _scbConfig || {}, patch);
+    if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.disabled = false; btn.textContent = '💾 Save Pop-up Settings'; }, 2000); }
+    if (typeof toastNotification === 'function') toastNotification('✅ Welcome pop-up settings saved!');
+  } catch(e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Pop-up Settings'; }
+    if (typeof toastNotification === 'function') toastNotification('❌ Save failed: ' + msg);
+  }
+};
+
+/* Preview the welcome pop-up with current settings */
+window.scwPreview = async function() {
+  const g = id => document.getElementById(id);
+  const previewCfg = {
+    popupEnabled:        true,
+    popupFrequency:      'everyVisit',
+    popupDisplaySeconds: parseInt(g('scwDisplaySeconds')?.value) || 8,
+    popupAnimation:      g('scwAnimation')?.value        || 'slide',
+    popupAccentColor:    g('scwAccentColor')?.value      || '#00AEEF',
+    popupSound:          false, // mute during preview
+  };
+
+  // Load a sample message from the library or fall back to defaults
+  let messages = [];
+  const fs = _scbFs();
+  if (fs) {
+    try {
+      const { db, collection, getDocs, query, orderBy } = fs;
+      const snap = await getDocs(query(collection(db, 'botConfig', 'welcomeMessages', 'items'), orderBy('createdAt', 'asc')));
+      snap.forEach(d => { const t = (d.data().text || '').trim(); if (t) messages.push(t); });
+    } catch(_) {}
+  }
+  const bodyText = _scwPickMessage(messages, previewCfg, 'YourName');
+  const hour = new Date().getHours();
+  const timeGreet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  _scwShowPopup(timeGreet + ', YourName! 💙', bodyText, previewCfg, true);
+};
+
+/* Load welcome message library for admin panel */
+window.scwLoadMessages = async function() {
+  const list = document.getElementById('scwMsgList');
+  if (!list) return;
+  list.innerHTML = '<div style="font-size:12px;color:#3a5a7a;text-align:center;padding:12px;">Loading…</div>';
+
+  const fs = _scbFs();
+  if (!fs) { list.innerHTML = '<div style="font-size:12px;color:#3a5a7a;text-align:center;padding:12px;">Firebase not ready.</div>'; return; }
+
+  try {
+    const { db, collection, getDocs, query, orderBy } = fs;
+    const snap = await getDocs(query(collection(db, 'botConfig', 'welcomeMessages', 'items'), orderBy('createdAt', 'asc')));
+    if (snap.empty) {
+      list.innerHTML = '<div style="font-size:12px;color:#3a5a7a;text-align:center;padding:12px;">No custom messages yet. Built-in messages will be used.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    snap.forEach(d => {
+      const data = d.data();
+      const item = document.createElement('div');
+      item.className = 'scw-msg-item';
+      item.dataset.id = d.id;
+      const escaped = (data.text || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      item.innerHTML = `
+        <span class="scw-msg-item-text">${escaped}</span>
+        <button class="scw-msg-item-del" title="Delete message" onclick="scwDeleteMessage('${d.id}')">🗑</button>
+      `;
+      list.appendChild(item);
+    });
+  } catch(e) {
+    list.innerHTML = `<div style="font-size:12px;color:#ff5577;text-align:center;padding:12px;">Failed to load: ${(e.message||'unknown error').replace(/</g,'&lt;')}</div>`;
+  }
+};
+
+/* Add a new welcome message to the library */
+window.scwAddMessage = async function() {
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  const ta   = document.getElementById('scwNewMsg');
+  if (!ta) return;
+  const text = ta.value.trim();
+  if (!text) { if (typeof toastNotification === 'function') toastNotification('⚠️ Please enter a message.'); return; }
+
+  const fs = _scbFs();
+  if (!fs) return;
+  try {
+    const { db, collection, addDoc } = fs;
+    await addDoc(collection(db, 'botConfig', 'welcomeMessages', 'items'), { text, createdAt: Date.now() });
+    ta.value = '';
+    scwLoadMessages();
+    if (typeof toastNotification === 'function') toastNotification('✅ Welcome message added!');
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Failed to add message.'));
+  }
+};
+
+/* Delete a welcome message from the library */
+window.scwDeleteMessage = async function(id) {
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  if (!confirm('Delete this welcome message?')) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  try {
+    const { db, doc, deleteDoc } = fs;
+    await deleteDoc(doc(db, 'botConfig', 'welcomeMessages', 'items', id));
+    scwLoadMessages();
+    if (typeof toastNotification === 'function') toastNotification('🗑 Message deleted.');
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Delete failed.'));
+  }
+};
+
+/* Add custom message to library */
+window.scbAddCustomMessage = async function() {
+  if (window._snxRole !== 'founder') { if (typeof toastNotification === 'function') toastNotification('⛔ Founder access only.'); return; }
+  const textEl = document.getElementById('scbCustomMsgText');
+  const typeEl = document.getElementById('scbCustomMsgType');
+  const pinEl  = document.getElementById('scbCustomMsgPin');
+  if (!textEl) return;
+  const text = textEl.value.trim();
+  if (!text) { if (typeof toastNotification === 'function') toastNotification('⚠️ Please enter a message.'); return; }
+  const type = typeEl ? typeEl.value : 'positive';
+  const pin  = pinEl ? pinEl.checked : false;
+
+  try {
+    const fs = _scbFs();
+    if (fs) {
+      const { db, doc, setDoc, collection, addDoc } = fs;
+      await addDoc(collection(db,'botConfig','customMsgs','items'), { text, type, pin, createdAt: Date.now() });
+      if (pin) {
+        await setDoc(doc(db,'botConfig','pinned'), { text, type, ts: Date.now() });
+        _scbLoadPinnedMsg();
+      }
+    }
+    textEl.value = '';
+    if (pinEl) pinEl.checked = false;
+    if (typeof toastNotification === 'function') toastNotification('✅ Custom message added!');
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ Failed to save custom message.');
+  }
+};
+
+/* Post a random positive message right now */
+window.scbPostNow = async function() {
+  if (!_scbConfig || !_scbConfig.enabled) {
+    if (typeof toastNotification === 'function') toastNotification('⚠️ Enable the bot first.');
+    return;
+  }
+  await _scbAutoPost();
+};
+
+/* Post the custom message typed in the "Create Custom Message" section right now */
+window.scbPostNowCustom = async function() {
+  const textEl = document.getElementById('scbCustomMsgText');
+  const typeEl = document.getElementById('scbCustomMsgType');
+  if (!textEl) return;
+  const text = textEl.value.trim();
+  if (!text) { if (typeof toastNotification === 'function') toastNotification('⚠️ Please enter a message.'); return; }
+  const type = typeEl ? typeEl.value : 'positive';
+  try {
+    await _scbWritePost(text, type);
+    await _scbLogEvent(type, text);
+    textEl.value = '';
+    if (typeof toastNotification === 'function') toastNotification('⚡ Shadow Bot posted your message!');
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ Failed to post message.');
+  }
+};
+
+/* Clear pinned message */
+window.scbClearPinnedMsg = async function() {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, setDoc } = fs;
+  try {
+    await setDoc(doc(db,'botConfig','pinned'), { text: '', ts: Date.now() });
+    _scbLoadPinnedMsg();
+    if (typeof toastNotification === 'function') toastNotification('🗑 Pinned message cleared.');
+  } catch(e) {}
+};
+
+/* ══════════════════════════════════════════════════════
+   MESSAGE MANAGER — full history, delete, hide, edit,
+   recycle bin, founder log, bulk actions, search/filter
+   ══════════════════════════════════════════════════════ */
+
+/* ── In-memory state ── */
+let _mmTab        = 'live';   // 'live' | 'hidden' | 'bin' | 'log'
+let _mmAllRows    = [];        // raw rows from Firestore for the current tab load
+let _mmEditDocId  = null;      // doc ID being edited
+
+/* ── Switch tab ── */
+window.scbMmSwitchTab = function(tab) {
+  _mmTab = tab;
+  document.querySelectorAll('.scb-mm-tab').forEach(b => b.classList.remove('active'));
+  const tabEl = document.getElementById('scbMmTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+  if (tabEl) tabEl.classList.add('active');
+  const toolbar = document.getElementById('scbMmToolbar');
+  if (toolbar) toolbar.style.display = (tab === 'log') ? 'none' : 'flex';
+  scbLoadHistory();
+};
+
+/* ── Toggle all checkboxes ── */
+window.scbMmToggleAll = function(checked) {
+  document.querySelectorAll('#scbHistoryList .scb-mm-row-cb').forEach(cb => { cb.checked = checked; });
+};
+
+/* ── Apply search + type + date filter ── */
+window.scbMmApplyFilter = function() {
+  const q    = (document.getElementById('scbMmSearch')?.value || '').toLowerCase();
+  const type = document.getElementById('scbMmFilterType')?.value || '';
+  const date = document.getElementById('scbMmFilterDate')?.value || '';
+  const now  = Date.now();
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const weekStart  = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+  document.querySelectorAll('#scbHistoryList .scb-history-entry').forEach(row => {
+    const txt  = (row.dataset.text  || '').toLowerCase();
+    const rtyp = (row.dataset.type  || '');
+    const rts  = parseInt(row.dataset.ts || '0', 10);
+    let show = true;
+    if (q    && !txt.includes(q))         show = false;
+    if (type && rtyp !== type)            show = false;
+    if (date === 'today' && rts < todayStart.getTime()) show = false;
+    if (date === 'week'  && rts < weekStart.getTime())  show = false;
+    row.style.display = show ? '' : 'none';
+  });
+};
+
+/* ── Build a history row element ── */
+function _mmBuildRow(id, row, tab) {
+  const div = document.createElement('div');
+  div.className = 'scb-history-entry' + (row.hidden ? ' scb-hidden-entry' : '');
+  div.dataset.id   = id;
+  div.dataset.text = row.text || '';
+  div.dataset.type = row.type || 'positive';
+  div.dataset.ts   = row.ts   || 0;
+
+  const snippet = (row.text || '').slice(0, 110) + ((row.text || '').length > 110 ? '…' : '');
+
+  if (tab === 'log') {
+    // Read-only log view
+    div.innerHTML = `
+      <div class="scb-history-ts">${_scbRelTime(row.ts)}</div>
+      <div class="scb-history-type ${row.action||'delete'}" style="background:rgba(255,51,102,0.1);border-color:rgba(255,51,102,0.3);color:#ff88aa;">
+        ${row.action||'delete'}
+      </div>
+      <div class="scb-history-body" style="flex:1;">
+        <span style="color:#c8e0f8;">${_escHtml(snippet)}</span>
+        ${row.byEmail ? `<span style="font-size:10px;color:#3a5a7a;margin-left:6px;">by ${_escHtml(row.byEmail)}</span>` : ''}
+      </div>
+    `;
+    return div;
+  }
+
+  if (tab === 'bin') {
+    div.innerHTML = `
+      <input type="checkbox" class="scb-mm-row-cb" data-id="${id}">
+      <div class="scb-history-ts">${_scbRelTime(row.ts)}</div>
+      <div class="scb-history-type ${row.type||'positive'}">${row.type||'positive'}</div>
+      <div class="scb-history-body" style="flex:1;">${_escHtml(snippet)}</div>
+      <button class="scb-mm-btn scb-mm-btn-restore" style="font-size:10px;padding:3px 8px;"
+              onclick="scbMsgRestore('${id}')">♻️ Restore</button>
+      <button class="scb-history-del" title="Permanently delete"
+              onclick="scbMsgPermanentDelete('${id}')">💀</button>
+    `;
+    return div;
+  }
+
+  // live / hidden tabs
+  const hiddenBadge = row.hidden
+    ? `<span class="scb-hidden-badge">hidden</span>`
+    : '';
+  div.innerHTML = `
+    <input type="checkbox" class="scb-mm-row-cb" data-id="${id}">
+    <div class="scb-history-ts">${_scbRelTime(row.ts)}</div>
+    <div class="scb-history-type ${row.type||'positive'}">${row.type||'positive'}</div>
+    ${hiddenBadge}
+    <div class="scb-history-body" style="flex:1;">${_escHtml(snippet)}</div>
+    <button class="scb-mm-btn scb-mm-btn-edit"
+            style="font-size:10px;padding:3px 8px;"
+            onclick="scbEditMsg('${id}','${_escAttr(row.text||'')}')">✏️</button>
+    <button class="scb-mm-btn scb-mm-btn-hide"
+            style="font-size:10px;padding:3px 8px;"
+            onclick="scbMsgToggleHide('${id}',${!row.hidden})">
+      ${row.hidden ? '👁 Show' : '🙈 Hide'}
+    </button>
+    <button class="scb-history-del" title="Move to bin"
+            onclick="scbMsgMoveToBin('${id}')">🗑</button>
+  `;
+  return div;
+}
+
+/* ── HTML escape helpers ── */
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function _escAttr(s) {
+  return String(s).replace(/'/g,"\\'").replace(/\n/g,' ');
+}
+
+/* ── Load history (respects current tab) ── */
+window.scbLoadHistory = async function() {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, collection, query, orderBy, limit, getDocs } = fs;
+  const list = document.getElementById('scbHistoryList');
+  if (!list) return;
+  list.innerHTML = '<div class="empty-state" style="padding:16px 0;">Loading…</div>';
+
+  // Reset select-all
+  const selAll = document.getElementById('scbMmSelAll');
+  if (selAll) selAll.checked = false;
+
+  try {
+    let rows = [];
+
+    if (_mmTab === 'log') {
+      // Founder delete log lives in aiToggleLog (action: 'msg_deleted' | 'msg_perm_deleted')
+      const snap = await getDocs(query(
+        collection(db, 'aiToggleLog'),
+        orderBy('ts', 'desc'), limit(100)
+      ));
+      snap.forEach(d => {
+        const r = d.data();
+        if (r.action && r.action.startsWith('msg_')) rows.push({ id: d.id, ...r });
+      });
+      document.getElementById('scbMmCountLog').textContent = rows.length;
+    } else {
+      const snap = await getDocs(query(
+        collection(db, 'botHistory'),
+        orderBy('ts', 'desc'), limit(200)
+      ));
+      const live = [], hidden = [], bin = [];
+      snap.forEach(d => {
+        const r = { id: d.id, ...d.data() };
+        if (r.binned)       bin.push(r);
+        else if (r.hidden)  hidden.push(r);
+        else                live.push(r);
+      });
+      _mmAllRows = { live, hidden, bin };
+      document.getElementById('scbMmCountLive').textContent   = live.length;
+      document.getElementById('scbMmCountHidden').textContent = hidden.length;
+      document.getElementById('scbMmCountBin').textContent    = bin.length;
+      rows = _mmAllRows[_mmTab] || [];
+    }
+
+    if (!rows.length) {
+      const labels = { live:'No live bot messages.', hidden:'No hidden messages.', bin:'Recycle bin is empty.', log:'No delete log entries yet.' };
+      list.innerHTML = `<div class="empty-state" style="padding:20px 0;">${labels[_mmTab]||'Nothing here.'}</div>`;
+      return;
+    }
+
+    list.innerHTML = '';
+    rows.forEach(r => list.appendChild(_mmBuildRow(r.id, r, _mmTab)));
+    scbMmApplyFilter();
+
+  } catch(e) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px 0;color:#ff5577;">Failed to load: ${_escHtml(e.message||'unknown error')}</div>`;
+  }
+};
+
+/* ── Get selected doc IDs ── */
+function _mmGetSelected() {
+  return Array.from(document.querySelectorAll('#scbHistoryList .scb-mm-row-cb:checked'))
+              .map(cb => cb.dataset.id).filter(Boolean);
+}
+
+/* ── Move one history doc to recycle bin (soft delete) ── */
+window.scbMsgMoveToBin = async function(id) {
+  if (!confirm('Move this message to the recycle bin?')) return;
+  const user = window._snxCurrentUser;
+  if (!user) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, updateDoc, collection, addDoc } = fs;
+  try {
+    await updateDoc(doc(db, 'botHistory', id), { binned: true, binnedAt: Date.now() });
+    // Founder log entry
+    await addDoc(collection(db, 'aiToggleLog'), {
+      action: 'msg_deleted', docId: id,
+      text: (document.querySelector(`[data-id="${id}"]`)?.dataset.text || '').slice(0,120),
+      by: user.uid, byEmail: user.email || '', ts: Date.now()
+    });
+    if (typeof toastNotification === 'function') toastNotification('🗑 Moved to recycle bin.');
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Delete failed'));
+  }
+};
+
+/* ── Permanently delete from bin ── */
+window.scbMsgPermanentDelete = async function(id) {
+  if (!confirm('⚠️ Permanently delete this message? This cannot be undone.')) return;
+  const user = window._snxCurrentUser;
+  if (!user) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, deleteDoc, collection, addDoc } = fs;
+  try {
+    await deleteDoc(doc(db, 'botHistory', id));
+    await addDoc(collection(db, 'aiToggleLog'), {
+      action: 'msg_perm_deleted', docId: id,
+      by: user.uid, byEmail: user.email || '', ts: Date.now()
+    });
+    if (typeof toastNotification === 'function') toastNotification('💀 Message permanently deleted.');
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Delete failed'));
+  }
+};
+
+/* ── Restore from recycle bin ── */
+window.scbMsgRestore = async function(id) {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, updateDoc } = fs;
+  try {
+    await updateDoc(doc(db, 'botHistory', id), { binned: false, binnedAt: null });
+    if (typeof toastNotification === 'function') toastNotification('♻️ Message restored.');
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Restore failed'));
+  }
+};
+
+/* ── Toggle hidden (visible in hidden tab, dimmed in live tab) ── */
+window.scbMsgToggleHide = async function(id, hide) {
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, updateDoc } = fs;
+  try {
+    await updateDoc(doc(db, 'botHistory', id), { hidden: hide });
+    if (typeof toastNotification === 'function') toastNotification(hide ? '🙈 Message hidden.' : '👁 Message visible again.');
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Update failed'));
+  }
+};
+
+/* ── Delete selected messages (bulk) ── */
+window.scbMsgDeleteSelected = async function() {
+  const ids = _mmGetSelected();
+  if (!ids.length) { if (typeof toastNotification === 'function') toastNotification('⚠️ Select at least one message.'); return; }
+  if (!confirm(`Move ${ids.length} selected message(s) to the recycle bin?`)) return;
+  const user = window._snxCurrentUser;
+  if (!user) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, updateDoc, collection, addDoc, writeBatch } = fs;
+  try {
+    const batch = writeBatch(db);
+    ids.forEach(id => batch.update(doc(db, 'botHistory', id), { binned: true, binnedAt: Date.now() }));
+    await batch.commit();
+    await addDoc(collection(db, 'aiToggleLog'), {
+      action: 'msg_bulk_deleted', count: ids.length,
+      by: user.uid, byEmail: user.email || '', ts: Date.now()
+    });
+    if (typeof toastNotification === 'function') toastNotification(`🗑 ${ids.length} message(s) moved to bin.`);
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Bulk delete failed'));
+  }
+};
+
+/* ── Hide selected messages ── */
+window.scbMsgHideSelected = async function() {
+  const ids = _mmGetSelected();
+  if (!ids.length) { if (typeof toastNotification === 'function') toastNotification('⚠️ Select at least one message.'); return; }
+  if (!confirm(`Hide ${ids.length} selected message(s) from view?`)) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, writeBatch } = fs;
+  try {
+    const batch = writeBatch(db);
+    ids.forEach(id => batch.update(doc(db, 'botHistory', id), { hidden: true }));
+    await batch.commit();
+    if (typeof toastNotification === 'function') toastNotification(`🙈 ${ids.length} message(s) hidden.`);
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Hide failed'));
+  }
+};
+
+/* ── Delete today's messages ── */
+window.scbMsgDeleteToday = async function() {
+  if (!confirm('Move all of today\'s bot messages to the recycle bin?')) return;
+  const user = window._snxCurrentUser;
+  if (!user) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, collection, query, where, getDocs, doc, writeBatch, addDoc } = fs;
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'botHistory'),
+      where('ts', '>=', todayStart.getTime()),
+      where('binned', '==', false)
+    ));
+    if (snap.empty) { if (typeof toastNotification === 'function') toastNotification('⚠️ No live messages from today.'); return; }
+    const batch = writeBatch(db);
+    snap.forEach(d => batch.update(doc(db, 'botHistory', d.id), { binned: true, binnedAt: Date.now() }));
+    await batch.commit();
+    await addDoc(collection(db, 'aiToggleLog'), {
+      action: 'msg_delete_today', count: snap.size,
+      by: user.uid, byEmail: user.email || '', ts: Date.now()
+    });
+    if (typeof toastNotification === 'function') toastNotification(`🗓 ${snap.size} today's message(s) moved to bin.`);
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Delete today failed'));
+  }
+};
+
+/* ── Delete ALL live bot messages ── */
+window.scbMsgDeleteAll = async function() {
+  if (!confirm('⚠️ Move ALL Shadow Chat Bot messages to the recycle bin?\n\nThis affects the entire history, not just today. Continue?')) return;
+  if (!confirm('Are you absolutely sure? This will bin every live bot message.')) return;
+  const user = window._snxCurrentUser;
+  if (!user) return;
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, collection, query, where, limit, getDocs, doc, writeBatch, addDoc } = fs;
+  try {
+    // Firestore batch writes max 500 at a time — loop in chunks
+    let total = 0;
+    let snap;
+    do {
+      snap = await getDocs(query(
+        collection(db, 'botHistory'),
+        where('binned', 'in', [false, null]),
+        limit(400)
+      ));
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.update(doc(db, 'botHistory', d.id), { binned: true, binnedAt: Date.now() }));
+      await batch.commit();
+      total += snap.size;
+    } while (!snap.empty);
+
+    await addDoc(collection(db, 'aiToggleLog'), {
+      action: 'msg_delete_all', count: total,
+      by: user.uid, byEmail: user.email || '', ts: Date.now()
+    });
+    if (typeof toastNotification === 'function') toastNotification(`🗑 ${total} message(s) moved to bin.`);
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Delete all failed'));
+  }
+};
+
+/* ── Edit modal ── */
+window.scbEditMsg = function(id, currentText) {
+  _mmEditDocId = id;
+  const ta = document.getElementById('scbEditText');
+  if (ta) ta.value = currentText;
+  const modal = document.getElementById('scbEditModal');
+  if (modal) modal.classList.add('open');
+};
+
+window.scbEditModalClose = function() {
+  _mmEditDocId = null;
+  const modal = document.getElementById('scbEditModal');
+  if (modal) modal.classList.remove('open');
+};
+
+window.scbEditModalSave = async function() {
+  if (!_mmEditDocId) return;
+  const ta = document.getElementById('scbEditText');
+  const newText = ta ? ta.value.trim() : '';
+  if (!newText) { if (typeof toastNotification === 'function') toastNotification('⚠️ Text cannot be empty.'); return; }
+  const fs = _scbFs();
+  if (!fs) return;
+  const { db, doc, updateDoc } = fs;
+  try {
+    await updateDoc(doc(db, 'botHistory', _mmEditDocId), { text: newText, editedAt: Date.now() });
+    if (typeof toastNotification === 'function') toastNotification('✅ Message updated.');
+    scbEditModalClose();
+    scbLoadHistory();
+  } catch(e) {
+    if (typeof toastNotification === 'function') toastNotification('❌ ' + (e.message || 'Edit failed'));
+  }
+};
+
+/* Close edit modal on backdrop click */
+document.addEventListener('click', function(e) {
+  const modal = document.getElementById('scbEditModal');
+  if (modal && e.target === modal) scbEditModalClose();
+});
+
+/* ══════════════════════════════════
+   INIT — called after Firebase auth
+   ══════════════════════════════════ */
+window.scbInit = async function(user, userDataArg) {
+  if (!user) return; // must be signed in
+
+  // Load config from Firestore (creates document with defaults if absent)
+  await _scbLoadConfig();
+
+  // userData may still be null if the onSnapshot hasn't fired yet.
+  // Fall back to window._snxUserData (which is updated by the snapshot) or a
+  // minimal object so the welcome message can still resolve the display name.
+  const resolvedUserData = userDataArg || window._snxUserData || null;
+
+  // Trigger welcome message
+  await _scbTriggerWelcome(user, resolvedUserData);
+
+  // Start safety watching if bot is on
+  if (_scbConfig && _scbConfig.enabled === true) {
+    _scbStartSafetyWatch();
+    _scbScheduleNext();
+  }
+};
+
+/* ══════════════════════════════════════════════
+   Hook into existing admin tab switcher so the
+   dashboard loads when the Shadow Bot tab opens.
+   ══════════════════════════════════════════════ */
+const _originalSwitchAdminTab = window.switchAdminTab;
+window.switchAdminTab = function(tab) {
+  if (typeof _originalSwitchAdminTab === 'function') _originalSwitchAdminTab(tab);
+  if (tab === 'shadowbot') {
+    scbOpenDashboard();
+  }
+};
+
+})(); // end IIFE
+</script>
 
 </body>
 </html>
