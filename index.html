@@ -8504,9 +8504,9 @@ body.arcade-fs-ios body::after { display:none !important; }
 
   // ── Full Firestore namespace for feature scripts ──
   window._snxFirestore = {
-      db, doc, getDoc, setDoc, updateDoc, deleteDoc,
+      db, doc, getDoc, getDocFromCache, setDoc, updateDoc, deleteDoc,
       collection, addDoc, query, orderBy, limit,
-      onSnapshot, arrayUnion, where, getDocs, writeBatch, increment,
+      onSnapshot, arrayUnion, runTransaction, where, getDocs, writeBatch, increment,
       serverTimestamp, enableNetwork, disableNetwork,
   };
 
