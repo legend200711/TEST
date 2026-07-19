@@ -1,56 +1,25 @@
 /**
  * Shadow Nexus Live — live.js
  *
- * Architecture (WebRTC + Firebase Firestore signaling):
+ * Architecture (LiveKit + Firebase Firestore):
  *
  *  CREATOR:
  *    1. Captures local camera + mic via getUserMedia.
  *    2. Creates a liveRooms/{roomId} Firestore doc (status: 'live').
- *    3. Creates one RTCPeerConnection, adds tracks, creates an SDP offer.
- *    4. Writes offer to liveConnections/{roomId}.
- *    5. Listens on liveConnections/{roomId} for viewer answers +
- *       viewerCandidates arrays.  Applies them as they arrive.
+ *    3. Fetches a LiveKit token (canPublish: true) from the Worker.
+ *    4. Connects to LiveKit room and publishes video + audio tracks.
  *
  *  VIEWER:
  *    1. Reads liveRooms/{roomId} to confirm stream is live.
- *    2. Reads liveConnections/{roomId} for the creator's offer.
- *    3. Creates one RTCPeerConnection with recvonly transceivers.
- *    4. Sets remote description (creator offer), creates answer.
- *    5. Writes answer + viewerCandidates to liveConnections/{roomId}.
- *    6. Receives remote tracks → displays video.
+ *    2. Fetches a LiveKit token (canPublish: false) from the Worker.
+ *    3. Connects to LiveKit room, subscribes to creator tracks.
+ *    4. Displays received video track in <video>.
  *
  *  Chat + Likes:
  *    Stored in Firestore sub-collections under liveRooms/{roomId}.
- *
- *  Signaling collection:  liveConnections/{liveId}
- *    ├── offer             : { type, sdp }
- *    ├── answer            : { type, sdp }
- *    ├── creatorCandidates : [ … ]
- *    └── viewerCandidates  : [ … ]
  */
 
 'use strict';
-
-/* ── Issue 3 / 6: Warn early if running from file:// or non-HTTPS ── */
-if (location.protocol === 'file:') {
-  console.error(
-    '[SNX Live] FATAL: live.html was opened with a file:// URL. ' +
-    'Camera/mic, ES modules, and Firebase will not work. ' +
-    'Serve from Firebase Hosting, localhost, or any HTTPS server.'
-  );
-}
-if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-  console.warn('[SNX Live] Non-HTTPS origin detected. getUserMedia and some APIs may be blocked by the browser.');
-}
-
-/* ── Issue 10: WebRTC browser compatibility check ── */
-if (typeof RTCPeerConnection === 'undefined') {
-  console.error('[SNX Live] RTCPeerConnection is not supported in this browser. Live streaming requires Chrome, Edge, Firefox, or Safari 15+.');
-  document.addEventListener('DOMContentLoaded', () => {
-    const el = document.getElementById('liveLoading');
-    if (el) el.innerHTML = '<div style="color:#ff6b6b;padding:32px;text-align:center;font-size:15px;">⚠️ Your browser does not support WebRTC.<br>Please use the latest Chrome, Edge, or Firefox.</div>';
-  });
-}
 
 /* ── Firebase config (same project as index.html) ── */
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
@@ -78,28 +47,10 @@ const _app  = getApps().find(a => a.name === '[DEFAULT]') || initializeApp(_CFG)
 const _auth = getAuth(_app);
 const _db   = getFirestore(_app);
 
-/* ── ICE servers ── */
-const ICE = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls:       'turn:openrelay.metered.ca:80',
-      username:   'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls:       'turn:openrelay.metered.ca:443',
-      username:   'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls:       'turns:openrelay.metered.ca:443',
-      username:   'openrelayproject',
-      credential: 'openrelayproject',
-    },
-  ],
-};
+/* ── LiveKit ── */
+// Token is minted server-side by the Cloudflare Worker (credentials never in client code).
+const LIVEKIT_URL       = 'wss://project-s-iaamddo2.livekit.cloud';
+const LIVEKIT_TOKEN_URL = 'https://yellow-term-11e6.nthntjrn.workers.dev/livekit-token';
 
 /* ── State ── */
 let _user         = null;   // Firebase Auth user
@@ -112,12 +63,9 @@ let _camOn        = true;
 let _micOn        = true;
 let _facingMode   = 'user';
 
-// WebRTC — one PeerConnection for creator, one for viewer
-let _creatorPc    = null;   // creator's single RTCPeerConnection
-let _connUnsub    = null;   // Firestore listener on liveConnections doc
-
-let _viewerPc     = null;   // viewer's single RTCPeerConnection
-let _viewerUnsubs = [];     // cleanup handles for viewer
+// LiveKit — one Room per session
+let _lkRoom       = null;   // LiveKit Room instance (creator or viewer)
+let _viewerUnsubs = [];     // Firestore listener cleanup handles (viewer)
 
 let _chatUnsub        = null;
 let _viewerCountUnsub = null;
@@ -130,25 +78,7 @@ let D = {};
 /* ═══════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════ */
-/* ── Issue 14: wrap entire DOMContentLoaded init in try/catch so a JS error
-   never leaves the loading screen stuck forever ── */
 document.addEventListener('DOMContentLoaded', () => {
-  try {
-    _initPage();
-  } catch (err) {
-    console.error('[SNX Live] Uncaught error during page init:', err);
-    const el = document.getElementById('liveLoading');
-    if (el) {
-      el.innerHTML = `<div style="color:#ff6b6b;padding:32px;text-align:center;font-size:15px;">
-        ⚠️ Failed to initialize the live page.<br>
-        <small style="color:#6a90b8;">${err.message || 'Unknown error'}<br>Open the browser console (F12) for details.</small>
-      </div>`;
-      el.style.display = 'flex';
-    }
-  }
-});
-
-function _initPage() {
   D = {
     loading:         document.getElementById('liveLoading'),
     setup:           document.getElementById('liveSetup'),
@@ -242,53 +172,22 @@ function _initPage() {
     D.stage.classList.toggle('live-controls-hidden');
   });
 
-  // Issue 16: log before/inside auth callback so it's easy to verify in the console
-  console.log('[SNX Live] Waiting for onAuthStateChanged…');
-
-  // Issue 1: auth timeout — if onAuthStateChanged hasn't fired in 12 s,
-  // the Firebase SDK is likely blocked (wrong config, ad-blocker, file://).
-  const _authTimeout = setTimeout(() => {
-    console.error(
-      '[SNX Live] onAuthStateChanged did not fire within 12 s. ' +
-      'Check: (1) Firebase Auth is enabled in the console, ' +
-      '(2) at least one sign-in method is enabled, ' +
-      '(3) the page is served over HTTPS or localhost (not file://), ' +
-      '(4) the apiKey / projectId config values are correct, ' +
-      '(5) no ad-blocker is blocking firebaseapp.com.'
-    );
-    // Don't leave the user stuck on the loading screen forever
-    _hideLoading();
-    const el = document.getElementById('liveLoading');
-    if (el) el.innerHTML = '<div style="color:#ff6b6b;padding:32px;text-align:center;font-size:15px;">⚠️ Could not connect to Shadow Nexus.<br>Check your internet connection and try again.</div>';
-    if (el) el.style.display = 'flex';
-  }, 12000);
-
   // Wait for Firebase auth
   onAuthStateChanged(_auth, user => {
-    clearTimeout(_authTimeout);
-    console.log('[SNX Live] onAuthStateChanged fired. user:', user ? user.uid : 'null (not signed in)');
-
     if (!user) {
-      // Issue 17: Not logged in — redirect to sign-in page
-      console.log('[SNX Live] No authenticated user — redirecting to index.html');
+      // Not logged in — redirect
       _hideLoading();
       window.location.href = 'index.html';
       return;
     }
     _user = user;
-    console.log('[SNX Live] Auth OK. Loading user data…');
     _loadUserData().then(() => {
-      console.log('[SNX Live] User data loaded. Resolving mode…');
       // Re-enable Go Live now that auth is confirmed
-      if (D.goLiveBtn) { D.goLiveBtn.disabled = false; }
-      _resolveMode();
-    }).catch(err => {
-      console.error('[SNX Live] _loadUserData() threw:', err);
       if (D.goLiveBtn) { D.goLiveBtn.disabled = false; }
       _resolveMode();
     });
   });
-} // end _initPage
+});
 
 /* ── Load Firestore user doc ── */
 async function _loadUserData() {
@@ -326,15 +225,6 @@ async function _startCreatorSetup() {
   _hideLoading();
   if (D.setup) D.setup.style.display = 'block';
 
-  // Issue 6: getUserMedia requires HTTPS or localhost
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    toast('⚠️ Camera/mic not available. Make sure the page is served over HTTPS or localhost.');
-    console.error('[SNX Live] navigator.mediaDevices.getUserMedia is unavailable. Requires HTTPS or localhost.');
-    _camOn = false;
-    _updateSetupPreviewState(false);
-    return;
-  }
-
   // Acquire camera
   try {
     _localStream = await navigator.mediaDevices.getUserMedia({
@@ -347,17 +237,6 @@ async function _startCreatorSetup() {
     }
     _updateSetupPreviewState(true);
   } catch (err) {
-    // Issue 6: provide specific error messages for each permission failure type
-    const msg = err.name === 'NotAllowedError'
-      ? '⚠️ Camera/mic access was denied. Allow permissions in your browser and refresh.'
-      : err.name === 'NotFoundError'
-        ? '⚠️ No camera or microphone found on this device.'
-        : err.name === 'NotReadableError'
-          ? '⚠️ Camera is already in use by another app.'
-          : '⚠️ Could not access camera: ' + err.message;
-
-    console.warn('[SNX Live] getUserMedia(video+audio) failed:', err.name, err.message);
-
     // Fallback: try audio only
     try {
       _localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
@@ -365,8 +244,7 @@ async function _startCreatorSetup() {
       _updateSetupPreviewState(false);
       toast('📷 Camera not available — audio only');
     } catch (e) {
-      console.error('[SNX Live] Audio-only getUserMedia also failed:', e.name, e.message);
-      toast(msg);
+      toast('⚠️ Camera & mic access denied. Check browser permissions.');
     }
   }
 }
@@ -424,10 +302,9 @@ async function flipSetupCamera() {
    START LIVE (creator)
    ═══════════════════════════════════════════════════ */
 async function startLive() {
-  // Issue 1 / 17: Auth must be resolved before we can go live
+  // Auth must be resolved before we can go live
   if (!_user) {
     toast('⚠️ Please wait — still signing in…');
-    console.warn('[SNX Live] startLive called but _user is null. Auth has not resolved yet.');
     return;
   }
   // Block anonymous sign-ins from hosting (matches Firestore rule)
@@ -438,7 +315,6 @@ async function startLive() {
   // Ensure we actually have a media stream before creating a room
   if (!_localStream || !_localStream.getTracks().length) {
     toast('⚠️ No camera/mic available. Check browser permissions and refresh.');
-    console.warn('[SNX Live] startLive called but no local media stream exists. Did getUserMedia succeed?');
     return;
   }
 
@@ -493,7 +369,7 @@ async function startLive() {
   _attachLocalVideoToStage();
   _populateCreatorInfo(creatorData);
 
-  // Start the creator WebRTC offer + listen for viewer answer
+  // Connect to LiveKit as publisher
   await _startCreatorConnection();
 
   // Start chat listener
@@ -525,124 +401,62 @@ function _populateCreatorInfo(data) {
 }
 
 /* ═══════════════════════════════════════════════════
-   CREATOR — Create offer, write to liveConnections,
-             listen for viewer answer + candidates
+   CREATOR — Fetch LiveKit token, connect, publish tracks
    ═══════════════════════════════════════════════════ */
 async function _startCreatorConnection() {
-  // Clean up any previous connection
-  _cleanupCreatorPc();
+  if (_lkRoom) { try { await _lkRoom.disconnect(); } catch (_) {} _lkRoom = null; }
 
   if (!_localStream) {
-    console.warn('[Creator] No local stream — cannot create WebRTC offer');
+    console.warn('[Creator] No local stream — cannot publish');
     return;
   }
 
-  // Write the connection doc BEFORE creating the offer so ICE candidates have a target
+  // Fetch a short-lived token from the Worker
+  let token;
   try {
-    await setDoc(doc(_db, 'liveConnections', _roomId), {
-      offer:             null,
-      answer:            null,
-      creatorCandidates: [],
-      viewerCandidates:  [],
-      createdAt:         serverTimestamp(),
+    const res = await fetch(LIVEKIT_TOKEN_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        roomName:        _roomId,
+        participantName: _user.uid,
+        canPublish:      true,
+      }),
     });
+    ({ token } = await res.json());
   } catch (e) {
-    console.error('[Creator] Could not create liveConnections doc:', e.message);
+    toast('⚠️ Could not get stream token: ' + e.message);
     return;
   }
 
-  _creatorPc = new RTCPeerConnection(ICE);
+  const { Room, RoomEvent, Track, LocalVideoTrack, LocalAudioTrack } = LivekitClient;
 
-  // Add all local tracks so the viewer receives video + audio
-  _localStream.getTracks().forEach(track => _creatorPc.addTrack(track, _localStream));
+  _lkRoom = new Room({ adaptiveStream: true, dynacast: true });
 
-  // Collect and persist creator ICE candidates via arrayUnion
-  _creatorPc.onicecandidate = async e => {
-    if (!e.candidate) return;
-    try {
-      await updateDoc(doc(_db, 'liveConnections', _roomId), {
-        creatorCandidates: arrayUnion(e.candidate.toJSON()),
-      });
-    } catch (err) {
-      console.warn('[Creator] Failed to write ICE candidate:', err.message);
-    }
-  };
+  _lkRoom.on(RoomEvent.Connected, () => {
+    console.log('[Creator] LiveKit connected');
+  });
 
-  _creatorPc.onconnectionstatechange = () => {
-    const st = _creatorPc?.connectionState;
-    console.log('[Creator] connection state:', st);
-  };
+  _lkRoom.on(RoomEvent.Disconnected, () => {
+    console.log('[Creator] LiveKit disconnected');
+  });
 
-  _creatorPc.oniceconnectionstatechange = () => {
-    console.log('[Creator] ICE state:', _creatorPc?.iceConnectionState);
-  };
+  await _lkRoom.connect(LIVEKIT_URL, token);
 
-  // Create offer
-  let offer;
-  try {
-    offer = await _creatorPc.createOffer();
-    await _creatorPc.setLocalDescription(offer);
-  } catch (e) {
-    console.error('[Creator] createOffer failed:', e.message);
-    return;
+  // Publish existing local tracks
+  const videoTrack = _localStream.getVideoTracks()[0];
+  const audioTrack = _localStream.getAudioTracks()[0];
+
+  if (videoTrack) {
+    const lkVideo = new LocalVideoTrack(videoTrack);
+    await _lkRoom.localParticipant.publishTrack(lkVideo, { source: Track.Source.Camera });
+  }
+  if (audioTrack) {
+    const lkAudio = new LocalAudioTrack(audioTrack);
+    await _lkRoom.localParticipant.publishTrack(lkAudio, { source: Track.Source.Microphone });
   }
 
-  // Write the offer to Firestore so viewer can read it
-  try {
-    await updateDoc(doc(_db, 'liveConnections', _roomId), {
-      offer: { type: offer.type, sdp: offer.sdp },
-    });
-  } catch (e) {
-    console.error('[Creator] Could not write offer:', e.message);
-    return;
-  }
-
-  console.log('[Creator] Offer written to liveConnections/' + _roomId);
-
-  // Track how many viewer candidates we have already applied
-  let _appliedViewerCandCount = 0;
-  let _answerApplied = false;
-  const _pendingViewerCandidates = [];
-
-  // Listen on the connection doc for answer + viewerCandidates
-  _connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
-    if (!snap.exists() || !_creatorPc) return;
-    const d = snap.data();
-
-    // Apply the viewer's answer once
-    if (!_answerApplied && d.answer && d.answer.sdp) {
-      _answerApplied = true;
-      try {
-        await _creatorPc.setRemoteDescription({ type: 'answer', sdp: d.answer.sdp });
-        console.log('[Creator] Remote description (answer) applied');
-        // Now drain any pending viewer candidates
-        for (const cand of _pendingViewerCandidates) {
-          _creatorPc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-        }
-        _pendingViewerCandidates.length = 0;
-      } catch (e) {
-        console.warn('[Creator] setRemoteDescription failed:', e.message);
-        _answerApplied = false;
-        return;
-      }
-    }
-
-    // Buffer or apply viewer ICE candidates
-    const viewerCands = d.viewerCandidates || [];
-    for (let i = _appliedViewerCandCount; i < viewerCands.length; i++) {
-      if (_answerApplied) {
-        _creatorPc.addIceCandidate(new RTCIceCandidate(viewerCands[i])).catch(() => {});
-      } else {
-        _pendingViewerCandidates.push(viewerCands[i]);
-      }
-    }
-    _appliedViewerCandCount = viewerCands.length;
-  }, () => {});
-}
-
-function _cleanupCreatorPc() {
-  if (_connUnsub) { _connUnsub(); _connUnsub = null; }
-  if (_creatorPc) { try { _creatorPc.close(); } catch (_) {} _creatorPc = null; }
+  console.log('[Creator] Tracks published to LiveKit room:', _roomId);
 }
 
 /* ── Subscribe to viewer count from Firestore ── */
@@ -685,11 +499,10 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
-    // Replace the video track on the creator's active peer connection
-    const videoTrack = newStream.getVideoTracks()[0];
-    if (videoTrack && _creatorPc) {
-      const sender = _creatorPc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) sender.replaceTrack(videoTrack).catch(() => {});
+    // Replace the video track in the LiveKit room
+    if (_lkRoom && newStream.getVideoTracks()[0]) {
+      const pub = [..._lkRoom.localParticipant.videoTrackPublications.values()][0];
+      if (pub?.track) pub.track.replaceTrack(newStream.getVideoTracks()[0]).catch(() => {});
     }
   } catch (e) {
     toast('⚠️ Could not flip camera: ' + e.message);
@@ -705,8 +518,8 @@ function toggleFullscreen() {
 }
 
 async function endLive() {
-  // Clean up creator peer connection and signaling listener
-  _cleanupCreatorPc();
+  // Disconnect from LiveKit
+  if (_lkRoom) { try { await _lkRoom.disconnect(); } catch (_) {} _lkRoom = null; }
   if (_chatUnsub)        { _chatUnsub();         _chatUnsub        = null; }
   if (_viewerCountUnsub) { _viewerCountUnsub();  _viewerCountUnsub = null; }
 
@@ -748,9 +561,6 @@ async function endLive() {
       try { await updateDoc(shareDoc.ref, { isLive: false }); } catch (_) {}
     });
   } catch (_) {}
-
-  // Delete the liveConnections signaling doc so viewers can't use stale offer
-  try { await deleteDoc(doc(_db, 'liveConnections', _roomId)); } catch (_) {}
 
   // Remove the live story bubble
   _deleteLiveStory();
@@ -929,9 +739,9 @@ async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
 
-  // Tear down peer connection and Firestore listeners
+  // Tear down LiveKit + Firestore listeners
   _viewerUnsubs.forEach(fn => fn()); _viewerUnsubs = [];
-  if (_viewerPc) { try { _viewerPc.close(); } catch (_) {} _viewerPc = null; }
+  if (_lkRoom) { try { await _lkRoom.disconnect(); } catch (_) {} _lkRoom = null; }
 
   try { await updateDoc(doc(_db, 'liveRooms', _roomId), { viewers: increment(-1) }); } catch (_) {}
 }
@@ -949,132 +759,68 @@ function _setupViewerControls(roomData) {
 async function _connectToHost(roomData) {
   _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
 
-  // Close any previous peer connection
-  _viewerUnsubs.forEach(fn => fn());
-  _viewerUnsubs = [];
-  if (_viewerPc) { try { _viewerPc.close(); } catch (_) {} _viewerPc = null; }
+  // Disconnect any previous LiveKit session
+  _viewerUnsubs.forEach(fn => fn()); _viewerUnsubs = [];
+  if (_lkRoom) { try { await _lkRoom.disconnect(); } catch (_) {} _lkRoom = null; }
 
-  // Wait for the creator's offer via onSnapshot (reactive, single-fire)
-  let _offerReceived = false;
-  const offerUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
-    if (_offerReceived) return;  // prevent double-fire on reconnect
-    if (!snap.exists() || !snap.data().offer?.sdp) {
-      _showConnBanner('⏳ Waiting for creator…', 'Stream offer not ready yet…');
-      return;
-    }
-    _offerReceived = true;
-    offerUnsub();  // stop listening once we have the offer
+  // Fetch a viewer token (canPublish: false) from the Worker
+  let token;
+  try {
+    const res = await fetch(LIVEKIT_TOKEN_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        roomName:        _roomId,
+        participantName: _user.uid + '_viewer_' + Date.now(),
+        canPublish:      false,
+      }),
+    });
+    ({ token } = await res.json());
+  } catch (e) {
+    _showConnBanner('⚠️ Token Error', 'Could not get viewer token: ' + e.message);
+    return;
+  }
 
-    const connData = snap.data();
+  const { Room, RoomEvent, Track } = LivekitClient;
 
-    _viewerPc = new RTCPeerConnection(ICE);
+  _lkRoom = new Room({ adaptiveStream: true });
 
-    // Add recvonly transceivers so the answer SDP contains media sections
-    _viewerPc.addTransceiver('video', { direction: 'recvonly' });
-    _viewerPc.addTransceiver('audio', { direction: 'recvonly' });
-
-    // When we receive the creator's video/audio tracks — display them
-    _viewerPc.ontrack = e => {
-      console.log('[Viewer] ontrack fired, streams:', e.streams.length);
-      const stream = (e.streams && e.streams[0]) ? e.streams[0] : new MediaStream([e.track]);
+  // When a remote track is published and subscribed — display it
+  _lkRoom.on(RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind === Track.Kind.Video) {
+      const mediaStream = new MediaStream([track.mediaStreamTrack]);
       if (D.liveVideo) {
-        D.liveVideo.srcObject   = stream;
-        D.liveVideo.muted       = true;   // required for autoplay
+        D.liveVideo.srcObject   = mediaStream;
+        D.liveVideo.muted       = true;
         D.liveVideo.autoplay    = true;
         D.liveVideo.playsInline = true;
         D.liveVideo.play().catch(err => console.warn('[Viewer] video.play():', err.message));
         _showUnmutePrompt();
       }
       _hideConnBanner();
-    };
-
-    // Viewer ICE candidates → append to liveConnections via arrayUnion
-    _viewerPc.onicecandidate = async e => {
-      if (!e.candidate) return;
-      try {
-        await updateDoc(doc(_db, 'liveConnections', _roomId), {
-          viewerCandidates: arrayUnion(e.candidate.toJSON()),
-        });
-      } catch (err) {
-        console.warn('[Viewer] Failed to write ICE candidate:', err.message);
-      }
-    };
-
-    let _retryScheduled = false;
-    _viewerPc.onconnectionstatechange = () => {
-      const st = _viewerPc?.connectionState;
-      console.log('[Viewer] connection state:', st);
-      if (st === 'connected')    { _retryScheduled = false; _hideConnBanner(); }
-      if (st === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
-      if (st === 'failed' && !_retryScheduled) {
-        _retryScheduled = true;
-        _showConnBanner('⚠️ Failed', 'Could not reach stream. Retrying…');
-        setTimeout(() => {
-          if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
-        }, 4000);
-      }
-    };
-
-    _viewerPc.oniceconnectionstatechange = () => {
-      const s = _viewerPc?.iceConnectionState;
-      console.log('[Viewer] ICE state:', s);
-      if (s === 'checking')     _showConnBanner('Checking…', 'Finding connection path…');
-      if (s === 'connected')    _hideConnBanner();
-      if (s === 'completed')    _hideConnBanner();
-      if (s === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped…');
-      if (s === 'failed')       _showConnBanner('⚠️ Failed', 'No route to stream found. Retrying…');
-    };
-
-    // Set creator offer as remote description
-    try {
-      await _viewerPc.setRemoteDescription({ type: 'offer', sdp: connData.offer.sdp });
-    } catch (e) {
-      _showConnBanner('⚠️ SDP Error', 'Could not read stream offer: ' + e.message);
-      return;
+      console.log('[Viewer] Video track subscribed');
     }
-
-    // Apply any creator ICE candidates that are already stored
-    let _appliedCreatorCandCount = 0;
-    const applyCreatorCands = (cands) => {
-      for (let i = _appliedCreatorCandCount; i < cands.length; i++) {
-        _viewerPc?.addIceCandidate(new RTCIceCandidate(cands[i])).catch(() => {});
-      }
-      _appliedCreatorCandCount = cands.length;
-    };
-    applyCreatorCands(connData.creatorCandidates || []);
-
-    // Create and write answer (do NOT touch viewerCandidates — arrayUnion handles append)
-    let answer;
-    try {
-      answer = await _viewerPc.createAnswer();
-      await _viewerPc.setLocalDescription(answer);
-    } catch (e) {
-      _showConnBanner('⚠️ SDP Error', 'Could not create answer: ' + e.message);
-      return;
-    }
-
-    try {
-      await updateDoc(doc(_db, 'liveConnections', _roomId), {
-        answer: { type: 'answer', sdp: answer.sdp },
-      });
-      console.log('[Viewer] Answer written to liveConnections/' + _roomId);
-    } catch (e) {
-      _showConnBanner('⚠️ Connection Error', e.message);
-      return;
-    }
-
-    // Listen for new creator ICE candidates that trickle in after the answer
-    const connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), snap => {
-      if (!snap.exists()) return;
-      applyCreatorCands(snap.data().creatorCandidates || []);
-    }, () => {});
-    _viewerUnsubs.push(connUnsub);
-  }, err => {
-    console.error('[Viewer] onSnapshot error:', err.message);
-    _showConnBanner('⚠️ Connection Error', err.message);
   });
 
-  _viewerUnsubs.push(offerUnsub);
+  _lkRoom.on(RoomEvent.Connected, () => {
+    console.log('[Viewer] LiveKit connected');
+    _showConnBanner('⏳ Waiting for stream…', 'Connected — waiting for creator video…');
+  });
+
+  _lkRoom.on(RoomEvent.Disconnected, () => {
+    console.log('[Viewer] LiveKit disconnected');
+    _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
+    // Auto-retry after 4 s
+    setTimeout(() => {
+      if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
+    }, 4000);
+  });
+
+  try {
+    await _lkRoom.connect(LIVEKIT_URL, token);
+  } catch (e) {
+    _showConnBanner('⚠️ Connection Error', 'Could not reach stream: ' + e.message);
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1227,8 +973,8 @@ function _showEndedOverlay(wasCreator, title, sub) {
     ? 'Your live stream has ended. Thanks for going live!'
     : 'The creator has ended this live stream.');
   D.ended.classList.add('visible');
-  // Clean up viewer PC
-  if (_viewerPc) { _viewerPc.close(); _viewerPc = null; }
+  // Clean up LiveKit + listeners
+  if (_lkRoom) { try { _lkRoom.disconnect(); } catch (_) {} _lkRoom = null; }
   _viewerUnsubs.forEach(fn => fn()); _viewerUnsubs = [];
   if (_chatUnsub) { _chatUnsub(); _chatUnsub = null; }
 }

@@ -11,6 +11,13 @@ account_id = "f276c4406b82d3c1e35efed1ef486235"
 binding = "BUCKET"
 bucket_name = "legend"
 
+# ── LiveKit credentials (stored as encrypted Worker secrets, not in this file) ─
+# These have already been provisioned:
+#   LIVEKIT_API_KEY    = APIbKEHSLM6PKMG
+#   LIVEKIT_API_SECRET = (set)
+[vars]
+LIVEKIT_URL = "wss://project-s-iaamddo2.livekit.cloud"
+
 # ── Cloudflare Security Notes ─────────────────────────────────────────────────
 # Enable these in the Cloudflare Dashboard for full protection:
 #

@@ -94,6 +94,87 @@ function mimeFromExt(filename) {
   return map[ext] || null;
 }
 
+// ── LiveKit JWT token generator ───────────────────────────────────────────────
+// Signs an access token using the LiveKit API key + secret stored as Worker secrets.
+// POST /livekit-token   body: { roomName, participantName, canPublish }
+async function handleLiveKitToken(request, env, cors, sec) {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405, headers: mergeHeaders(cors, sec) });
+  }
+
+  const apiKey    = env.LIVEKIT_API_KEY;
+  const apiSecret = env.LIVEKIT_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    return new Response(JSON.stringify({ error: 'LiveKit credentials not configured' }), {
+      status: 500,
+      headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+      status: 400,
+      headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  const { roomName, participantName, canPublish = false } = body;
+  if (!roomName || !participantName) {
+    return new Response(JSON.stringify({ error: 'roomName and participantName are required' }), {
+      status: 400,
+      headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  // Build LiveKit access token (JWT HS256)
+  const now   = Math.floor(Date.now() / 1000);
+  const exp   = now + 6 * 3600; // 6-hour expiry
+
+  const header  = { alg: 'HS256', typ: 'JWT' };
+  const payload = {
+    iss:  apiKey,
+    sub:  participantName,
+    iat:  now,
+    exp,
+    nbf:  now,
+    name: participantName,
+    video: {
+      room:          roomName,
+      roomJoin:      true,
+      canPublish,
+      canSubscribe:  true,
+      canPublishData: true,
+    },
+  };
+
+  const b64url = s => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const enc    = s => b64url(unescape(encodeURIComponent(s)));
+
+  const headerB64  = enc(JSON.stringify(header));
+  const payloadB64 = enc(JSON.stringify(payload));
+  const sigInput   = `${headerB64}.${payloadB64}`;
+
+  // HMAC-SHA256 via Web Crypto
+  const keyData  = new TextEncoder().encode(apiSecret);
+  const msgData  = new TextEncoder().encode(sigInput);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  const sigB64    = btoa(String.fromCharCode(...new Uint8Array(sigBuffer)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  const token = `${sigInput}.${sigB64}`;
+
+  return new Response(JSON.stringify({ token, url: env.LIVEKIT_URL }), {
+    status: 200,
+    headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+  });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -107,6 +188,11 @@ export default {
         status: 204,
         headers: mergeHeaders(cors, sec)
       });
+    }
+
+    // ── LiveKit token endpoint ──
+    if (url.pathname === '/livekit-token') {
+      return handleLiveKitToken(request, env, cors, sec);
     }
 
     // ── GET: serve a file from R2 (CDN delivery) ──────────────────────────────
