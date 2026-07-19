@@ -455,8 +455,8 @@ service cloud.firestore {
       // Viewer updates it (writes answer + viewerCandidates);
       // Creator updates it (appends creatorCandidates)
       allow update: if isSignedIn();
-      // Only Founder may delete (cleanup)
-      allow delete: if isFounder();
+      // Creator deletes on stream end; Founder may also clean up
+      allow delete: if isSignedIn();
     }
 
     // ── Live Signals (WebRTC signaling — legacy, kept for compatibility) ───────
