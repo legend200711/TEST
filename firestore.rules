@@ -455,8 +455,10 @@ service cloud.firestore {
       // Viewer updates it (writes answer + viewerCandidates);
       // Creator updates it (appends creatorCandidates)
       allow update: if isSignedIn();
-      // Only Founder may delete (cleanup)
-      allow delete: if isFounder();
+      // Issue 7: Creator must be able to delete their own signaling doc on endLive().
+      // liveId is formatted as {uid}_{timestamp36}, so the first segment is the creator's UID.
+      allow delete: if isSignedIn()
+        && (request.auth.uid == liveId.split('_')[0] || isFounder());
     }
 
     // ── Live Signals (WebRTC signaling — legacy, kept for compatibility) ───────

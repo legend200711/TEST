@@ -31,6 +31,27 @@
 
 'use strict';
 
+/* ── Issue 3 / 6: Warn early if running from file:// or non-HTTPS ── */
+if (location.protocol === 'file:') {
+  console.error(
+    '[SNX Live] FATAL: live.html was opened with a file:// URL. ' +
+    'Camera/mic, ES modules, and Firebase will not work. ' +
+    'Serve from Firebase Hosting, localhost, or any HTTPS server.'
+  );
+}
+if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+  console.warn('[SNX Live] Non-HTTPS origin detected. getUserMedia and some APIs may be blocked by the browser.');
+}
+
+/* ── Issue 10: WebRTC browser compatibility check ── */
+if (typeof RTCPeerConnection === 'undefined') {
+  console.error('[SNX Live] RTCPeerConnection is not supported in this browser. Live streaming requires Chrome, Edge, Firefox, or Safari 15+.');
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('liveLoading');
+    if (el) el.innerHTML = '<div style="color:#ff6b6b;padding:32px;text-align:center;font-size:15px;">⚠️ Your browser does not support WebRTC.<br>Please use the latest Chrome, Edge, or Firefox.</div>';
+  });
+}
+
 /* ── Firebase config (same project as index.html) ── */
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import {
@@ -109,7 +130,25 @@ let D = {};
 /* ═══════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════ */
+/* ── Issue 14: wrap entire DOMContentLoaded init in try/catch so a JS error
+   never leaves the loading screen stuck forever ── */
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    _initPage();
+  } catch (err) {
+    console.error('[SNX Live] Uncaught error during page init:', err);
+    const el = document.getElementById('liveLoading');
+    if (el) {
+      el.innerHTML = `<div style="color:#ff6b6b;padding:32px;text-align:center;font-size:15px;">
+        ⚠️ Failed to initialize the live page.<br>
+        <small style="color:#6a90b8;">${err.message || 'Unknown error'}<br>Open the browser console (F12) for details.</small>
+      </div>`;
+      el.style.display = 'flex';
+    }
+  }
+});
+
+function _initPage() {
   D = {
     loading:         document.getElementById('liveLoading'),
     setup:           document.getElementById('liveSetup'),
@@ -203,22 +242,53 @@ document.addEventListener('DOMContentLoaded', () => {
     D.stage.classList.toggle('live-controls-hidden');
   });
 
+  // Issue 16: log before/inside auth callback so it's easy to verify in the console
+  console.log('[SNX Live] Waiting for onAuthStateChanged…');
+
+  // Issue 1: auth timeout — if onAuthStateChanged hasn't fired in 12 s,
+  // the Firebase SDK is likely blocked (wrong config, ad-blocker, file://).
+  const _authTimeout = setTimeout(() => {
+    console.error(
+      '[SNX Live] onAuthStateChanged did not fire within 12 s. ' +
+      'Check: (1) Firebase Auth is enabled in the console, ' +
+      '(2) at least one sign-in method is enabled, ' +
+      '(3) the page is served over HTTPS or localhost (not file://), ' +
+      '(4) the apiKey / projectId config values are correct, ' +
+      '(5) no ad-blocker is blocking firebaseapp.com.'
+    );
+    // Don't leave the user stuck on the loading screen forever
+    _hideLoading();
+    const el = document.getElementById('liveLoading');
+    if (el) el.innerHTML = '<div style="color:#ff6b6b;padding:32px;text-align:center;font-size:15px;">⚠️ Could not connect to Shadow Nexus.<br>Check your internet connection and try again.</div>';
+    if (el) el.style.display = 'flex';
+  }, 12000);
+
   // Wait for Firebase auth
   onAuthStateChanged(_auth, user => {
+    clearTimeout(_authTimeout);
+    console.log('[SNX Live] onAuthStateChanged fired. user:', user ? user.uid : 'null (not signed in)');
+
     if (!user) {
-      // Not logged in — redirect
+      // Issue 17: Not logged in — redirect to sign-in page
+      console.log('[SNX Live] No authenticated user — redirecting to index.html');
       _hideLoading();
       window.location.href = 'index.html';
       return;
     }
     _user = user;
+    console.log('[SNX Live] Auth OK. Loading user data…');
     _loadUserData().then(() => {
+      console.log('[SNX Live] User data loaded. Resolving mode…');
       // Re-enable Go Live now that auth is confirmed
+      if (D.goLiveBtn) { D.goLiveBtn.disabled = false; }
+      _resolveMode();
+    }).catch(err => {
+      console.error('[SNX Live] _loadUserData() threw:', err);
       if (D.goLiveBtn) { D.goLiveBtn.disabled = false; }
       _resolveMode();
     });
   });
-});
+} // end _initPage
 
 /* ── Load Firestore user doc ── */
 async function _loadUserData() {
@@ -256,6 +326,15 @@ async function _startCreatorSetup() {
   _hideLoading();
   if (D.setup) D.setup.style.display = 'block';
 
+  // Issue 6: getUserMedia requires HTTPS or localhost
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('⚠️ Camera/mic not available. Make sure the page is served over HTTPS or localhost.');
+    console.error('[SNX Live] navigator.mediaDevices.getUserMedia is unavailable. Requires HTTPS or localhost.');
+    _camOn = false;
+    _updateSetupPreviewState(false);
+    return;
+  }
+
   // Acquire camera
   try {
     _localStream = await navigator.mediaDevices.getUserMedia({
@@ -268,6 +347,17 @@ async function _startCreatorSetup() {
     }
     _updateSetupPreviewState(true);
   } catch (err) {
+    // Issue 6: provide specific error messages for each permission failure type
+    const msg = err.name === 'NotAllowedError'
+      ? '⚠️ Camera/mic access was denied. Allow permissions in your browser and refresh.'
+      : err.name === 'NotFoundError'
+        ? '⚠️ No camera or microphone found on this device.'
+        : err.name === 'NotReadableError'
+          ? '⚠️ Camera is already in use by another app.'
+          : '⚠️ Could not access camera: ' + err.message;
+
+    console.warn('[SNX Live] getUserMedia(video+audio) failed:', err.name, err.message);
+
     // Fallback: try audio only
     try {
       _localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
@@ -275,7 +365,8 @@ async function _startCreatorSetup() {
       _updateSetupPreviewState(false);
       toast('📷 Camera not available — audio only');
     } catch (e) {
-      toast('⚠️ Camera & mic access denied. Check browser permissions.');
+      console.error('[SNX Live] Audio-only getUserMedia also failed:', e.name, e.message);
+      toast(msg);
     }
   }
 }
@@ -333,9 +424,10 @@ async function flipSetupCamera() {
    START LIVE (creator)
    ═══════════════════════════════════════════════════ */
 async function startLive() {
-  // Auth must be resolved before we can go live
+  // Issue 1 / 17: Auth must be resolved before we can go live
   if (!_user) {
     toast('⚠️ Please wait — still signing in…');
+    console.warn('[SNX Live] startLive called but _user is null. Auth has not resolved yet.');
     return;
   }
   // Block anonymous sign-ins from hosting (matches Firestore rule)
@@ -346,6 +438,7 @@ async function startLive() {
   // Ensure we actually have a media stream before creating a room
   if (!_localStream || !_localStream.getTracks().length) {
     toast('⚠️ No camera/mic available. Check browser permissions and refresh.');
+    console.warn('[SNX Live] startLive called but no local media stream exists. Did getUserMedia succeed?');
     return;
   }
 

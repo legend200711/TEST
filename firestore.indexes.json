@@ -93,6 +93,29 @@
       ]
     },
     {
+      "collectionGroup": "liveMessages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "liveMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "liveRoomId", "order": "ASCENDING" },
+        { "fieldPath": "type",       "order": "ASCENDING" },
+        { "fieldPath": "isLive",     "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
