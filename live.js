@@ -683,49 +683,72 @@ function _setupViewerControls(roomData) {
    Creates offer, writes to Firestore, listens for answer.
    ═══════════════════════════════════════════════════ */
 async function _startCreatorWebRTC() {
+  console.log('[Creator WebRTC] Starting. roomId =', _roomId);
+  console.log('[Creator WebRTC] Auth uid =', _user?.uid, '| anonymous =', _user?.isAnonymous);
+
   if (!_localStream) {
     toast('⚠️ No local stream for WebRTC');
+    console.error('[Creator WebRTC] ABORT — no local stream');
     return;
   }
 
   _rtcPc = new RTCPeerConnection(_ICE_SERVERS);
+  console.log('[Creator WebRTC] RTCPeerConnection created');
 
   // Attach local tracks
-  _localStream.getTracks().forEach(track => _rtcPc.addTrack(track, _localStream));
+  _localStream.getTracks().forEach(track => {
+    _rtcPc.addTrack(track, _localStream);
+    console.log('[Creator WebRTC] Track added to PC:', track.kind, track.label);
+  });
 
   _rtcPc.onconnectionstatechange = () => {
-    console.log('[Creator WebRTC] Connection state:', _rtcPc.connectionState);
+    console.log('[Creator WebRTC] Connection state →', _rtcPc.connectionState);
     if (_rtcPc.connectionState === 'connected') {
       toast('🟢 Viewer connected via WebRTC');
     }
   };
 
+  _rtcPc.oniceconnectionstatechange = () => {
+    console.log('[Creator WebRTC] ICE connection state →', _rtcPc.iceConnectionState);
+  };
+
+  _rtcPc.onicegatheringstatechange = () => {
+    console.log('[Creator WebRTC] ICE gathering state →', _rtcPc.iceGatheringState);
+  };
+
   // Create offer and set local description FIRST
   const offer = await _rtcPc.createOffer();
   await _rtcPc.setLocalDescription(offer);
+  console.log('[Creator WebRTC] Local description set (offer). SDP length =', offer.sdp.length);
 
   // Write the offer doc to Firestore — this MUST complete before ICE writes
+  console.log('[Creator WebRTC] Writing offer to liveConnections/' + _roomId + ' …');
   try {
     await setDoc(doc(_db, 'liveConnections', _roomId), {
       offer:             { type: offer.type, sdp: offer.sdp },
       creatorCandidates: [],
       viewerCandidates:  [],
     });
-    console.log('[Creator WebRTC] Offer written to Firestore');
+    console.log('[Creator WebRTC] ✅ Offer written to Firestore successfully');
   } catch (e) {
+    console.error('[Creator WebRTC] ❌ Firestore write FAILED:', e.code, e.message);
     toast('⚠️ Could not write offer: ' + e.message);
     return;
   }
 
   // NOW wire up ICE — the doc already exists so arrayUnion is safe
   _rtcPc.onicecandidate = async (e) => {
-    if (!e.candidate) return;
+    if (!e.candidate) {
+      console.log('[Creator WebRTC] ICE gathering complete (null candidate)');
+      return;
+    }
+    console.log('[Creator WebRTC] New ICE candidate:', e.candidate.type, e.candidate.protocol);
     try {
       await updateDoc(doc(_db, 'liveConnections', _roomId), {
         creatorCandidates: arrayUnion(e.candidate.toJSON()),
       });
     } catch (err) {
-      console.warn('[Creator WebRTC] ICE write error:', err.message);
+      console.warn('[Creator WebRTC] ICE write error:', err.code, err.message);
     }
   };
 
@@ -739,9 +762,10 @@ async function _startCreatorWebRTC() {
 
     // Apply answer exactly once
     if (d.answer && _rtcPc.remoteDescription === null) {
+      console.log('[Creator WebRTC] Answer arrived — setting remote description');
       try {
         await _rtcPc.setRemoteDescription(new RTCSessionDescription(d.answer));
-        console.log('[Creator WebRTC] Answer received and set');
+        console.log('[Creator WebRTC] ✅ Remote description set (answer)');
       } catch (err) {
         console.warn('[Creator WebRTC] setRemoteDescription error:', err.message);
       }
@@ -751,6 +775,7 @@ async function _startCreatorWebRTC() {
     const cands = d.viewerCandidates || [];
     if (_rtcPc.remoteDescription && cands.length > _appliedViewerCandCount) {
       const newCands = cands.slice(_appliedViewerCandCount);
+      console.log('[Creator WebRTC] Applying', newCands.length, 'new viewer ICE candidate(s)');
       for (const cand of newCands) {
         try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
@@ -766,51 +791,64 @@ async function _startCreatorWebRTC() {
    Reads offer, creates answer, exchanges ICE.
    ═══════════════════════════════════════════════════ */
 async function _startViewerWebRTC(roomData) {
+  console.log('[Viewer WebRTC] Starting. roomId =', _roomId);
+  console.log('[Viewer WebRTC] Auth uid =', _user?.uid, '| anonymous =', _user?.isAnonymous);
+
   _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
 
   // Read offer from Firestore BEFORE creating RTCPeerConnection.
   // If the offer isn't there yet, poll without allocating a PC — no orphan connections.
   let connSnap;
+  console.log('[Viewer WebRTC] Reading liveConnections/' + _roomId + ' …');
   try {
     connSnap = await getDoc(doc(_db, 'liveConnections', _roomId));
   } catch (e) {
+    console.error('[Viewer WebRTC] ❌ Firestore read FAILED:', e.code, e.message);
     _showConnBanner('⚠️ Signaling error', 'Could not read offer: ' + e.message);
     return;
   }
 
   if (!connSnap.exists() || !connSnap.data().offer) {
+    console.log('[Viewer WebRTC] No offer yet in liveConnections/' + _roomId + ' — polling…');
     _showConnBanner('⏳ Waiting for stream…', 'No offer yet — retrying…');
     // Poll every 2 s — no RTCPeerConnection allocated until an offer exists
     const pollInterval = setInterval(async () => {
       try {
         const retry = await getDoc(doc(_db, 'liveConnections', _roomId));
         if (retry.exists() && retry.data().offer) {
+          console.log('[Viewer WebRTC] Offer found on poll — proceeding');
           clearInterval(pollInterval);
           _startViewerWebRTC(roomData);
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[Viewer WebRTC] Poll read error:', err.code, err.message);
+      }
     }, 2000);
     return;
   }
 
+  console.log('[Viewer WebRTC] ✅ Offer found in Firestore. Fields:',
+    Object.keys(connSnap.data()).join(', '));
+
   // Offer is available — now create the peer connection
   if (_rtcPc) { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   _rtcPc = new RTCPeerConnection(_ICE_SERVERS);
+  console.log('[Viewer WebRTC] RTCPeerConnection created');
 
   // When remote track arrives, attach to <video>
   _rtcPc.ontrack = (e) => {
-    console.log('[Viewer WebRTC] Track received:', e.track.kind);
+    console.log('[Viewer WebRTC] ✅ Track received:', e.track.kind, e.track.label);
     if (!D.liveVideo) return;
     const stream = e.streams[0] || new MediaStream([e.track]);
     D.liveVideo.srcObject = stream;
     D.liveVideo.muted = true;
-    D.liveVideo.play().catch(() => {});
+    D.liveVideo.play().catch(err => console.warn('[Viewer WebRTC] play() error:', err.message));
     _showUnmutePrompt();
     _hideConnBanner();
   };
 
   _rtcPc.onconnectionstatechange = () => {
-    console.log('[Viewer WebRTC] Connection state:', _rtcPc.connectionState);
+    console.log('[Viewer WebRTC] Connection state →', _rtcPc.connectionState);
     if (_rtcPc.connectionState === 'connected') {
       _hideConnBanner();
       toast('🟢 Connected to live stream');
@@ -819,11 +857,21 @@ async function _startViewerWebRTC(roomData) {
     }
   };
 
+  _rtcPc.oniceconnectionstatechange = () => {
+    console.log('[Viewer WebRTC] ICE connection state →', _rtcPc.iceConnectionState);
+  };
+
+  _rtcPc.onicegatheringstatechange = () => {
+    console.log('[Viewer WebRTC] ICE gathering state →', _rtcPc.iceGatheringState);
+  };
+
   const offer = connSnap.data().offer;
+  console.log('[Viewer WebRTC] Setting remote description (offer)…');
   try {
     await _rtcPc.setRemoteDescription(new RTCSessionDescription(offer));
-    console.log('[Viewer WebRTC] Offer set');
+    console.log('[Viewer WebRTC] ✅ Remote description set');
   } catch (e) {
+    console.error('[Viewer WebRTC] ❌ setRemoteDescription failed:', e.message);
     _showConnBanner('⚠️ Offer error', 'Could not set offer: ' + e.message);
     return;
   }
@@ -831,26 +879,33 @@ async function _startViewerWebRTC(roomData) {
   // Create answer
   const answer = await _rtcPc.createAnswer();
   await _rtcPc.setLocalDescription(answer);
+  console.log('[Viewer WebRTC] Local description set (answer). SDP length =', answer.sdp.length);
 
   // Wire up ICE — doc already exists so updateDoc is safe
   _rtcPc.onicecandidate = async (e) => {
-    if (!e.candidate) return;
+    if (!e.candidate) {
+      console.log('[Viewer WebRTC] ICE gathering complete (null candidate)');
+      return;
+    }
+    console.log('[Viewer WebRTC] New ICE candidate:', e.candidate.type, e.candidate.protocol);
     try {
       await updateDoc(doc(_db, 'liveConnections', _roomId), {
         viewerCandidates: arrayUnion(e.candidate.toJSON()),
       });
     } catch (err) {
-      console.warn('[Viewer WebRTC] ICE write error:', err.message);
+      console.warn('[Viewer WebRTC] ICE write error:', err.code, err.message);
     }
   };
 
   // Write answer to Firestore
+  console.log('[Viewer WebRTC] Writing answer to Firestore…');
   try {
     await updateDoc(doc(_db, 'liveConnections', _roomId), {
       answer: { type: answer.type, sdp: answer.sdp },
     });
-    console.log('[Viewer WebRTC] Answer written to Firestore');
+    console.log('[Viewer WebRTC] ✅ Answer written to Firestore');
   } catch (e) {
+    console.error('[Viewer WebRTC] ❌ Answer write FAILED:', e.code, e.message);
     _showConnBanner('⚠️ Answer write error', e.message);
     return;
   }
@@ -858,6 +913,7 @@ async function _startViewerWebRTC(roomData) {
   // Apply creator ICE candidates already present in the snapshot
   let _appliedCreatorCandCount = 0;
   const existingCands = connSnap.data().creatorCandidates || [];
+  console.log('[Viewer WebRTC] Applying', existingCands.length, 'existing creator ICE candidate(s)');
   for (const cand of existingCands) {
     try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
   }
@@ -870,6 +926,7 @@ async function _startViewerWebRTC(roomData) {
     const cands = d.creatorCandidates || [];
     if (cands.length > _appliedCreatorCandCount) {
       const newCands = cands.slice(_appliedCreatorCandCount);
+      console.log('[Viewer WebRTC] Applying', newCands.length, 'new creator ICE candidate(s)');
       for (const cand of newCands) {
         try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }

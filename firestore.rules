@@ -439,24 +439,16 @@ service cloud.firestore {
       allow delete: if isOwner(uid) || isFounder();
     }
 
-    // ── Live Connections (WebRTC signaling — new flat schema) ──────────────────
+    // ── Live Connections (WebRTC signaling) ────────────────────────────────────
     //
-    //   /liveConnections/{liveId}
+    //   /liveConnections/{roomId}
     //     offer             : { type, sdp }         — creator writes
     //     answer            : { type, sdp }         — viewer writes
     //     creatorCandidates : [ … ]                 — creator appends via arrayUnion
     //     viewerCandidates  : [ … ]                 — viewer appends via arrayUnion
 
-    match /liveConnections/{liveId} {
-      // Any signed-in user can read (viewer needs the creator's offer)
-      allow read: if isSignedIn();
-      // Creator creates the doc (setDoc)
-      allow create: if isSignedIn();
-      // Viewer updates it (writes answer + viewerCandidates);
-      // Creator updates it (appends creatorCandidates)
-      allow update: if isSignedIn();
-      // Creator deletes on stream end; Founder may also clean up
-      allow delete: if isSignedIn();
+    match /liveConnections/{roomId} {
+      allow read, write: if request.auth != null;
     }
 
     // ── Live Signals (WebRTC signaling — legacy, kept for compatibility) ───────
