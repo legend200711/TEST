@@ -470,7 +470,7 @@ async function _startCreatorConnection() {
     return;
   }
 
-  const { Room, RoomEvent, Track } = LivekitClient;
+  const { Room, RoomEvent, Track, createLocalVideoTrack, createLocalAudioTrack } = LivekitClient;
 
   _lkRoom = new Room({ adaptiveStream: true, dynacast: true });
 
@@ -490,20 +490,28 @@ async function _startCreatorConnection() {
     return;
   }
 
-  // Publish camera + mic using the tracks already captured by getUserMedia
+  // Publish using LiveKit's own LocalTrack wrappers (required for mobile Safari).
+  // We re-use the existing MediaStreamTrack from getUserMedia by passing it as
+  // the mediaStreamTrack constraint — this avoids a second camera permission prompt.
   try {
     const rawVideo = _localStream.getVideoTracks()[0];
     const rawAudio = _localStream.getAudioTracks()[0];
 
     if (rawVideo) {
-      await _lkRoom.localParticipant.publishTrack(rawVideo, {
-        source: Track.Source.Camera,
-        simulcast: false,
+      const localVideoTrack = await createLocalVideoTrack({
+        mediaStreamTrack: rawVideo,
+      });
+      await _lkRoom.localParticipant.publishTrack(localVideoTrack, {
+        source:     Track.Source.Camera,
+        simulcast:  false,
         videoCodec: 'vp8',
       });
     }
     if (rawAudio) {
-      await _lkRoom.localParticipant.publishTrack(rawAudio, {
+      const localAudioTrack = await createLocalAudioTrack({
+        mediaStreamTrack: rawAudio,
+      });
+      await _lkRoom.localParticipant.publishTrack(localAudioTrack, {
         source: Track.Source.Microphone,
       });
     }
@@ -554,18 +562,25 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
-    // Replace the published video track in LiveKit
+    // Replace the published video track in LiveKit using LocalTrack wrapper
     if (_lkRoom && newStream.getVideoTracks()[0]) {
-      const newVideoTrack = newStream.getVideoTracks()[0];
+      const rawVideoTrack = newStream.getVideoTracks()[0];
+      // Unpublish existing video publication
       const pubs = [..._lkRoom.localParticipant.videoTrackPublications.values()];
-      if (pubs[0]?.track) {
-        // v2: republish — unpublish old, publish new
-        await _lkRoom.localParticipant.unpublishTrack(pubs[0].track.mediaStreamTrack).catch(() => {});
-        await _lkRoom.localParticipant.publishTrack(newVideoTrack, {
-          source: LivekitClient.Track.Source.Camera,
-          simulcast: false, videoCodec: 'vp8',
-        }).catch(() => {});
+      for (const pub of pubs) {
+        if (pub.track) {
+          await _lkRoom.localParticipant.unpublishTrack(pub.track).catch(() => {});
+        }
       }
+      // Republish with a proper LocalVideoTrack wrapper (works on mobile Safari)
+      const newLocalVideo = await LivekitClient.createLocalVideoTrack({
+        mediaStreamTrack: rawVideoTrack,
+      });
+      await _lkRoom.localParticipant.publishTrack(newLocalVideo, {
+        source:     LivekitClient.Track.Source.Camera,
+        simulcast:  false,
+        videoCodec: 'vp8',
+      }).catch(() => {});
     }
   } catch (e) {
     toast('⚠️ Could not flip camera: ' + e.message);

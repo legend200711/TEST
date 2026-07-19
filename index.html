@@ -9056,14 +9056,14 @@ body.arcade-fs-ios body::after { display:none !important; }
           return;
       }
 
-      // If the current user is already live, go directly to their active room
-      // instead of opening the setup screen again.
+      // If the current user is already live, go back to their creator stage
+      // (NOT #watch= which would put them in viewer mode in their own stream).
       try {
           const snap = await getDoc(doc(db, 'users', currentUser.uid));
           if (snap.exists()) {
               const d = snap.data();
               if (d.isLive && d.liveRoomId) {
-                  window.location.href = 'live.html#watch=' + encodeURIComponent(d.liveRoomId);
+                  window.location.href = 'live.html';
                   return;
               }
           }
@@ -18724,9 +18724,6 @@ function _supportStopCanvas() {
      Shared JavaScript utilities (SW registration, PWA install,
      online/offline detection, helper functions)
      ═══════════════════════════════════════════════════════════ -->
-
-<!-- LiveKit browser SDK (global: LivekitClient) -->
-<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.4/dist/livekit-client.umd.min.js"></script>
 
 <script src="script.js"></script>
 

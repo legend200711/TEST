@@ -10,7 +10,7 @@
  * GitHub Pages (/ShadowNexusSocial/) and any local dev server (/).
  */
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME    = `shadow-nexus-${CACHE_VERSION}`;
 
 // Detect base path from the SW's own URL (e.g. /ShadowNexusSocial/ or /)
@@ -32,6 +32,10 @@ const SHELL_FILES = [
   'favicon.ico',
   'favicon-32x32.png',
   'favicon-16x16.png',
+  // Live streaming pages
+  'live.html',
+  'live.js',
+  'live.css',
 ];
 
 const PRECACHE_URLS = SHELL_FILES.map(f => BASE + f);

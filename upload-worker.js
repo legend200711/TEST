@@ -123,7 +123,9 @@ async function handleLiveKitRoom(request, env, cors, sec) {
 
   const apiKey    = env.LIVEKIT_API_KEY;
   const apiSecret = env.LIVEKIT_API_SECRET;
-  const livekitUrl = (env.LIVEKIT_URL || '').replace('wss://', 'https://');
+  const livekitUrl = (env.LIVEKIT_URL || '')
+    .replace('wss://', 'https://')
+    .replace('ws://',  'http://');
 
   if (!apiKey || !apiSecret) {
     return new Response(JSON.stringify({ error: 'LiveKit credentials not configured' }), {
