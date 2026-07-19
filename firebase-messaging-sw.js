@@ -25,10 +25,11 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// GitHub Pages serves this app under /TEST/
-const SNX_BASE = '/TEST/';
-const ICON  = SNX_BASE + 'icon-192.png';
-const BADGE = SNX_BASE + 'favicon-32x32.png';
+// Derive the app base from this service worker's own registration scope.
+// This means it works on GitHub Pages (/TEST/), on a custom domain (/), and locally.
+const SNX_BASE = self.registration ? self.registration.scope.replace(self.location.origin, '') : '/TEST/';
+const ICON    = SNX_BASE + 'icon-192.png';
+const BADGE   = SNX_BASE + 'favicon-32x32.png';
 const APP_URL = SNX_BASE;
 
 // ── Notification type → display title ────────────────────────────────────────

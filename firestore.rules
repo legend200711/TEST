@@ -188,7 +188,13 @@ service cloud.firestore {
             || isModerator()
             // Any signed-in user may like/unlike any post
             || request.resource.data.diff(resource.data)
-                 .affectedKeys().hasOnly(['likedBy', 'likes']));
+                 .affectedKeys().hasOnly(['likedBy', 'likes'])
+            // Any signed-in user may add/remove a comment
+            || request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['comments'])
+            // Any signed-in user may increment repost count
+            || request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['repostCount']));
       allow delete: if isSignedIn()
         && (resource.data.uid == request.auth.uid
             || resource.data.authorUid == request.auth.uid
@@ -356,24 +362,27 @@ service cloud.firestore {
 
     // ── Live Rooms ─────────────────────────────────────────────────────────────
     //
-    //   /liveRooms/{roomId}          — room metadata
-    //   /liveRooms/{roomId}/liveMessages/{msgId} — chat messages
+    //   /liveRooms/{uid}             — one doc per host, keyed by host uid
+    //                                  Ensures only one active session per user.
+    //   /liveRooms/{uid}/liveMessages/{msgId} — chat messages
     //
     // Host: must be a non-anonymous signed-in user.
     // Viewers & guests: must be authenticated (anonymous is fine).
+    //
+    // Legacy roomId-keyed docs are still readable/deletable for migration.
 
-    match /liveRooms/{roomId} {
+    match /liveRooms/{uid} {
       // Any authenticated user (incl. anonymous) can read live rooms
       allow read: if isSignedIn();
 
-      // Only a non-anonymous signed-in user may create a room (and only their own)
-      // sign_in_provider is 'anonymous' for anonymous auth, otherwise 'password', 'google.com', etc.
+      // Only a non-anonymous signed-in user may create/overwrite their own room doc.
+      // The document ID must equal the host's uid — enforcing one doc per user.
       allow create: if isSignedIn()
         && request.auth.token.firebase.sign_in_provider != 'anonymous'
         && request.resource.data.hostId == request.auth.uid;
 
       // Allowed updates:
-      //  - host can update anything in their own room
+      //  - host can update anything in their own room (uid == doc key)
       //  - any signed-in user can increment viewers / likes (fields only)
       allow update: if isSignedIn()
         && (

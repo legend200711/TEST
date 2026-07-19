@@ -522,8 +522,8 @@ body.is-creator .live-chat-input-row {
   display: none;
 }
 .live-conn-banner.visible { display: block; }
-.live-conn-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
-.live-conn-sub   { font-size: 12px; color: #6a90b8; }
+.live-conn-title { font-size: 15px; font-weight: 700; }
+.live-conn-sub   { font-size: 12px; color: #6a90b8; display: none; }
 
 /* ── Stream ended overlay ── */
 #liveEndedOverlay {
@@ -603,4 +603,229 @@ body.is-creator .live-viewer-actions { display: none !important; }
 #liveToast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* ════════════════════════════════════════════════════
+   GUEST BOXES — TikTok-style multi-guest panel
+   ════════════════════════════════════════════════════ */
+
+/* ── Guest boxes toggle button badge ── */
+.guest-boxes-btn { position: relative; }
+.guest-boxes-btn .gb-notif-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ff2244; border: 2px solid #000;
+  display: none;
+}
+.guest-boxes-btn .gb-notif-dot.visible { display: block; }
+
+/* ── Panel — sits below the stage on all screen sizes ── */
+.guest-box-panel {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 250;
+  background: rgba(4, 12, 28, 0.97);
+  border-top: 1.5px solid rgba(0,174,239,0.35);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0)) 12px;
+  backdrop-filter: blur(10px);
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+}
+.guest-box-panel.hidden {
+  transform: translateY(100%);
+}
+
+/* ── Header row ── */
+.guest-box-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.guest-box-title {
+  font-size: 13px; font-weight: 800; color: #00AEEF;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.guest-queue-badge {
+  font-size: 11px; font-weight: 700;
+  background: rgba(255,140,0,0.2);
+  border: 1px solid rgba(255,140,0,0.55);
+  color: #ffaa44; border-radius: 20px;
+  padding: 2px 10px;
+}
+
+/* ── 4-box grid ── */
+.guest-box-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+/* Individual guest box */
+.guest-box {
+  display: flex; flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid rgba(0,174,239,0.22);
+  background: #07111f;
+  transition: border-color 0.2s;
+}
+.guest-box.gb-available { border-color: rgba(0,174,239,0.22); }
+.guest-box.gb-pending   { border-color: rgba(255,140,0,0.65);  }
+.guest-box.gb-occupied  { border-color: rgba(0,255,136,0.55);  }
+
+/* Video area */
+.guest-box-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9/16;
+  background: #040d1a;
+  overflow: hidden;
+}
+.guest-box-video {
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+
+/* Status label (Available / Pending / Occupied) */
+.guest-box-status-label {
+  position: absolute;
+  bottom: 4px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
+  border-radius: 6px; padding: 2px 7px;
+  color: #6a90b8; white-space: nowrap;
+}
+.gb-status-available { color: #6a90b8; }
+.gb-status-pending   { color: #ffaa44; }
+.gb-status-occupied  { color: #39FF14; }
+
+/* Guest name overlay */
+.guest-box-name-label {
+  position: absolute;
+  top: 4px; left: 4px; right: 4px;
+  font-size: 9px; font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: none;
+}
+
+/* ── Per-box action buttons ── */
+.guest-box-actions {
+  display: flex; gap: 4px; padding: 4px;
+  justify-content: center; flex-wrap: wrap;
+}
+.gb-action-btn {
+  font-size: 10px; font-weight: 700;
+  border-radius: 6px; padding: 3px 7px;
+  cursor: pointer; border: 1px solid;
+  transition: opacity 0.15s, transform 0.1s;
+  touch-action: manipulation;
+  white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.gb-action-btn:active { transform: scale(0.93); }
+
+/* Accept */
+.gb-btn-accept {
+  background: rgba(0,200,80,0.18);
+  border-color: rgba(0,200,80,0.65);
+  color: #39FF14;
+}
+.gb-btn-accept:hover { background: rgba(0,200,80,0.32); }
+
+/* Decline */
+.gb-btn-decline {
+  background: rgba(255,30,60,0.15);
+  border-color: rgba(255,50,80,0.55);
+  color: #ff5566;
+}
+.gb-btn-decline:hover { background: rgba(255,30,60,0.3); }
+
+/* Remove */
+.gb-btn-remove {
+  background: rgba(255,100,0,0.15);
+  border-color: rgba(255,100,0,0.55);
+  color: #ff8844;
+}
+.gb-btn-remove:hover { background: rgba(255,100,0,0.3); }
+
+/* Close box */
+.gb-btn-close {
+  background: rgba(80,80,80,0.18);
+  border-color: rgba(180,180,180,0.3);
+  color: #aaa;
+}
+.gb-btn-close:hover { background: rgba(80,80,80,0.35); }
+
+/* Leave (viewer) */
+.gb-btn-leave {
+  background: rgba(255,30,60,0.15);
+  border-color: rgba(255,50,80,0.55);
+  color: #ff5566; width: 100%;
+}
+.gb-btn-leave:hover { background: rgba(255,30,60,0.3); }
+
+/* ── Request-a-Box button (viewer action bar) ── */
+.live-request-box-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  border: 1.5px solid rgba(0,174,239,0.5);
+  border-radius: 14px; padding: 8px 12px;
+  color: #00AEEF; font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
+}
+.live-request-box-btn:hover {
+  border-color: rgba(0,174,239,0.85);
+  background: rgba(0,80,200,0.22);
+}
+.live-request-box-btn:active { transform: scale(0.92); }
+.live-request-box-btn:disabled {
+  opacity: 0.45; cursor: default;
+}
+.live-request-box-icon { font-size: 22px; line-height: 1; }
+
+/* ── Responsive — stack 2×2 on narrow screens ── */
+@media (max-width: 480px) {
+  .guest-box-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .guest-box-video-wrap {
+    aspect-ratio: 3/4;
+  }
+}
+
+/* ── On desktop, boxes float as a right-side strip ── */
+@media (min-width: 768px) {
+  .guest-box-panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    left: auto;
+    width: 220px;
+    border-top: none;
+    border-left: 1.5px solid rgba(0,174,239,0.35);
+    padding: 16px 10px calc(16px + env(safe-area-inset-bottom, 0));
+    overflow-y: auto;
+  }
+  .guest-box-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .guest-box-video-wrap {
+    aspect-ratio: 9/16;
+  }
+}
+
+/* When guest box panel is shown on mobile (viewer mode), nudge the chat panel up */
+@media (max-width: 767px) {
+  body.is-viewer .guest-box-panel ~ * { /* no-op — panel overlays */ }
+  /* keep stage fully visible by reducing panel height on mobile viewer */
+  body.is-viewer .guest-box-panel {
+    max-height: 38vh;
+    overflow-y: auto;
+  }
+  body.is-creator .guest-box-panel {
+    max-height: 42vh;
+    overflow-y: auto;
+  }
 }

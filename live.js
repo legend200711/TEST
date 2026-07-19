@@ -146,6 +146,13 @@ document.addEventListener('DOMContentLoaded', () => {
     btnFS:           document.getElementById('btnFullscreen'),
     btnEnd:          document.getElementById('btnEndLive'),
     btnShareCreator: document.getElementById('btnShareLiveCreator'),
+    btnGuestBoxes:   document.getElementById('btnGuestBoxes'),
+
+    // Guest boxes panel
+    guestBoxPanel:      document.getElementById('guestBoxPanel'),
+    guestQueueBadge:    document.getElementById('guestQueueBadge'),
+    guestQueueCount:    document.getElementById('guestQueueCount'),
+    btnCloseGuestPanel: document.getElementById('btnCloseGuestPanel'),
 
     // Viewer controls
     likeBtn:         document.getElementById('btnLike'),
@@ -178,6 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnFlip && D.btnFlip.addEventListener('click',  () => flipLiveCamera());
   D.btnFS   && D.btnFS.addEventListener('click',    toggleFullscreen);
   D.btnEnd  && D.btnEnd.addEventListener('click',   endLive);
+  D.btnGuestBoxes      && D.btnGuestBoxes.addEventListener('click', _gbTogglePanel);
+  D.btnCloseGuestPanel && D.btnCloseGuestPanel.addEventListener('click', _gbTogglePanel);
 
   D.likeBtn          && D.likeBtn.addEventListener('click',          sendLike);
   D.btnShare         && D.btnShare.addEventListener('click',         shareLive);
@@ -265,9 +274,9 @@ async function _startCreatorSetup() {
       _localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
       _camOn = false;
       _updateSetupPreviewState(false);
-      toast('📷 Camera not available — audio only');
+      toast('Camera is audio only');
     } catch (e) {
-      _showSetupPermError('⚠️ Camera & mic access denied. Open browser Settings → Site Permissions and allow Camera + Microphone, then refresh.');
+      _showSetupPermError('Camera & mic access denied. Allow Camera + Microphone in your browser settings, then refresh.');
     }
   }
 }
@@ -350,15 +359,15 @@ async function flipSetupCamera() {
    ═══════════════════════════════════════════════════ */
 async function startLive() {
   if (!_user) {
-    toast('⚠️ Please wait — still signing in…');
+    toast('Please wait…');
     return;
   }
   if (_user.isAnonymous) {
-    toast('⚠️ You must be signed in with a real account to go live.');
+    toast('Sign in to go live.');
     return;
   }
   if (!_localStream || !_localStream.getTracks().length) {
-    toast('⚠️ No camera/mic available. Check browser permissions and refresh.');
+    toast('Camera or mic not available. Check permissions and refresh.');
     return;
   }
 
@@ -371,6 +380,21 @@ async function startLive() {
       await remove(ref(_liveDB, `liveConnections/${prevRoomId}`));
       await updateDoc(doc(_db, 'users', _user.uid), { isLive: deleteField(), liveRoomId: deleteField() });
     }
+    // Always delete the uid-keyed Firestore liveRooms doc (and legacy roomId-keyed one)
+    try { await deleteDoc(doc(_db, 'liveRooms', _user.uid)); } catch (_) {}
+    if (prevRoomId) {
+      try { await deleteDoc(doc(_db, 'liveRooms', prevRoomId)); } catch (_) {}
+    }
+    // Also clean up any orphaned feed posts with type='live' for this user
+    try {
+      const orphanQ = query(
+        collection(_db, 'posts'),
+        where('uid', '==', _user.uid),
+        where('type', '==', 'live')
+      );
+      const orphanSnap = await getDocs(orphanQ);
+      orphanSnap.forEach(async d => { try { await deleteDoc(d.ref); } catch(_) {} });
+    } catch (_) {}
   } catch (_) {}
 
   const titleVal = (D.setupTitle?.value || '').trim();
@@ -398,10 +422,21 @@ async function startLive() {
   try {
     await set(ref(_liveDB, `liveRooms/${_roomId}`), creatorData);
   } catch (e) {
-    toast('⚠️ Could not start live: ' + e.message);
+    toast('Could not start live. Please try again.');
     if (D.goLiveBtn) { D.goLiveBtn.disabled = false; D.goLiveBtn.textContent = 'Start Live'; }
     return;
   }
+
+  /* ── Mirror room to Firestore so Live Hub can query it.
+        Keyed by uid so only ONE doc per user ever exists —
+        reconnecting simply overwrites the previous entry.   ── */
+  try {
+    await setDoc(doc(_db, 'liveRooms', _user.uid), {
+      ...creatorData,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  } catch (_) {}
 
   /* ── Guard: prevent accidental cleanup if page unloads during live ── */
   _creatorEndedFlag = false;
@@ -418,6 +453,7 @@ async function startLive() {
   _subscribeChat();
   _subscribeViewerCount();
   _showCreatorShareBar();
+  _gbInitCreator();
 
   toast('🔴 You are LIVE!');
 
@@ -425,7 +461,8 @@ async function startLive() {
   try {
     await updateDoc(doc(_db, 'users', _user.uid), { isLive: true, liveRoomId: _roomId });
   } catch (_) {}
-  await _createLiveFeedPost(creatorData);
+  // _createLiveFeedPost intentionally omitted — live sessions must not create
+  // feed posts; they appear only in the story bar and Live Hub.
   _createLiveStory(creatorData);
   _notifyFollowersLive(creatorData);
 }
@@ -511,13 +548,22 @@ function _populateCreatorInfo(data) {
   }
 }
 
-/* ── Subscribe to viewer count + likes from LIVE RTDB ── */
+/* ── Subscribe to viewer count + likes from LIVE RTDB
+      Also mirrors viewer count to Firestore liveRooms doc so the Live Hub
+      stays in real-time sync without an extra Firestore write on every tick. ── */
 function _subscribeViewerCount() {
   _viewerCountRef = ref(_liveDB, `liveRooms/${_roomId}`);
+  let _lastMirroredViewers = -1;
   _viewerCountUnsub = onValue(_viewerCountRef, snap => {
     const d = snap.val() || {};
     if (D.viewerCount) D.viewerCount.textContent = '👁 ' + (d.viewers || 0);
     if (D.likeCount)   D.likeCount.textContent   = '❤️ ' + (d.likes   || 0);
+    // Mirror viewer count to Firestore (uid-keyed doc) so Live Hub cards update in real time
+    const v = d.viewers || 0;
+    if (v !== _lastMirroredViewers && _roomId && _user) {
+      _lastMirroredViewers = v;
+      updateDoc(doc(_db, 'liveRooms', _user.uid), { viewers: v }).catch(() => {});
+    }
   });
 }
 
@@ -535,7 +581,7 @@ function toggleLiveMic() {
   _micOn = !_micOn;
   if (_localStream) _localStream.getAudioTracks().forEach(t => t.enabled = _micOn);
   if (D.btnMic) { D.btnMic.textContent = _micOn ? '🎤' : '🔇'; D.btnMic.classList.toggle('off', !_micOn); }
-  toast(_micOn ? '🎤 Mic on' : '🔇 Mic muted');
+  toast(_micOn ? 'Mic on' : 'Mic muted');
 }
 
 async function flipLiveCamera() {
@@ -559,7 +605,7 @@ async function flipLiveCamera() {
       }
     }
   } catch (e) {
-    toast('⚠️ Could not flip camera: ' + e.message);
+    toast('Could not flip camera.');
   }
 }
 
@@ -594,6 +640,7 @@ async function endLive() {
   if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
   if (_chatUnsub)        { _chatUnsub();         _chatUnsub        = null; }
   if (_viewerCountRef && _viewerCountUnsub) { off(_viewerCountRef); _viewerCountRef = null; _viewerCountUnsub = null; }
+  _gbCleanupCreator();
 
   /* ── Remove WebRTC signaling from LIVE RTDB ── */
   if (_roomId) {
@@ -603,8 +650,9 @@ async function endLive() {
   if (_localStream) { _localStream.getTracks().forEach(t => t.stop()); _localStream = null; }
 
   /* ── Mark room as ended in LIVE RTDB ── */
+  const _endedRoomId = _roomId;
   try {
-    await update(ref(_liveDB, `liveRooms/${_roomId}`), {
+    await update(ref(_liveDB, `liveRooms/${_endedRoomId}`), {
       status:  'ended',
       isLive:  false,
       endedAt: Date.now(),
@@ -619,7 +667,7 @@ async function endLive() {
     });
   } catch (_) {}
 
-  /* ── Delete live feed post from main Firestore ── */
+  /* ── Delete live feed post from main Firestore (safety net for old data) ── */
   if (_feedPostId) {
     try { await deleteDoc(doc(_db, 'posts', _feedPostId)); } catch (_) {}
     _feedPostId = null;
@@ -629,7 +677,7 @@ async function endLive() {
   try {
     const shareQ = query(
       collection(_db, 'posts'),
-      where('liveRoomId', '==', _roomId),
+      where('liveRoomId', '==', _endedRoomId),
       where('type', '==', 'live_share')
     );
     const shareSnap = await getDocs(shareQ);
@@ -637,6 +685,16 @@ async function endLive() {
       try { await updateDoc(shareDoc.ref, { isLive: false }); } catch (_) {}
     });
   } catch (_) {}
+
+  /* ── Delete Firestore liveRooms doc (keyed by uid) so it disappears from Live Hub ── */
+  try { await deleteDoc(doc(_db, 'liveRooms', _user.uid)); } catch (_) {}
+  /* ── Also delete by roomId in case old data used roomId as key ── */
+  try { await deleteDoc(doc(_db, 'liveRooms', _endedRoomId)); } catch (_) {}
+
+  /* ── Schedule RTDB room deletion after 5 min (cleans up ended marker) ── */
+  setTimeout(async () => {
+    try { await remove(ref(_liveDB, `liveRooms/${_endedRoomId}`)); } catch (_) {}
+  }, 5 * 60 * 1000);
 
   _deleteLiveStory();
   _showEndedOverlay(true);
@@ -754,24 +812,24 @@ async function _startViewer() {
       }
       if (snap.exists() && snap.val().status === 'ended') {
         _hideLoading();
-        _showEndedOverlay(false, '⚫ Stream Ended', 'This live stream has already ended.');
+        _showEndedOverlay(false, 'Stream ended', 'This live stream has already ended.');
         return;
       }
     } catch (e) {
       _hideLoading();
-      toast('⚠️ Could not connect: ' + e.message);
+      toast('Could not connect. Please try again.');
       return;
     }
     if (attempt === 0) {
       _hideLoading();
       _showStage();
-      _showConnBanner('⏳ Waiting for stream…', 'Broadcaster is setting up — please wait…');
+      _showConnBanner('Waiting for stream…', '');
     }
     await new Promise(r => setTimeout(r, _RETRY_MS));
   }
 
   if (!roomData) {
-    _showEndedOverlay(false, '⚫ Stream Not Found', 'This live stream has ended or does not exist.');
+    _showEndedOverlay(false, 'Stream ended', 'This live stream has ended or does not exist.');
     return;
   }
 
@@ -781,6 +839,7 @@ async function _startViewer() {
   _populateCreatorInfo(roomData);
   _setupViewerControls(roomData);
   _subscribeChat();
+  _gbInitViewer(roomData);
 
   /* ── Increment viewer count in LIVE RTDB ── */
   try {
@@ -801,7 +860,7 @@ async function _startViewer() {
       return;
     }
     if (!snap.exists() || d.status === 'ended') {
-      _showEndedOverlay(false, '⚫ Stream Ended', `${roomData.hostName} has ended the live stream.`);
+      _showEndedOverlay(false, 'Stream ended', `${roomData.hostName} has ended the live stream.`);
     }
   });
 
@@ -815,6 +874,7 @@ async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
 
+  _gbCleanupViewer();
   if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
 
@@ -842,7 +902,7 @@ function _setupViewerControls(roomData) {
    ═══════════════════════════════════════════════════ */
 async function _startCreatorWebRTC() {
   if (!_localStream) {
-    toast('⚠️ No camera/mic available for stream.');
+    toast('Camera or mic not available.');
     return;
   }
 
@@ -886,14 +946,14 @@ async function _startCreatorWebRTC() {
       new Promise((_, reject) => setTimeout(() => reject(new Error('createOffer timed out after 10s')), 10000)),
     ]);
   } catch (e) {
-    toast('⚠️ WebRTC error: ' + e.message);
+    toast('Could not start stream. Please try again.');
     return;
   }
 
   try {
     await _rtcPc.setLocalDescription(offer);
   } catch (e) {
-    toast('⚠️ WebRTC error: ' + e.message);
+    toast('Could not start stream. Please try again.');
     return;
   }
 
@@ -906,7 +966,7 @@ async function _startCreatorWebRTC() {
     });
     _offerWritten = true;
   } catch (e) {
-    toast('⚠️ Could not write offer: ' + e.message);
+    toast('Could not start live. Please try again.');
     return;
   }
 
@@ -947,7 +1007,7 @@ async function _startCreatorWebRTC() {
     }
   });
 
-  toast('🔴 Live now — share your link!');
+  toast('Live now');
 }
 
 /* ═══════════════════════════════════════════════════
@@ -955,7 +1015,7 @@ async function _startCreatorWebRTC() {
    Uses LIVE Realtime Database for signaling.
    ═══════════════════════════════════════════════════ */
 async function _startViewerWebRTC(roomData) {
-  _showConnBanner('Connecting…', 'Joining stream…');
+  _showConnBanner('Waiting for stream…', '');
 
   const connRef = ref(_liveDB, `liveConnections/${_roomId}`);
 
@@ -964,12 +1024,12 @@ async function _startViewerWebRTC(roomData) {
   try {
     connSnap = await get(connRef);
   } catch (e) {
-    _showConnBanner('⚠️ Signaling error', 'Could not read offer: ' + e.message);
+    _showConnBanner('Waiting for stream…', '');
     return;
   }
 
   if (!connSnap.exists() || !connSnap.val().offer) {
-    _showConnBanner('⏳ Waiting for stream…', 'Broadcaster is setting up — please wait…');
+    _showConnBanner('Waiting for stream…', '');
     const offerWaitRef = ref(_liveDB, `liveConnections/${_roomId}`);
     let _offerWaitListener;
     _offerWaitListener = onValue(offerWaitRef, async snap => {
@@ -998,7 +1058,7 @@ async function _startViewerWebRTC(roomData) {
       _hideConnBanner();
       // connected — banner already hidden by ontrack
     } else if (_rtcPc.connectionState === 'disconnected' || _rtcPc.connectionState === 'failed') {
-      _showConnBanner('⚠️ Connection lost', 'Reconnecting…');
+      _showConnBanner('Waiting for stream…', '');
     }
   };
 
@@ -1007,7 +1067,7 @@ async function _startViewerWebRTC(roomData) {
   try {
     await _rtcPc.setRemoteDescription(new RTCSessionDescription(offer));
   } catch (e) {
-    _showConnBanner('⚠️ Connection error', 'Could not connect to stream.');
+    _showConnBanner('Waiting for stream…', '');
     return;
   }
 
@@ -1036,7 +1096,7 @@ async function _startViewerWebRTC(roomData) {
     });
     _viewerAnswerWritten = true;
   } catch (e) {
-    _showConnBanner('⚠️ Connection error', 'Could not complete handshake.');
+    _showConnBanner('Waiting for stream…', '');
     return;
   }
 
@@ -1070,7 +1130,7 @@ async function _startViewerWebRTC(roomData) {
     }
   });
 
-  _showConnBanner('Connecting…', 'Please wait…');
+  _showConnBanner('Waiting for stream…', '');
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1112,10 +1172,64 @@ function _appendChatMsg(data) {
   }
 }
 
+/* ── Live chat AI safety rules (mirrors index.html _RULES) ── */
+const _LIVE_RULES = [
+  { category: 'Threats',           severity: 'block', patterns: [
+      /\bi('?ll| will|'m going to|m gonna|gonna|will)\s+(kill|hurt|murder|destroy|beat|shoot|stab|end)\s+(you|u|them|him|her)/i,
+      /\b(kill\s*your?self|kys|go\s*die|i\s*will\s*find\s*you|watch\s*your\s*back|you('re|\s+are)\s+dead|dead\s*man|dead\s*girl|die\s*bitch)\b/i,
+      /\b(bomb|shoot up|blow up|attack)\s*(the\s*)?(school|place|building|event)/i,
+  ]},
+  { category: 'Hate Speech',       severity: 'block', patterns: [
+      /\b(f+u+c+k+\s*(all\s*)?(blacks?|whites?|jews?|muslims?|christians?|gays?|lesbians?|trans|latinos?|asians?|mexicans?|arabs?))\b/i,
+      /\b(all\s+(blacks?|whites?|jews?|muslims?|gays?|lesbians?|trans|latinos?|asians?)\s+should\s+(die|be\s+killed|disappear|burn))\b/i,
+      /\b(white\s*power|white\s*supremac|ethnic\s*cleans|n[i1]+gg[e3]r|ch[i1]nk|sp[i1]c|k[i1]ke|f[a4]gg[o0]t|tr[a4]nny)\b/i,
+  ]},
+  { category: 'Doxxing',           severity: 'block', patterns: [
+      /\b(here('?s|\s+is)\s+(your|his|her|their)\s+(address|phone|number|location|ip\s*address|home|school|work))\b/i,
+      /\b(i\s*(know|found)\s+where\s+you\s+(live|work|go\s+to\s+school))\b/i,
+  ]},
+  { category: 'Self-Harm Promotion', severity: 'block', patterns: [
+      /\b(how\s+to\s+(properly\s+)?(cut|harm|hurt)\s+(yourself|myself)|best\s+way\s+to\s+(overdose|die|end\s+(it|your\s+life)))\b/i,
+      /\b(just\s+(do\s+it|end\s+it|kill\s+yourself|hurt\s+yourself)\s+(already|please|nobody\s+cares))\b/i,
+  ]},
+  { category: 'Harassment',        severity: 'warn',  patterns: [
+      /\b(shut\s*(the\s*f[uck*@]+\s*)?up\s+(you\s+)?(stupid|dumb|idiot|ugly|fat|loser|worthless|pathetic|disgusting)\b)/i,
+      /\b(nobody\s+(likes?|cares\s*about)\s+you|you\s+(are|r|re)\s+(worthless|pathetic|trash|garbage|a\s+loser|disgusting|nothing))\b/i,
+  ]},
+  { category: 'Spam',              severity: 'warn',  patterns: [
+      /(.)\1{19,}/,
+      /(\b\w+\b)(\s+\1){7,}/i,
+  ]},
+];
+
+function _liveScanText(text) {
+  if (!text) return null;
+  for (const rule of _LIVE_RULES) {
+    for (const pat of rule.patterns) {
+      if (pat.test(text)) return rule;
+    }
+  }
+  return null;
+}
+
 async function sendChat() {
   if (!_user || !_roomId) return;
   const text = (D.chatInput?.value || '').trim();
   if (!text || text.length > 200) return;
+
+  // ── AI Safety scan ──
+  const hit = _liveScanText(text);
+  if (hit) {
+    const isMod = _userData?.role === 'founder' ||
+                  _userData?.role === 'administrator' ||
+                  _userData?.role === 'moderator';
+    if (hit.severity === 'block' && !isMod) {
+      toast(`🚫 Blocked · ${hit.category}: Keep it safe.`);
+      return;   // hard block — do NOT clear input, let user edit
+    }
+    toast(`⚠️ Warning · ${hit.category}: Please keep the community safe.`);
+  }
+
   if (D.chatInput) D.chatInput.value = '';
 
   try {
@@ -1127,7 +1241,7 @@ async function sendChat() {
       createdAt: serverTimestamp(),
     });
   } catch (e) {
-    toast('Could not send message: ' + e.message);
+    toast('Could not send message.');
   }
 }
 
@@ -1208,7 +1322,7 @@ function _showUnmutePrompt() {
 
 function _showEndedOverlay(wasCreator, title, sub) {
   if (!D.ended) return;
-  if (D.endedTitle) D.endedTitle.textContent = title || (wasCreator ? '✅ Stream Ended' : '⚫ Stream Ended');
+  if (D.endedTitle) D.endedTitle.textContent = title || 'Stream ended';
   if (D.endedSub)   D.endedSub.textContent   = sub   || (wasCreator
     ? 'Your live stream has ended. Thanks for going live!'
     : 'The creator has ended this live stream.');
@@ -1231,7 +1345,7 @@ function onCloseBtn() {
    SHARE
    ═══════════════════════════════════════════════════ */
 function shareLive() {
-  if (!_roomId) { toast('⚠️ Start the live first before sharing.'); return; }
+  if (!_roomId) { toast('Start your live first.'); return; }
   _openShareModal();
 }
 
@@ -1322,7 +1436,7 @@ function _openShareModal() {
       });
       toast('📣 Shared to Feed!');
     } catch (e) {
-      toast('⚠️ Could not share: ' + e.message);
+      toast('Could not share.');
     }
   });
 
@@ -1358,4 +1472,562 @@ function toast(msg) {
 
 function _esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   GUEST BOXES — TikTok-style multi-guest feature
+   ════════════════════════════════════════════════════════════════════
+
+   Firebase RTDB data layout (under liveRooms/{roomId}/guestBoxes):
+     guestBoxes/
+       boxes/
+         1: { status, guestId, guestName, guestAvatar, joinedAt }
+         2: { ... }
+         3: { ... }
+         4: { ... }
+       queue/
+         {pushKey}: { guestId, guestName, guestAvatar, requestedAt }
+       requests/
+         {guestId}: { guestId, guestName, guestAvatar, requestedAt, status }
+*/
+
+const _GB_MAX_BOXES = 4;
+let _gbPanelVisible  = false;
+let _gbBoxesUnsub    = null;   // RTDB onValue unsubscribe for boxes
+let _gbQueueUnsub    = null;   // RTDB onValue unsubscribe for queue
+let _gbMyBoxNum      = null;   // box number (1-4) the current viewer is in
+let _gbMyRequestKey  = null;   // push key for this viewer's queue entry
+let _gbRequestBtn    = null;   // DOM ref — "Request a Box" button
+
+/* ── RTDB helper paths ── */
+function _gbRef(path)  { return ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/${path}`); }
+function _gbBoxRef(n)  { return _gbRef(`boxes/${n}`); }
+function _gbQueueRef() { return _gbRef('queue'); }
+function _gbReqRef(uid){ return _gbRef(`requests/${uid.replace(/[.#$/\[\]]/g,'_')}`); }
+
+/* ════════════════════════════════════════════
+   CREATOR INIT
+   ════════════════════════════════════════════ */
+async function _gbInitCreator() {
+  if (!_roomId) return;
+
+  /* initialise all 4 boxes as available */
+  const initialBoxes = {};
+  for (let i = 1; i <= _GB_MAX_BOXES; i++) {
+    initialBoxes[i] = { status: 'available', guestId: null };
+  }
+  try {
+    await set(_gbRef('boxes'), initialBoxes);
+    await set(_gbQueueRef(), null);          // clear any old queue
+  } catch (_) {}
+
+  /* show panel and subscribe */
+  _gbShowPanel();
+  _gbSubscribeBoxes('creator');
+  _gbSubscribeQueue();
+
+  /* add notification dot to the toggle button */
+  if (D.btnGuestBoxes) {
+    const dot = document.createElement('span');
+    dot.className = 'gb-notif-dot';
+    dot.id = '_gbNotifDot';
+    D.btnGuestBoxes.appendChild(dot);
+  }
+}
+
+/* ════════════════════════════════════════════
+   VIEWER INIT
+   ════════════════════════════════════════════ */
+function _gbInitViewer(roomData) {
+  if (!_roomId) return;
+
+  /* inject "Request a Box" button into the viewer actions bar */
+  const actionsBar = document.querySelector('.live-viewer-actions');
+  if (actionsBar && !document.getElementById('_gbRequestBtn')) {
+    const btn = document.createElement('button');
+    btn.id        = '_gbRequestBtn';
+    btn.className = 'live-request-box-btn';
+    btn.setAttribute('aria-label', 'Request a guest box');
+    btn.innerHTML = `<span class="live-request-box-icon">🎥</span><span>Request Box</span>`;
+    btn.addEventListener('click', _gbViewerRequestBox);
+    actionsBar.prepend(btn);
+    _gbRequestBtn = btn;
+  }
+
+  /* show the panel for viewers (read-only view of boxes + request btn) */
+  _gbShowPanel();
+  _gbSubscribeBoxes('viewer');
+}
+
+/* ════════════════════════════════════════════
+   PANEL TOGGLE
+   ════════════════════════════════════════════ */
+function _gbTogglePanel() {
+  _gbPanelVisible = !_gbPanelVisible;
+  const panel = D.guestBoxPanel;
+  if (!panel) return;
+  if (_gbPanelVisible) {
+    panel.style.display = 'block';
+    panel.classList.remove('hidden');
+  } else {
+    panel.classList.add('hidden');
+    setTimeout(() => { if (!_gbPanelVisible) panel.style.display = 'none'; }, 300);
+  }
+}
+
+function _gbShowPanel() {
+  _gbPanelVisible = true;
+  const panel = D.guestBoxPanel;
+  if (!panel) return;
+  panel.style.display = 'block';
+  panel.classList.remove('hidden');
+}
+
+/* ════════════════════════════════════════════
+   SUBSCRIBE — boxes (both creator + viewer)
+   ════════════════════════════════════════════ */
+function _gbSubscribeBoxes(role) {
+  const boxesRef = _gbRef('boxes');
+  _gbBoxesUnsub = onValue(boxesRef, snap => {
+    const boxes = snap.val() || {};
+    for (let i = 1; i <= _GB_MAX_BOXES; i++) {
+      _gbRenderBox(i, boxes[i] || { status: 'available', guestId: null }, role);
+    }
+  });
+}
+
+/* ════════════════════════════════════════════
+   SUBSCRIBE — queue (creator only)
+   ════════════════════════════════════════════ */
+function _gbSubscribeQueue() {
+  _gbQueueUnsub = onValue(_gbQueueRef(), snap => {
+    const queueData = snap.val() || {};
+    const queueList = Object.entries(queueData);
+    const count = queueList.length;
+
+    /* update queue badge */
+    if (D.guestQueueBadge) D.guestQueueBadge.style.display = count > 0 ? 'inline-block' : 'none';
+    if (D.guestQueueCount)  D.guestQueueCount.textContent  = count;
+
+    /* notification dot on toggle button */
+    const dot = document.getElementById('_gbNotifDot');
+    if (dot) dot.classList.toggle('visible', count > 0);
+
+    /* render "Next in queue" accept button in the first available open box */
+    if (count > 0) {
+      const [firstKey, firstUser] = queueList[0];
+      _gbRenderQueueNext(firstKey, firstUser);
+    }
+  });
+}
+
+/* ════════════════════════════════════════════
+   RENDER — single box
+   ════════════════════════════════════════════ */
+function _gbRenderBox(boxNum, data, role) {
+  const boxEl      = document.getElementById(`guestBox${boxNum}`);
+  const statusEl   = document.getElementById(`guestBoxStatus${boxNum}`);
+  const nameEl     = document.getElementById(`guestBoxName${boxNum}`);
+  const actionsEl  = document.getElementById(`guestBoxActions${boxNum}`);
+  if (!boxEl || !statusEl || !actionsEl) return;
+
+  const status = data.status || 'available';
+
+  /* reset classes */
+  boxEl.classList.remove('gb-available', 'gb-pending', 'gb-occupied');
+  boxEl.classList.add(`gb-${status}`);
+
+  /* status label */
+  statusEl.className = `guest-box-status-label gb-status-${status}`;
+  statusEl.textContent =
+    status === 'available' ? 'Available' :
+    status === 'pending'   ? 'Request Pending' :
+    'Occupied';
+
+  /* name label */
+  if (nameEl) {
+    if (status === 'occupied' && data.guestName) {
+      nameEl.textContent = data.guestName;
+      nameEl.style.display = 'block';
+    } else {
+      nameEl.textContent   = '';
+      nameEl.style.display = 'none';
+    }
+  }
+
+  /* action buttons */
+  actionsEl.innerHTML = '';
+
+  if (role === 'creator') {
+    if (status === 'pending') {
+      actionsEl.append(
+        _gbMakeBtn('✔ Accept',  'gb-btn-accept',  () => _gbCreatorAccept(boxNum, data)),
+        _gbMakeBtn('✘ Decline', 'gb-btn-decline', () => _gbCreatorDecline(boxNum, data))
+      );
+    } else if (status === 'occupied') {
+      actionsEl.append(
+        _gbMakeBtn('Remove', 'gb-btn-remove', () => _gbCreatorRemove(boxNum, data)),
+        _gbMakeBtn('Close',  'gb-btn-close',  () => _gbCreatorClose(boxNum))
+      );
+    } else {
+      /* available — host can manually close/reopen (noop for clean state) */
+    }
+  } else if (role === 'viewer') {
+    /* viewer who is in this box sees a Leave button */
+    if (status === 'occupied' && data.guestId === _user?.uid) {
+      actionsEl.append(
+        _gbMakeBtn('Leave Box', 'gb-btn-leave', () => _gbViewerLeave(boxNum))
+      );
+    }
+  }
+}
+
+/* ════════════════════════════════════════════
+   RENDER — "next in queue" prompt (creator)
+   ════════════════════════════════════════════ */
+function _gbRenderQueueNext(queueKey, userData) {
+  /* find first available box */
+  for (let i = 1; i <= _GB_MAX_BOXES; i++) {
+    const boxEl     = document.getElementById(`guestBox${i}`);
+    const actionsEl = document.getElementById(`guestBoxActions${i}`);
+    if (!boxEl) continue;
+    if (boxEl.classList.contains('gb-available')) {
+      /* add "Accept Next" button if not already there */
+      if (!actionsEl.querySelector('.gb-btn-queue-accept')) {
+        const btn = _gbMakeBtn(`📥 ${userData.guestName || 'Next'}`, 'gb-btn-accept gb-btn-queue-accept',
+          () => _gbCreatorAcceptFromQueue(i, queueKey, userData));
+        actionsEl.appendChild(btn);
+      }
+      break;
+    }
+  }
+}
+
+function _gbMakeBtn(text, classes, fn) {
+  const btn = document.createElement('button');
+  btn.className = `gb-action-btn ${classes}`;
+  btn.textContent = text;
+  btn.addEventListener('click', fn);
+  return btn;
+}
+
+/* ════════════════════════════════════════════
+   VIEWER — Request a box
+   ════════════════════════════════════════════ */
+async function _gbViewerRequestBox() {
+  if (!_user || !_roomId) return;
+
+  /* prevent duplicate request */
+  if (_gbMyBoxNum !== null) {
+    toast('You are already in a box.');
+    return;
+  }
+
+  /* check if user already has a pending request */
+  try {
+    const reqSnap = await get(_gbReqRef(_user.uid));
+    if (reqSnap.exists() && reqSnap.val().status === 'pending') {
+      toast('Your request is already pending.');
+      return;
+    }
+  } catch (_) {}
+
+  /* disable button to prevent spam */
+  if (_gbRequestBtn) {
+    _gbRequestBtn.disabled = true;
+    _gbRequestBtn.querySelector('span:last-child').textContent = 'Pending…';
+  }
+
+  const userName = _userData?.displayName || _user.email?.split('@')[0] || 'Guest';
+  const payload = {
+    guestId:     _user.uid,
+    guestName:   userName,
+    guestAvatar: _userData?.avatar || _userData?.profilePicture || '',
+    requestedAt: Date.now(),
+    status:      'pending',
+  };
+
+  /* find first available box */
+  let placed = false;
+  try {
+    const boxesSnap = await get(_gbRef('boxes'));
+    const boxes = boxesSnap.val() || {};
+    for (let i = 1; i <= _GB_MAX_BOXES; i++) {
+      if (!boxes[i] || boxes[i].status === 'available') {
+        /* put the request directly on the box as 'pending' */
+        await set(_gbBoxRef(i), { ...payload, status: 'pending', boxNumber: i });
+        placed = true;
+
+        /* record in requests map for dedup */
+        await set(_gbReqRef(_user.uid), { ...payload, boxNumber: i });
+
+        /* notify host */
+        await _gbNotifyHost('request', userName, i);
+        toast('📩 Request sent! Waiting for host…');
+        break;
+      }
+    }
+  } catch (e) {
+    placed = false;
+  }
+
+  if (!placed) {
+    /* all boxes occupied/pending — add to queue */
+    try {
+      const qRef = push(_gbQueueRef());
+      _gbMyRequestKey = qRef.key;
+      await set(qRef, payload);
+      /* record in requests map for dedup */
+      await set(_gbReqRef(_user.uid), { ...payload, inQueue: true });
+      /* notify host */
+      await _gbNotifyHost('queue', userName, null);
+      toast('🕐 All boxes are full. You are in the queue!');
+    } catch (e) {
+      toast('Could not send request. Try again.');
+      if (_gbRequestBtn) {
+        _gbRequestBtn.disabled = false;
+        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
+      }
+      return;
+    }
+  }
+
+  /* listen for own box acceptance/decline */
+  _gbWatchOwnRequest();
+}
+
+/* ════════════════════════════════════════════
+   VIEWER — watch own request for accept/decline
+   ════════════════════════════════════════════ */
+function _gbWatchOwnRequest() {
+  if (!_user) return;
+  const reqRef = _gbReqRef(_user.uid);
+  onValue(reqRef, snap => {
+    if (!snap.exists()) return;
+    const d = snap.val();
+    if (d.status === 'accepted') {
+      _gbMyBoxNum = d.boxNumber;
+      toast('✅ You are in a guest box! Joining…');
+      if (_gbRequestBtn) {
+        _gbRequestBtn.disabled = true;
+        _gbRequestBtn.querySelector('span:last-child').textContent = 'In Box ' + _gbMyBoxNum;
+      }
+      off(reqRef);
+    } else if (d.status === 'declined') {
+      toast('❌ Your request was declined.');
+      if (_gbRequestBtn) {
+        _gbRequestBtn.disabled = false;
+        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
+      }
+      /* clear the request record */
+      remove(reqRef).catch(() => {});
+      off(reqRef);
+    }
+  });
+}
+
+/* ════════════════════════════════════════════
+   VIEWER — Leave a box
+   ════════════════════════════════════════════ */
+async function _gbViewerLeave(boxNum) {
+  if (!_user || !_roomId) return;
+  try {
+    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
+    await remove(_gbReqRef(_user.uid)).catch(() => {});
+    _gbMyBoxNum = null;
+    if (_gbRequestBtn) {
+      _gbRequestBtn.disabled = false;
+      _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
+    }
+    toast('You left the guest box.');
+  } catch (_) {
+    toast('Could not leave box. Try again.');
+  }
+}
+
+/* ════════════════════════════════════════════
+   CREATOR — Accept pending box request
+   ════════════════════════════════════════════ */
+async function _gbCreatorAccept(boxNum, data) {
+  if (!_roomId) return;
+  try {
+    await set(_gbBoxRef(boxNum), {
+      status:      'occupied',
+      guestId:     data.guestId,
+      guestName:   data.guestName   || '',
+      guestAvatar: data.guestAvatar || '',
+      boxNumber:   boxNum,
+      joinedAt:    Date.now(),
+      liveRoomId:  _roomId,
+      hostId:      _user?.uid || '',
+    });
+    /* update request status so viewer knows they were accepted */
+    await set(_gbReqRef(data.guestId), { ...data, status: 'accepted', boxNumber: boxNum });
+    /* notify guest */
+    await _gbNotifyGuest(data.guestId, 'accepted', boxNum);
+    toast(`✅ ${data.guestName || 'Guest'} accepted into Box ${boxNum}`);
+  } catch (_) {
+    toast('Could not accept. Try again.');
+  }
+}
+
+/* ════════════════════════════════════════════
+   CREATOR — Accept next from queue into a box
+   ════════════════════════════════════════════ */
+async function _gbCreatorAcceptFromQueue(boxNum, queueKey, userData) {
+  if (!_roomId) return;
+  try {
+    await set(_gbBoxRef(boxNum), {
+      status:      'occupied',
+      guestId:     userData.guestId,
+      guestName:   userData.guestName   || '',
+      guestAvatar: userData.guestAvatar || '',
+      boxNumber:   boxNum,
+      joinedAt:    Date.now(),
+      liveRoomId:  _roomId,
+      hostId:      _user?.uid || '',
+    });
+    /* update request status */
+    await set(_gbReqRef(userData.guestId), { ...userData, status: 'accepted', boxNumber: boxNum, inQueue: false });
+    /* remove from queue */
+    await remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${queueKey}`)).catch(() => {});
+    /* notify guest */
+    await _gbNotifyGuest(userData.guestId, 'accepted', boxNum);
+    toast(`✅ ${userData.guestName || 'Guest'} accepted into Box ${boxNum}`);
+  } catch (_) {
+    toast('Could not accept. Try again.');
+  }
+}
+
+/* ════════════════════════════════════════════
+   CREATOR — Decline a pending request
+   ════════════════════════════════════════════ */
+async function _gbCreatorDecline(boxNum, data) {
+  if (!_roomId) return;
+  try {
+    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
+    await set(_gbReqRef(data.guestId), { ...data, status: 'declined' });
+    await _gbNotifyGuest(data.guestId, 'declined', boxNum);
+    toast(`Declined ${data.guestName || 'guest'}'s request.`);
+  } catch (_) {
+    toast('Could not decline. Try again.');
+  }
+}
+
+/* ════════════════════════════════════════════
+   CREATOR — Remove an active guest from a box
+   ════════════════════════════════════════════ */
+async function _gbCreatorRemove(boxNum, data) {
+  if (!_roomId) return;
+  try {
+    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
+    await remove(_gbReqRef(data.guestId)).catch(() => {});
+    await _gbNotifyGuest(data.guestId, 'removed', boxNum);
+    toast(`Removed ${data.guestName || 'guest'} from Box ${boxNum}`);
+  } catch (_) {
+    toast('Could not remove. Try again.');
+  }
+}
+
+/* ════════════════════════════════════════════
+   CREATOR — Close a box (make unavailable then re-open)
+   Re-opening simply resets it to available.
+   ════════════════════════════════════════════ */
+async function _gbCreatorClose(boxNum) {
+  if (!_roomId) return;
+  try {
+    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
+    toast(`Box ${boxNum} cleared.`);
+  } catch (_) {
+    toast('Could not close box. Try again.');
+  }
+}
+
+/* ════════════════════════════════════════════
+   NOTIFICATIONS
+   ════════════════════════════════════════════ */
+
+/* notify the host when a viewer requests a box */
+async function _gbNotifyHost(type, guestName, boxNum) {
+  if (!_user || !_roomId) return;
+  const hostId = _roomId.split('_')[0].replace(/_/g, '');
+  if (!hostId) return;
+  try {
+    await addDoc(collection(_db, 'notifications', hostId, 'items'), {
+      id:        `gb_req_${_user.uid}_${Date.now()}`,
+      type:      'guestBox_request',
+      fromUid:   _user.uid,
+      fromName:  guestName,
+      roomId:    _roomId,
+      boxNumber: boxNum,
+      queueType: type,
+      title:     `🎥 ${guestName} wants a guest box`,
+      body:      type === 'queue'
+        ? `${guestName} is in the queue — open a box!`
+        : `${guestName} requests Box ${boxNum}`,
+      ts:        Date.now(),
+      read:      false,
+    });
+  } catch (_) {}
+}
+
+/* notify a guest about accept / decline / remove */
+async function _gbNotifyGuest(guestId, action, boxNum) {
+  if (!guestId || !_roomId) return;
+  const hostName = _userData?.displayName || 'Host';
+  const msgs = {
+    accepted: { title: `✅ You are in Box ${boxNum}!`, body: `${hostName} accepted you into guest box ${boxNum}. You are live!` },
+    declined: { title: `❌ Request declined`,           body: `${hostName} declined your guest box request.` },
+    removed:  { title: `You were removed from Box ${boxNum}`, body: `${hostName} removed you from the guest box.` },
+  };
+  const m = msgs[action];
+  if (!m) return;
+  try {
+    await addDoc(collection(_db, 'notifications', guestId, 'items'), {
+      id:        `gb_${action}_${Date.now()}`,
+      type:      `guestBox_${action}`,
+      fromUid:   _user?.uid || '',
+      fromName:  hostName,
+      roomId:    _roomId,
+      boxNumber: boxNum,
+      title:     m.title,
+      body:      m.body,
+      ts:        Date.now(),
+      read:      false,
+    });
+  } catch (_) {}
+}
+
+/* ════════════════════════════════════════════
+   CLEANUP
+   ════════════════════════════════════════════ */
+function _gbCleanupCreator() {
+  if (_gbBoxesUnsub) { try { off(_gbRef('boxes')); } catch (_) {} _gbBoxesUnsub = null; }
+  if (_gbQueueUnsub) { try { off(_gbQueueRef());   } catch (_) {} _gbQueueUnsub = null; }
+
+  /* clear all guestBoxes data from RTDB when host ends the live */
+  if (_roomId) {
+    try { remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes`)).catch(() => {}); } catch (_) {}
+  }
+}
+
+function _gbCleanupViewer() {
+  if (_gbBoxesUnsub) { try { off(_gbRef('boxes')); } catch (_) {} _gbBoxesUnsub = null; }
+
+  /* if viewer is in a box, clear their slot */
+  if (_gbMyBoxNum !== null && _roomId) {
+    try { set(_gbBoxRef(_gbMyBoxNum), { status: 'available', guestId: null }).catch(() => {}); } catch (_) {}
+    _gbMyBoxNum = null;
+  }
+  /* if viewer is in the queue, remove their entry */
+  if (_gbMyRequestKey && _roomId) {
+    try {
+      remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${_gbMyRequestKey}`)).catch(() => {});
+    } catch (_) {}
+    _gbMyRequestKey = null;
+  }
+  /* clear own request record */
+  if (_user && _roomId) {
+    try { remove(_gbReqRef(_user.uid)).catch(() => {}); } catch (_) {}
+  }
 }

@@ -10,7 +10,7 @@
  * GitHub Pages (/ShadowNexusSocial/) and any local dev server (/).
  */
 
-const CACHE_VERSION = 'v10';
+const CACHE_VERSION = 'v11';
 const CACHE_NAME    = `shadow-nexus-${CACHE_VERSION}`;
 
 // Detect base path from the SW's own URL (e.g. /ShadowNexusSocial/ or /)

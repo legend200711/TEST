@@ -11,6 +11,24 @@
         ".read":  "auth != null",
         ".write": "auth != null"
       }
+    },
+    "stormRooms": {
+      "$roomId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "supportRooms": {
+      "$roomId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "userLive": {
+      "$uid": {
+        ".read":  "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
     }
   }
 }

@@ -525,7 +525,6 @@ input:focus, textarea:focus, select:focus {
     box-shadow: 0 0 10px rgba(0,140,255,0.22), 0 0 4px rgba(0,255,136,0.1);
 }
 
-.users-strip { display: flex; gap: 10px; overflow-x: auto; padding: 10px 0; margin-bottom: 15px; scrollbar-width: none; }
 
 /* ── Feed Live Banner ── */
 .feed-live-dot-pulse {
@@ -673,19 +672,6 @@ input:focus, textarea:focus, select:focus {
 .snx-flc-watch-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
 .snx-flc-watch-btn:active { transform: scale(0.97); }
 
-.users-strip::-webkit-scrollbar { display: none; }
-.user-chip {
-    background: rgba(0,15,40,0.85);
-    border: 1px solid rgba(0,110,220,0.3);
-    padding: 6px 14px; border-radius: 20px; cursor: pointer;
-    display: flex; align-items: center; gap: 8px; white-space: nowrap;
-    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-}
-.user-chip:hover {
-    border-color: rgba(0,255,136,0.45);
-    background: rgba(0,60,130,0.3);
-    box-shadow: 0 0 10px rgba(0,255,136,0.18), 0 0 6px rgba(0,140,255,0.15);
-}
 .indicator-dot { width: 8px; height: 8px; background: #334; border-radius: 50%; }
 .indicator-dot.online { background: #00ff88; box-shadow: 0 0 7px rgba(0,255,136,0.8); animation: greenPulse 2s infinite; }
 
@@ -3172,16 +3158,6 @@ input:focus, textarea:focus, select:focus {
     box-shadow: 0 0 10px rgba(0,174,239,0.28), 0 0 4px rgba(57,255,20,0.14);
 }
 
-/* ── User chip / active strip ── */
-.user-chip {
-    background: rgba(11,31,58,0.90);
-    border: 1px solid rgba(0,174,239,0.32);
-}
-.user-chip:hover {
-    border-color: rgba(57,255,20,0.52);
-    background: rgba(0,80,160,0.30);
-    box-shadow: 0 0 10px rgba(57,255,20,0.22), 0 0 6px rgba(0,174,239,0.18);
-}
 .indicator-dot.online { background: #39FF14; box-shadow: 0 0 7px rgba(57,255,20,0.90); }
 
 /* ── Post boxes ── */
@@ -5305,30 +5281,58 @@ body.arcade-fs-ios body::after { display:none !important; }
 /* "Add Story" button + all story bubbles share this base */
 .story-bubble {
     display: flex; flex-direction: column; align-items: center; gap: 5px;
-    flex-shrink: 0; cursor: pointer; width: 64px;
+    flex-shrink: 0; cursor: pointer; width: 70px; position: relative;
 }
 .story-ring {
-    width: 58px; height: 58px; border-radius: 50%; padding: 2.5px;
-    background: linear-gradient(135deg, #00AEEF, #7c5cd8, #ff3399);
-    box-sizing: border-box; flex-shrink: 0;
-    transition: transform 0.15s, box-shadow 0.15s;
+    width: 70px; height: 70px; border-radius: 50%; padding: 3px;
+    box-sizing: border-box; flex-shrink: 0; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    /* default: blue glow for active stories */
+    border: 3px solid #00aaff;
+    box-shadow: 0 0 10px #00aaff, 0 0 20px #0088ff;
 }
-.story-ring:hover { transform: scale(1.08); box-shadow: 0 0 14px rgba(0,174,239,0.55); }
+.story-ring:hover { transform: scale(1.08); }
+
+/* Blue — active / seen story */
+.story-ring-blue {
+    border: 3px solid #00aaff;
+    box-shadow: 0 0 10px #00aaff, 0 0 20px #0088ff;
+}
+/* Red — unseen / new story */
+.story-ring-red {
+    border: 3px solid #ff0033;
+    box-shadow: 0 0 10px #ff0033, 0 0 20px #ff3366;
+}
+/* Green — online user with no new story */
+.story-ring-green {
+    border: 3px solid #00ff66;
+    box-shadow: 0 0 10px #00ff66, 0 0 20px #00cc55;
+}
+/* Seen state — dim, no glow */
 .story-ring-seen {
-    background: rgba(0,80,150,0.35) !important;
-    border: 2.5px solid rgba(0,80,150,0.4);
-    padding: 0;
+    border: 3px solid rgba(0,80,150,0.4) !important;
+    box-shadow: none !important;
 }
-/* Live story ring — red pulsing gradient */
+/* Live story ring — red pulsing glow */
 .story-ring-live {
-    background: linear-gradient(135deg, #ff2244, #ff6600) !important;
-    box-shadow: 0 0 0 0 rgba(255,34,68,0.7);
+    border: 3px solid #ff2244 !important;
+    box-shadow: 0 0 10px #ff2244, 0 0 20px #ff3366 !important;
     animation: liveRingPulse 1.4s ease-in-out infinite !important;
 }
 @keyframes liveRingPulse {
-    0%   { box-shadow: 0 0 0 0 rgba(255,34,68,0.7); }
-    70%  { box-shadow: 0 0 0 6px rgba(255,34,68,0); }
-    100% { box-shadow: 0 0 0 0 rgba(255,34,68,0); }
+    0%,100% { box-shadow: 0 0 10px #ff2244, 0 0 20px #ff3366; }
+    50%     { box-shadow: 0 0 18px #ff2244, 0 0 36px #ff3366, 0 0 6px #ff2244; }
+}
+/* Online dot — small green pip at bottom-right of bubble */
+.story-online-dot {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 11px; height: 11px; border-radius: 50%;
+    background: #00ff66;
+    box-shadow: 0 0 6px #00ff66, 0 0 12px #00cc55;
+    border: 2px solid #070f20;
+    pointer-events: none;
+    z-index: 2;
 }
 .story-live-badge {
     position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
@@ -5378,19 +5382,35 @@ body.arcade-fs-ios body::after { display:none !important; }
     border: 1px solid rgba(255,40,70,0.35);
     border-radius: 16px; overflow: hidden;
     cursor: pointer; text-decoration: none; display: flex; flex-direction: column;
-    transition: border-color .2s, box-shadow .2s, transform .15s;
+    transition: border-color .2s, box-shadow .2s, transform .15s, opacity .25s;
     box-shadow: 0 2px 18px rgba(255,30,60,0.08);
-    animation: lhcIn .22s ease-out both;
+    animation: lhcIn .28s ease-out both;
 }
 .live-hub-card:hover {
     border-color: rgba(255,40,70,0.7);
-    box-shadow: 0 4px 32px rgba(255,30,60,0.25);
+    box-shadow: 0 0 0 1px rgba(255,40,70,0.4), 0 4px 32px rgba(255,30,60,0.25);
     transform: translateY(-2px);
 }
 .live-hub-card:active { transform: scale(0.97); }
+.live-hub-card.lhc-removing {
+    animation: lhcOut .28s ease-in forwards;
+    pointer-events: none;
+}
 @keyframes lhcIn {
-    from { opacity:0; transform: translateY(8px) scale(0.97); }
+    from { opacity:0; transform: translateY(10px) scale(0.96); }
     to   { opacity:1; transform: translateY(0) scale(1); }
+}
+@keyframes lhcOut {
+    from { opacity:1; transform: scale(1); }
+    to   { opacity:0; transform: scale(0.92); }
+}
+/* Category chip on live card */
+.lhc-category {
+    display: inline-flex; align-items: center;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+    padding: 2px 8px; border-radius: 20px; margin-top: 4px;
+    background: rgba(0,174,239,0.14); border: 1px solid rgba(0,174,239,0.30);
+    color: #66ccff; width: fit-content;
 }
 .lhc-thumb {
     width: 100%; height: 110px;
@@ -5462,12 +5482,13 @@ body.arcade-fs-ios body::after { display:none !important; }
 .lhc-watch-btn:active { transform: scale(0.96); }
 
 .story-ring-inner {
-    width: 100%; height: 100%; border-radius: 50%;
+    width: 60px; height: 60px; border-radius: 50%;
     background: #070f20 center/cover no-repeat;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 700; color: #00AEEF;
     overflow: hidden;
     border: 2px solid #070f20;
+    flex-shrink: 0;
 }
 .story-add-ring {
     background: none !important;
@@ -6003,12 +6024,6 @@ body.arcade-fs-ios body::after { display:none !important; }
         <div id="feedLiveCards" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;">
             <!-- Cards injected by JS -->
         </div>
-    </div>
-
-    <!-- Active-now strip — only shown when other members exist -->
-    <div id="activeUsersStripWrap">
-        <h4 style="color:#3a6a9a; font-size:11px; font-weight:700; margin:0 0 8px; letter-spacing:1px; text-transform:uppercase;">🟢 Online Now</h4>
-        <div id="activeUsersStrip" class="users-strip"></div>
     </div>
 
     <!-- Post composer -->
@@ -7387,48 +7402,6 @@ body.arcade-fs-ios body::after { display:none !important; }
 </div>
 
 <!-- ══════════════════════════════════
-     6. MENTAL HEALTH SUPPORT ROOMS
-══════════════════════════════════ -->
-<div class="section-card" style="margin-bottom:16px;">
-    <div class="comm-section-title">🫂 Support Rooms</div>
-    <p style="font-size:12px;color:#4a7a9a;margin:0 0 12px;">Moderated safe spaces. No judgment, only support.</p>
-    <div class="comm-rooms-list">
-        <div class="comm-room-item" onclick="supportEnterRoom('night-owls','🌙 Night Owls')">
-            <div class="comm-room-icon">🌙</div>
-            <div class="comm-room-info">
-                <div class="comm-room-name">Night Owls — Anxiety Support</div>
-                <div class="comm-room-desc">Anonymous · For those who struggle at night</div>
-            </div>
-            <div class="comm-room-count">Join →</div>
-        </div>
-        <div class="comm-room-item" onclick="supportEnterRoom('morning-light','🌅 Morning Light')">
-            <div class="comm-room-icon">🌅</div>
-            <div class="comm-room-info">
-                <div class="comm-room-name">Morning Light — Depression</div>
-                <div class="comm-room-desc">Anonymous · Start the day together</div>
-            </div>
-            <div class="comm-room-count">Join →</div>
-        </div>
-        <div class="comm-room-item" onclick="supportEnterRoom('venting-lounge','🌊 Venting Lounge')">
-            <div class="comm-room-icon">🌊</div>
-            <div class="comm-room-info">
-                <div class="comm-room-name">Venting Lounge</div>
-                <div class="comm-room-desc">Anonymous · Say what's on your mind</div>
-            </div>
-            <div class="comm-room-count">Join →</div>
-        </div>
-        <div class="comm-room-item" onclick="supportEnterRoom('healing-circle','🌿 Healing Circle')">
-            <div class="comm-room-icon">🌿</div>
-            <div class="comm-room-info">
-                <div class="comm-room-name">Healing Circle</div>
-                <div class="comm-room-desc">Anonymous · Trauma &amp; recovery support</div>
-            </div>
-            <div class="comm-room-count">Join →</div>
-        </div>
-    </div>
-</div>
-
-<!-- ══════════════════════════════════
      7. ANONYMOUS SUPPORT POSTS
 ══════════════════════════════════ -->
 <div class="section-card">
@@ -7486,7 +7459,7 @@ body.arcade-fs-ios body::after { display:none !important; }
 <!-- The Rules -->
 <div class="section-card" style="margin-bottom:16px;">
     <h3 style="margin:0 0 14px;font-size:13px;color:#fff;text-transform:uppercase;letter-spacing:0.8px;">🚫 What Is Not Allowed</h3>
-    <p style="font-size:12px;color:#6a90b8;margin:0 0 14px;">These rules apply to <strong style="color:#9bbdd8;">posts, stories, and messages.</strong></p>
+    <p style="font-size:12px;color:#6a90b8;margin:0 0 14px;">These rules apply to <strong style="color:#9bbdd8;">posts, stories, messages, and live streams.</strong></p>
     <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:rgba(255,51,85,0.06);border:1px solid rgba(255,51,85,0.20);border-radius:10px;">
             <span style="font-size:18px;flex-shrink:0;">🚫</span>
@@ -7522,6 +7495,7 @@ body.arcade-fs-ios body::after { display:none !important; }
         <span style="font-size:12px;padding:5px 12px;border-radius:20px;background:rgba(0,174,239,0.12);border:1px solid rgba(0,174,239,0.28);color:#c8e8ff;">📝 Posts</span>
         <span style="font-size:12px;padding:5px 12px;border-radius:20px;background:rgba(0,174,239,0.12);border:1px solid rgba(0,174,239,0.28);color:#c8e8ff;">📖 Stories</span>
         <span style="font-size:12px;padding:5px 12px;border-radius:20px;background:rgba(0,174,239,0.12);border:1px solid rgba(0,174,239,0.28);color:#c8e8ff;">💬 Messages</span>
+        <span style="font-size:12px;padding:5px 12px;border-radius:20px;background:rgba(255,51,85,0.12);border:1px solid rgba(255,51,85,0.35);color:#ff8899;">🔴 Live Streams</span>
     </div>
 </div>
 
@@ -7584,6 +7558,7 @@ body.arcade-fs-ios body::after { display:none !important; }
     <button class="admin-tab" onclick="switchAdminTab('appeals')">📩 Appeals</button>
     <button class="admin-tab" onclick="switchAdminTab('aisafety')">🤖 AI Safety</button>
     <button class="admin-tab" onclick="switchAdminTab('shadowbot')">🤖 Shadow Bot</button>
+    <button class="admin-tab" onclick="switchAdminTab('liverooms')">🔴 Live Rooms</button>
     <button class="admin-tab" onclick="switchAdminTab('pages')">👁 Pages &amp; Controls</button>
 </div>
 
@@ -8293,6 +8268,23 @@ body.arcade-fs-ios body::after { display:none !important; }
 </div><!-- end adminTab-shadowbot -->
 
 <!-- ══════════════════════════════════
+     TAB: LIVE ROOMS (Founder only)
+══════════════════════════════════ -->
+<div class="admin-tab-content" id="adminTab-liverooms">
+    <div class="section-card" style="margin-bottom:16px;border-color:rgba(255,34,68,0.35);background:linear-gradient(135deg,rgba(40,0,0,0.35),rgba(11,31,58,0.92));">
+        <h3 style="margin:0 0 8px;font-size:13px;color:#ff4455;text-transform:uppercase;letter-spacing:0.8px;">🔴 Live Room Manager</h3>
+        <p style="font-size:12px;color:#9bbdd8;margin:0 0 12px;line-height:1.6;">View all active live rooms. End any stream instantly or delete stale rooms. Changes take effect in real time.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="window.adminLoadLiveRooms()" style="padding:8px 16px;border-radius:8px;background:rgba(0,174,239,0.12);border:1px solid rgba(0,174,239,0.4);color:#00AEEF;font-size:12px;font-weight:700;cursor:pointer;">↺ Refresh</button>
+            <button onclick="window.adminPurgeEndedRooms()" style="padding:8px 16px;border-radius:8px;background:rgba(255,34,68,0.10);border:1px solid rgba(255,34,68,0.35);color:#ff6677;font-size:12px;font-weight:700;cursor:pointer;">🗑 Delete All Ended Rooms</button>
+        </div>
+    </div>
+    <div id="adminLiveRoomsList" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="color:#4a6a8a;font-size:13px;text-align:center;padding:20px 0;">Click Refresh to load live rooms.</div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════
      TAB: PAGE VISIBILITY CONTROLS
 ══════════════════════════════════ -->
 <div class="admin-tab-content" id="adminTab-pages">
@@ -8828,7 +8820,8 @@ body.arcade-fs-ios body::after { display:none !important; }
     messaging = getMessaging(app);
   } catch(_) { /* browser may not support SW messaging */ }
 
-  // ── Expose Firestore helpers to non-module scripts ──
+  // ── Expose app instance + Firestore helpers to non-module scripts ──
+  window._snxApp        = app;
   window._snxDb         = db;
   window._snxDoc        = doc;
   window._snxGetDoc     = getDoc;
@@ -8868,10 +8861,23 @@ body.arcade-fs-ios body::after { display:none !important; }
     if (Notification.permission === 'denied') return;
 
     try {
-      // Register the FCM service worker explicitly so FCM knows where to deliver
-      const swReg = await navigator.serviceWorker.register('firebase-messaging-sw.js', {
-        scope: '/'
-      });
+      // Derive the correct scope from the current page location so this works
+      // on GitHub Pages (/TEST/) and on any other host path automatically.
+      const _swBase = location.pathname.replace(/\/[^/]*$/, '/');   // e.g. '/TEST/'
+      const _fcmSW  = _swBase + 'firebase-messaging-sw.js';
+
+      // Reuse any already-registered FCM SW, or register fresh.
+      // Using { updateViaCache: 'none' } ensures the browser always checks
+      // for a new SW version instead of serving a stale cached copy.
+      let swReg = null;
+      const _existing = await navigator.serviceWorker.getRegistrations();
+      swReg = _existing.find(r => r.active && r.active.scriptURL.includes('firebase-messaging-sw'));
+      if (!swReg) {
+        swReg = await navigator.serviceWorker.register(_fcmSW, {
+          scope: _swBase,
+          updateViaCache: 'none'
+        });
+      }
 
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return;
@@ -9081,41 +9087,39 @@ body.arcade-fs-ios body::after { display:none !important; }
      title, viewer count, elapsed time, Watch button.
    ═══════════════════════════════════════════════ */
   (function initLiveHub() {
-    const grid       = document.getElementById('liveHubGrid');
-    const emptyEl    = document.getElementById('liveHubEmpty');
-    const loadingEl  = document.getElementById('liveHubLoading');
-    const countEl    = document.getElementById('liveHubCount');
-    const navBadge   = document.getElementById('navLiveHubCount');
+    const grid      = document.getElementById('liveHubGrid');
+    const emptyEl   = document.getElementById('liveHubEmpty');
+    const loadingEl = document.getElementById('liveHubLoading');
+    const countEl   = document.getElementById('liveHubCount');
+    const navBadge  = document.getElementById('navLiveHubCount');
     if (!grid) return;
 
-    // Escape helper (reuse pattern from the rest of the file)
+    const STALE_MS = 4 * 60 * 60 * 1000; // 4 hours — auto-purge abandoned streams
+
     function _esc(s) {
       return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // Human-readable elapsed time (e.g. "2m", "1h 4m")
-    function _elapsed(createdAt) {
-      if (!createdAt) return '';
-      const ms = Date.now() - (createdAt.toMillis ? createdAt.toMillis() : createdAt);
+    function _elapsed(ts) {
+      if (!ts) return '';
+      const ms = Date.now() - (ts.toMillis ? ts.toMillis() : ts);
       if (ms < 0) return '';
-      const totalSec = Math.floor(ms / 1000);
-      const h = Math.floor(totalSec / 3600);
-      const m = Math.floor((totalSec % 3600) / 60);
-      if (h > 0) return `${h}h ${m}m`;
-      if (m > 0) return `${m}m`;
-      return `<1m`;
+      const s = Math.floor(ms / 1000);
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+      return h > 0 ? `${h}h ${m}m` : (m > 0 ? `${m}m` : '<1m');
     }
 
-    // Build one live hub card element
     function _buildHubCard(room) {
-      const name    = _esc(room.hostName     || room.hostUsername || 'Creator');
-      const handle  = room.hostUsername ? _esc('@' + room.hostUsername) : '';
-      const title   = _esc(room.title || 'Shadow Nexus LIVE');
-      const viewers = room.viewers || 0;
-      const roomId  = _esc(room.roomId || '');
-      const avatar  = room.hostAvatar || '';
-      const initial = (room.hostName || room.hostUsername || '?')[0].toUpperCase();
+      const name     = _esc(room.hostName || room.hostUsername || 'Creator');
+      const handle   = room.hostUsername ? _esc('@' + room.hostUsername) : '';
+      const title    = _esc(room.title || 'Shadow Nexus LIVE');
+      const category = room.category ? _esc(room.category) : '';
+      const viewers  = room.viewers || 0;
+      const roomId   = _esc(room.roomId || '');
+      const avatar   = room.hostAvatar || '';
+      const initial  = (room.hostName || room.hostUsername || '?')[0].toUpperCase();
       const watchUrl = 'live.html#watch=' + roomId;
+      const tsRaw    = room.createdAt ? (room.createdAt.toMillis ? room.createdAt.toMillis() : room.createdAt) : '';
 
       const card = document.createElement('a');
       card.className   = 'live-hub-card';
@@ -9123,102 +9127,142 @@ body.arcade-fs-ios body::after { display:none !important; }
       card.target      = '_blank';
       card.rel         = 'noopener';
       card.dataset.rid = room.roomId;
+      card.dataset.hid = room.hostId || '';
       card.setAttribute('aria-label', `Watch ${name} live`);
 
-      const avatarStyle = avatar
-        ? `background-image:url('${_esc(avatar)}');`
-        : '';
+      const avatarStyle = avatar ? `background-image:url('${_esc(avatar)}');` : '';
 
       card.innerHTML = `
         <div class="lhc-thumb">
           <div class="lhc-avatar-large" style="${avatarStyle}">${avatar ? '' : initial}</div>
           <div class="lhc-live-pill">LIVE</div>
-          <div class="lhc-viewers">👁 ${viewers}</div>
-          <div class="lhc-elapsed" data-createdat="${room.createdAt ? (room.createdAt.toMillis ? room.createdAt.toMillis() : room.createdAt) : ''}">${_elapsed(room.createdAt)}</div>
+          <div class="lhc-viewers" id="lhv-${roomId}">👁 ${viewers}</div>
+          <div class="lhc-elapsed" data-createdat="${tsRaw}">${_elapsed(room.createdAt)}</div>
         </div>
         <div class="lhc-body">
           <div class="lhc-name">${name}</div>
-          ${handle ? `<div class="lhc-handle">${handle}</div>` : ''}
+          ${handle   ? `<div class="lhc-handle">${handle}</div>` : ''}
           <div class="lhc-title">${title}</div>
-          <button class="lhc-watch-btn" onclick="event.preventDefault();event.stopPropagation();window.open('${watchUrl}','_blank')">▶ Watch Live</button>
-        </div>
-      `;
+          ${category ? `<div class="lhc-category">🏷 ${category}</div>` : ''}
+          <button class="lhc-watch-btn"
+            onclick="event.preventDefault();event.stopPropagation();window.open('${watchUrl}','_blank')">
+            ▶ Watch Live
+          </button>
+        </div>`;
 
-      // Entire card click navigates (button handled separately above)
       card.addEventListener('click', e => {
         if (e.target.closest('.lhc-watch-btn')) return;
         window.open(watchUrl, '_blank');
         e.preventDefault();
       });
-
       return card;
     }
 
-    let _hubUnsub = null;
+    // Animate a card out, then remove it from DOM
+    function _removeCard(card) {
+      if (card.classList.contains('lhc-removing')) return;
+      card.classList.add('lhc-removing');
+      setTimeout(() => card.remove(), 300);
+    }
+
+    let _hubUnsub    = null;
     let _elapsedTimer = null;
 
-    // Tick elapsed-time labels every 30 seconds
     function _tickElapsed() {
-      if (!grid) return;
       grid.querySelectorAll('.lhc-elapsed[data-createdat]').forEach(el => {
         const ts = parseInt(el.dataset.createdat, 10);
         if (!ts) return;
-        const ms = Date.now() - ts;
-        const totalSec = Math.floor(ms / 1000);
-        const h = Math.floor(totalSec / 3600);
-        const m = Math.floor((totalSec % 3600) / 60);
+        const s = Math.floor((Date.now() - ts) / 1000);
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
         el.textContent = h > 0 ? `${h}h ${m}m` : (m > 0 ? `${m}m` : '<1m');
       });
     }
 
-    // Render received rooms array into the grid
-    function _renderHubRooms(rooms) {
-      rooms.sort((a, b) => (b.viewers || 0) - (a.viewers || 0));
+    // Auto-purge Firestore docs for streams started > STALE_MS ago
+    async function _purgeStale(rooms) {
+      const cutoff = Date.now() - STALE_MS;
+      for (const r of rooms) {
+        const ts = r.createdAt?.toMillis ? r.createdAt.toMillis() : (r.createdAt || 0);
+        if (ts && ts < cutoff) {
+          // r.id is the Firestore doc key (uid in new schema, roomId in legacy schema)
+          // also try deleting by roomId field in case it differs from the key
+          try { await deleteDoc(doc(db, 'liveRooms', r.id)); } catch(_) {}
+          if (r.roomId && r.roomId !== r.id) {
+            try { await deleteDoc(doc(db, 'liveRooms', r.roomId)); } catch(_) {}
+          }
+          if (r.hostId && r.hostId !== r.id) {
+            try { await deleteDoc(doc(db, 'liveRooms', r.hostId)); } catch(_) {}
+          }
+        }
+      }
+    }
+
+    function _renderHubRooms(rawDocs) {
+      // 1. Filter: only status=live or isLive=true, skip broken records
+      const valid = rawDocs.filter(r =>
+        (r.status === 'live' || r.isLive === true) &&
+        r.roomId && r.hostId
+      );
+
+      // 2. Deduplicate: one card per hostId (keep most recent)
+      const byHost = new Map();
+      valid.forEach(r => {
+        const existing = byHost.get(r.hostId);
+        const ts = r.createdAt?.toMillis ? r.createdAt.toMillis() : (r.createdAt || 0);
+        const exTs = existing
+          ? (existing.createdAt?.toMillis ? existing.createdAt.toMillis() : (existing.createdAt || 0))
+          : -1;
+        if (!existing || ts > exTs) byHost.set(r.hostId, r);
+      });
+
+      const rooms = [...byHost.values()].sort((a, b) => (b.viewers || 0) - (a.viewers || 0));
+
       if (loadingEl) loadingEl.style.display = 'none';
       const cnt = rooms.length;
-      if (countEl) {
-        countEl.textContent = cnt + ' LIVE';
-        countEl.style.display = cnt > 0 ? '' : 'none';
-      }
-      if (navBadge) {
-        navBadge.textContent = cnt;
-        navBadge.style.display = cnt > 0 ? 'inline-flex' : 'none';
-      }
+
+      if (countEl) { countEl.textContent = cnt + ' LIVE'; countEl.style.display = cnt > 0 ? '' : 'none'; }
+      if (navBadge) { navBadge.textContent = cnt; navBadge.style.display = cnt > 0 ? 'inline-flex' : 'none'; }
+
       if (!cnt) {
         if (emptyEl) emptyEl.style.display = '';
-        grid.innerHTML = '';
+        grid.querySelectorAll('.live-hub-card').forEach(c => _removeCard(c));
         if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+        // Purge stale docs from rawDocs
+        _purgeStale(rawDocs);
         return;
       }
+
       if (emptyEl) emptyEl.style.display = 'none';
-      const liveIds = new Set(rooms.map(r => r.roomId));
+
+      // Remove cards no longer in live set (with exit animation)
+      const liveRoomIds = new Set(rooms.map(r => r.roomId));
       grid.querySelectorAll('.live-hub-card').forEach(c => {
-        if (!liveIds.has(c.dataset.rid)) c.remove();
+        if (!liveRoomIds.has(c.dataset.rid)) _removeCard(c);
       });
+
+      // Add new cards / update existing
       rooms.forEach((room, idx) => {
         let card = grid.querySelector(`.live-hub-card[data-rid="${_esc(room.roomId)}"]`);
         if (!card) {
           card = _buildHubCard(room);
-          const existing = grid.querySelectorAll('.live-hub-card');
+          const existing = grid.querySelectorAll('.live-hub-card:not(.lhc-removing)');
           if (idx < existing.length) grid.insertBefore(card, existing[idx]);
           else grid.appendChild(card);
         } else {
-          const vEl = card.querySelector('.lhc-viewers');
+          // Update viewer count in-place
+          const vEl = document.getElementById(`lhv-${_esc(room.roomId)}`);
           if (vEl) vEl.textContent = '👁 ' + (room.viewers || 0);
         }
       });
-      if (!_elapsedTimer) {
-        _elapsedTimer = setInterval(_tickElapsed, 30000);
-      }
+
+      if (!_elapsedTimer) _elapsedTimer = setInterval(_tickElapsed, 30000);
+      _purgeStale(rawDocs);
     }
 
-    // Subscribe to live rooms whenever the user authenticates.
-    // Tries the compound query (status+createdAt) first; if the index isn't
-    // built yet it falls back to the simple isLive==true query and sorts client-side.
     onAuthStateChanged(auth, user => {
       if (!user || _hubUnsub) return;
 
-      function _attachQuery(useSimple) {
+      function _attach(useSimple) {
         try {
           const q = useSimple
             ? query(collection(db, 'liveRooms'), where('isLive', '==', true))
@@ -9226,27 +9270,31 @@ body.arcade-fs-ios body::after { display:none !important; }
 
           _hubUnsub = onSnapshot(q, snap => {
             const rooms = [];
-            snap.forEach(d => { const r = d.data(); r.roomId = r.roomId || d.id; rooms.push(r); });
+            snap.forEach(d => {
+              const r = d.data();
+              r.id     = d.id;                     // Firestore doc key (uid in new schema)
+              r.roomId = r.roomId || d.id;          // fallback for legacy roomId-keyed docs
+              rooms.push(r);
+            });
             _renderHubRooms(rooms);
           }, err => {
-            // Index not ready — fall back to simple query
             if (!useSimple) {
-              console.warn('[LiveHub] compound query failed, using fallback:', err.message);
+              console.warn('[LiveHub] index not ready, using fallback:', err.message);
               _hubUnsub = null;
-              _attachQuery(true);
+              _attach(true);
             } else {
               if (loadingEl) loadingEl.style.display = 'none';
               if (emptyEl)   emptyEl.style.display   = '';
             }
           });
         } catch(e) {
-          console.warn('[LiveHub] watcher failed:', e.message);
+          console.warn('[LiveHub] watcher error:', e.message);
           if (loadingEl) loadingEl.style.display = 'none';
           if (emptyEl)   emptyEl.style.display   = '';
         }
       }
 
-      _attachQuery(false);
+      _attach(false);
     });
   })();
 
@@ -10107,10 +10155,9 @@ body.arcade-fs-ios body::after { display:none !important; }
           // Sort by most recently active (lastSeen field, fallback joinedAt)
           onlineUsers.sort((a, b) => (b.lastSeen || b.joinedAt || 0) - (a.lastSeen || a.joinedAt || 0));
 
-          // ── Feed page "Active Now" strip ──
-          const strip     = document.getElementById("activeUsersStrip");
-          const stripWrap = document.getElementById("activeUsersStripWrap");
-          strip.innerHTML = "";
+          // Expose online UIDs globally so story bubbles can show green rings
+          window._snxOnlineUids = seenUids;
+          if (typeof _renderStoryBar === 'function') _renderStoryBar();
 
           // ── Messages page "Online Now" strip ──
           const onlineAvatars = document.getElementById("msgOnlineAvatars");
@@ -10120,18 +10167,6 @@ body.arcade-fs-ios body::after { display:none !important; }
           const onlineCount = onlineUsers.length;
 
           onlineUsers.forEach(u => {
-              // Feed strip chip — clicking chip opens profile
-              const chip = document.createElement("div");
-              chip.className = "user-chip";
-              const initial = (u.displayName || '?')[0].toUpperCase();
-              const chipBadges = buildBadgeHtml(u.badges||[], u.role||'member');
-              chip.innerHTML = `
-                <div style="width:28px;height:28px;border-radius:50%;background:${u.avatar ? `url('${u.avatar}') center/cover no-repeat` : '#0B1F3A'};border:1.5px solid rgba(0,174,239,0.55);display:flex;align-items:center;justify-content:center;font-size:11px;color:#00AEEF;flex-shrink:0;cursor:pointer;">${u.avatar ? '' : initial}</div>
-                <div class="indicator-dot online"></div>
-                <span>${escFeed(u.displayName)}</span>${chipBadges}`;
-              chip.onclick = () => viewProfile(u.uid);
-              strip.appendChild(chip);
-
               // Messages online strip — clicking AVATAR opens DM, name is a plain label
               if (onlineAvatars) {
                   const item = document.createElement("div");
@@ -10168,13 +10203,6 @@ body.arcade-fs-ios body::after { display:none !important; }
                   onlineAvatars.appendChild(item);
               }
           });
-
-          // Feed strip empty state
-          if (strip.children.length === 0) {
-              strip.innerHTML = '<span style="font-size:12px;color:#334;font-style:italic;padding:6px 0;">No one else is online right now.</span>';
-          }
-
-          if (stripWrap) stripWrap.style.display = '';
 
           // Messages online strip empty state
           if (onlineAvatars && onlineCount === 0) {
@@ -10244,11 +10272,14 @@ body.arcade-fs-ios body::after { display:none !important; }
           const loadingEl = container.querySelector('#feedLoadingState');
           if (loadingEl) loadingEl.remove();
 
-          // Filter out expired posts (48h TTL) — they may still be in Firestore until
-          // the background cleanup runs, so we skip them here silently.
+          // Filter out expired posts (48h TTL) and live-session posts.
+          // Live sessions are shown only in the story bar and Live Hub —
+          // they must never appear in the main feed scroll.
           const incomingIds = new Set();
           snapshot.forEach(pDoc => {
               const p = pDoc.data();
+              // Skip live/live_share posts — they belong in the Live Hub, not the feed
+              if (p.type === 'live' || p.type === 'live_share') return;
               // Legacy posts (no expiresAt) remain visible indefinitely
               if (p.expiresAt && p.expiresAt < nowMs) return;
               incomingIds.add(pDoc.id);
@@ -10342,24 +10373,17 @@ body.arcade-fs-ios body::after { display:none !important; }
               if (existingEl) {
                   // — Patch only the parts that can change without wiping the DOM node —
 
-                  // 0. Live post — update watch button if stream ended
+                  // 0. Live post — remove card if stream ended, update if still live
                   if (post.type === 'live' || post.type === 'live_share') {
+                      if (post.isLive === false) {
+                          // Stream ended — remove the card entirely from the feed
+                          existingEl.remove();
+                          return;
+                      }
                       const _liveCard = existingEl.querySelector('.snx-feed-live-card');
                       if (_liveCard) {
-                          const _watchBtn = _liveCard.querySelector('.snx-flc-watch-btn');
-                          if (post.isLive === false) {
-                              if (_watchBtn) { _watchBtn.textContent = 'Stream ended'; _watchBtn.style.background = 'rgba(50,50,70,0.5)'; _watchBtn.style.pointerEvents = 'none'; }
-                              // hide share button
-                              const _sb = _liveCard.querySelector('[id^="live-share-"]');
-                              if (_sb) _sb.remove();
-                          }
                           const _dotEl = _liveCard.querySelector('.snx-flc-avatar');
-                          if (_dotEl) _dotEl.classList.toggle('is-live', post.isLive !== false);
-                          const _liveLbl = _liveCard.querySelector('.snx-live-dot-anim');
-                          if (_liveLbl && _liveLbl.nextSibling) {
-                              _liveLbl.nextSibling.textContent = post.isLive !== false ? ' LIVE NOW' : ' Was Live';
-                              if (post.isLive === false) _liveLbl.style.display = 'none';
-                          }
+                          if (_dotEl) _dotEl.classList.add('is-live');
                       }
                       // Still reposition in DOM
                       const posIdx2 = finalOrderedIds.indexOf(pDoc.id);
@@ -10416,6 +10440,10 @@ body.arcade-fs-ios body::after { display:none !important; }
                   if (post.expiresAt) div.dataset.expiresAt = post.expiresAt;
 
                   // ── LIVE / LIVE_SHARE card ─────────────────────────────────────
+                  // Skip ended streams — only render active live cards
+                  if ((post.type === 'live' || post.type === 'live_share') && post.isLive === false) {
+                      return;   // do not add ended stream cards to the feed
+                  }
                   if (post.type === 'live' || post.type === 'live_share') {
                       const _lAvatar  = escFeed(post.authorAvatar || '');
                       const _lName    = escFeed(post.authorName   || 'Someone');
@@ -15144,6 +15172,8 @@ body.arcade-fs-ios body::after { display:none !important; }
           const liveStory   = stories.find(s => s.type === 'live');
           const regStories  = stories.filter(s => s.type !== 'live');
 
+          const onlineUids = window._snxOnlineUids || new Set();
+
           // ── LIVE bubble — always first, always before regular stories ──
           if (liveStory) {
               const lvBubble = document.createElement('div');
@@ -15154,10 +15184,12 @@ body.arcade-fs-ios body::after { display:none !important; }
               const avatarStyle = liveStory.authorAvatar
                   ? `background-image:url('${escFeed(liveStory.authorAvatar)}')`
                   : '';
+              const isOnlineLive = onlineUids.has(uid);
               lvBubble.innerHTML = `
                   <span class="story-live-badge">LIVE</span>
                   <div class="story-ring story-ring-live">
                       <div class="story-ring-inner" style="${avatarStyle}">${liveStory.authorAvatar ? '' : escFeed(initial)}</div>
+                      ${isOnlineLive ? '<div class="story-online-dot"></div>' : ''}
                   </div>
                   <span class="story-label" style="color:#ff5566;">${escFeed(liveStory.authorName || 'Unknown')}</span>`;
               lvBubble.addEventListener('click', () => {
@@ -15175,9 +15207,11 @@ body.arcade-fs-ios body::after { display:none !important; }
 
           // ── Regular story bubble (skip if no regular stories) ──
           if (!regStories.length) return;
-          const latest  = regStories[regStories.length - 1];
-          const allSeen = regStories.every(s => seenStories.has(s.id));
-          const bubble  = document.createElement('div');
+          const latest   = regStories[regStories.length - 1];
+          const allSeen  = regStories.every(s => seenStories.has(s.id));
+          const hasUnseen = !allSeen;
+          const isOnline  = onlineUids.has(uid);
+          const bubble   = document.createElement('div');
           bubble.className = 'story-bubble' + (uid === myUid ? ' own-story' : '');
           bubble.dataset.uid = uid;
 
@@ -15185,11 +15219,24 @@ body.arcade-fs-ios body::after { display:none !important; }
           const avatarStyle = latest.authorAvatar
               ? `background-image:url('${escFeed(latest.authorAvatar)}')`
               : '';
-          const ringClass = 'story-ring' + (allSeen ? ' story-ring-seen' : '');
+
+          // Ring colour logic:
+          //  red   = unseen/new story
+          //  blue  = seen story (still active)
+          //  seen  = dim ring when all stories viewed
+          let ringClass = 'story-ring';
+          if (allSeen) {
+              ringClass += ' story-ring-seen';
+          } else if (hasUnseen) {
+              ringClass += ' story-ring-red';
+          } else {
+              ringClass += ' story-ring-blue';
+          }
 
           bubble.innerHTML = `
               <div class="${ringClass}">
                   <div class="story-ring-inner" style="${avatarStyle}">${latest.authorAvatar ? '' : escFeed(initial)}</div>
+                  ${isOnline ? '<div class="story-online-dot"></div>' : ''}
               </div>
               <span class="story-label">${escFeed(latest.authorName || 'Unknown')}</span>`;
 
@@ -23878,11 +23925,161 @@ window.scbInit = async function(user, userDataArg) {
    Hook into existing admin tab switcher so the
    dashboard loads when the Shadow Bot tab opens.
    ══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════
+   ADMIN — LIVE ROOM MANAGER (Founder only)
+   ═══════════════════════════════════════════════════ */
+window.adminLoadLiveRooms = async function() {
+  const list = document.getElementById('adminLiveRoomsList');
+  if (!list) return;
+  list.innerHTML = '<div style="color:#4a6a8a;font-size:13px;text-align:center;padding:20px 0;">Loading…</div>';
+
+  // Load from RTDB (all rooms — active + ended)
+  const { getDatabase, ref: rtdbRef, get: rtdbGet } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+  const rtdb = getDatabase(window._snxApp);
+  let rtdbRooms = {};
+  try {
+    const snap = await rtdbGet(rtdbRef(rtdb, 'liveRooms'));
+    rtdbRooms = snap.val() || {};
+  } catch (_) {}
+
+  // Load from Firestore (all liveRooms docs)
+  let fsRooms = {};
+  try {
+    const snap = await getDocs(collection(db, 'liveRooms'));
+    snap.forEach(d => { fsRooms[d.id] = d.data(); });
+  } catch (_) {}
+
+  const allIds = new Set([...Object.keys(rtdbRooms), ...Object.keys(fsRooms)]);
+
+  if (!allIds.size) {
+    list.innerHTML = '<div style="color:#4a6a8a;font-size:13px;text-align:center;padding:20px 0;">No live rooms found — database is clean.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  allIds.forEach(roomId => {
+    const r = rtdbRooms[roomId] || fsRooms[roomId] || {};
+    const status   = r.status  || (r.isLive ? 'live' : 'ended');
+    const isActive = status === 'live';
+    const name     = r.hostName || r.hostUsername || roomId.slice(0, 12) + '…';
+    const title    = r.title    || 'Shadow Nexus LIVE';
+    const created  = r.createdAt ? new Date(r.createdAt).toLocaleString() : '—';
+    const ended    = r.endedAt   ? new Date(r.endedAt).toLocaleString()   : '—';
+
+    const card = document.createElement('div');
+    card.style.cssText = 'background:rgba(0,20,50,0.7);border:1px solid ' +
+      (isActive ? 'rgba(255,34,68,0.45)' : 'rgba(50,80,120,0.35)') +
+      ';border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
+    card.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:${isActive ? '#ff6677' : '#6a90b8'};margin-bottom:3px;">
+          ${isActive ? '🔴 LIVE' : '⚫ Ended'} &nbsp; <span style="color:#e0f0ff;">${escFeed(name)}</span>
+        </div>
+        <div style="font-size:11px;color:#4a7a9a;">${escFeed(title)}</div>
+        <div style="font-size:10px;color:#3a5a7a;margin-top:3px;">
+          ID: ${escFeed(roomId)} &nbsp;·&nbsp; Created: ${created}${!isActive ? ' &nbsp;·&nbsp; Ended: ' + ended : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        ${isActive ? `<button onclick="window.adminEndLiveRoom('${escFeed(roomId)}','${escFeed(r.hostId||'')}',this)" style="padding:6px 12px;border-radius:7px;background:rgba(255,34,68,0.12);border:1px solid rgba(255,34,68,0.4);color:#ff6677;font-size:11px;font-weight:700;cursor:pointer;">⛔ End Stream</button>` : ''}
+        <button onclick="window.adminDeleteLiveRoom('${escFeed(roomId)}','${escFeed(r.hostId||'')}',this)" style="padding:6px 12px;border-radius:7px;background:rgba(100,20,20,0.18);border:1px solid rgba(255,50,50,0.25);color:#cc5555;font-size:11px;font-weight:700;cursor:pointer;">🗑 Delete</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+};
+
+window.adminEndLiveRoom = async function(roomId, hostId, btn) {
+  if (!founderOnly()) return;
+  if (!confirm('End this live stream? The creator will see "Stream ended".')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Ending…'; }
+  try {
+    // RTDB
+    const { getDatabase, ref: rtdbRef, update: rtdbUpdate, remove: rtdbRemove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+    const rtdb = getDatabase(window._snxApp);
+    await rtdbUpdate(rtdbRef(rtdb, `liveRooms/${roomId}`), { status: 'ended', isLive: false, endedAt: Date.now() });
+    await rtdbRemove(rtdbRef(rtdb, `liveConnections/${roomId}`));
+    // Firestore
+    if (hostId) {
+      try { await updateDoc(doc(db, 'users', hostId), { isLive: deleteField(), liveRoomId: deleteField() }); } catch(_) {}
+      // Delete uid-keyed liveRooms doc (new schema)
+      try { await deleteDoc(doc(db, 'liveRooms', hostId)); } catch(_) {}
+    }
+    // Delete roomId-keyed liveRooms doc (legacy schema)
+    try { await deleteDoc(doc(db, 'liveRooms', roomId)); } catch(_) {}
+    // Delete any orphaned feed posts with this liveRoomId
+    try {
+      const q = query(collection(db,'posts'), where('liveRoomId','==',roomId), where('type','==','live'));
+      const s = await getDocs(q);
+      s.forEach(async d => { try { await deleteDoc(d.ref); } catch(_) {} });
+    } catch(_) {}
+    toastNotification('Stream ended.');
+    window.adminLoadLiveRooms();
+  } catch(e) {
+    toastNotification('Could not end stream: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⛔ End Stream'; }
+  }
+};
+
+window.adminDeleteLiveRoom = async function(roomId, hostId, btn) {
+  if (!founderOnly()) return;
+  if (!confirm('Permanently delete this room from the database?')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  try {
+    const { getDatabase, ref: rtdbRef, remove: rtdbRemove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+    const rtdb = getDatabase(window._snxApp);
+    await rtdbRemove(rtdbRef(rtdb, `liveRooms/${roomId}`));
+    await rtdbRemove(rtdbRef(rtdb, `liveConnections/${roomId}`));
+    // Delete roomId-keyed liveRooms doc (legacy)
+    try { await deleteDoc(doc(db, 'liveRooms', roomId)); } catch(_) {}
+    if (hostId) {
+      try { await updateDoc(doc(db, 'users', hostId), { isLive: deleteField(), liveRoomId: deleteField() }); } catch(_) {}
+      // Delete uid-keyed liveRooms doc (new schema)
+      try { await deleteDoc(doc(db, 'liveRooms', hostId)); } catch(_) {}
+    }
+    toastNotification('Room deleted.');
+    window.adminLoadLiveRooms();
+  } catch(e) {
+    toastNotification('Could not delete room: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🗑 Delete'; }
+  }
+};
+
+window.adminPurgeEndedRooms = async function() {
+  if (!founderOnly()) return;
+  if (!confirm('Delete ALL ended/inactive rooms from both RTDB and Firestore?')) return;
+  const { getDatabase, ref: rtdbRef, get: rtdbGet, remove: rtdbRemove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+  const rtdb = getDatabase(window._snxApp);
+  let deleted = 0;
+  try {
+    // RTDB
+    const snap = await rtdbGet(rtdbRef(rtdb, 'liveRooms'));
+    const rooms = snap.val() || {};
+    for (const [id, r] of Object.entries(rooms)) {
+      if (r.status === 'ended' || r.isLive === false) {
+        await rtdbRemove(rtdbRef(rtdb, `liveRooms/${id}`));
+        await rtdbRemove(rtdbRef(rtdb, `liveConnections/${id}`));
+        deleted++;
+      }
+    }
+    // Firestore
+    const fsSnap = await getDocs(query(collection(db,'liveRooms'), where('isLive','==',false)));
+    fsSnap.forEach(async d => { try { await deleteDoc(d.ref); deleted++; } catch(_) {} });
+    const fsSnap2 = await getDocs(query(collection(db,'liveRooms'), where('status','==','ended')));
+    fsSnap2.forEach(async d => { try { await deleteDoc(d.ref); } catch(_) {} });
+  } catch(e) {}
+  toastNotification(deleted > 0 ? `Purged ${deleted} ended room(s).` : 'No ended rooms found.');
+  window.adminLoadLiveRooms();
+};
+
 const _originalSwitchAdminTab = window.switchAdminTab;
 window.switchAdminTab = function(tab) {
   if (typeof _originalSwitchAdminTab === 'function') _originalSwitchAdminTab(tab);
   if (tab === 'shadowbot') {
     scbOpenDashboard();
+  }
+  if (tab === 'liverooms') {
+    window.adminLoadLiveRooms();
   }
 };
 

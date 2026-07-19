@@ -4,11 +4,14 @@
  *
  * Responsibilities:
  *  1. Register the app service worker (sw.js)
- *  2. Register the FCM messaging service worker (firebase-messaging-sw.js)
- *  3. Handle SW update notifications (new version available toast)
- *  4. Capture the PWA install prompt and show the install banner
- *  5. Online/offline status handling
- *  6. Misc global utilities used across pages
+ *  2. Handle SW update notifications (new version available toast)
+ *  3. Capture the PWA install prompt and show the install banner
+ *  4. Online/offline status handling
+ *  5. Misc global utilities used across pages
+ *
+ * NOTE: firebase-messaging-sw.js is NOT registered here.
+ * It is registered lazily inside index.html by initPushNotifications(),
+ * which runs after the user logs in and the correct scope path is known.
  */
 
 'use strict';
@@ -21,10 +24,9 @@
 (function registerSW() {
   if (!('serviceWorker' in navigator)) return;
 
-  const isGH    = location.pathname.startsWith('/TEST');
-  const base    = isGH ? '/TEST/' : './';
-  const swPath  = base + 'sw.js';
-  const fcmPath = base + 'firebase-messaging-sw.js';
+  const isGH   = location.pathname.startsWith('/TEST');
+  const base   = isGH ? '/TEST/' : './';
+  const swPath = base + 'sw.js';
 
   window.addEventListener('load', async () => {
 
@@ -61,13 +63,11 @@
       console.warn('[SW] Registration failed:', err);
     }
 
-    // ── Register FCM messaging service worker ──
-    try {
-      await navigator.serviceWorker.register(fcmPath, { scope: base });
-      console.log('[FCM-SW] Registered');
-    } catch (err) {
-      console.warn('[FCM-SW] Registration failed:', err);
-    }
+    // NOTE: firebase-messaging-sw.js is registered by initPushNotifications()
+    // inside index.html (after auth resolves + permission is granted) so that
+    // the scope is derived from the live page path and the registration is
+    // bound to a valid FCM token.  A separate early registration here would
+    // use the wrong scope on GitHub Pages and conflicts with that flow.
 
   });
 

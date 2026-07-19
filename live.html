@@ -187,6 +187,7 @@
       <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
       <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
       <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
+      <button id="btnGuestBoxes" class="live-ctrl-btn guest-boxes-btn" aria-label="Guest boxes" title="Guests">👥</button>
       <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
 
     </div>
@@ -217,6 +218,70 @@
   </div><!-- .live-video-wrap -->
 
 </div><!-- #liveStage -->
+
+
+<!-- ══════════════════════════════════════════════
+     GUEST BOXES PANEL
+     Sits below liveStage on desktop, overlay on mobile
+     ══════════════════════════════════════════════ -->
+<div id="guestBoxPanel" class="guest-box-panel" style="display:none;">
+
+  <div class="guest-box-header">
+    <span class="guest-box-title">🎥 Guest Boxes</span>
+    <span id="guestQueueBadge" class="guest-queue-badge" style="display:none;">Queue: <span id="guestQueueCount">0</span></span>
+    <button id="btnCloseGuestPanel" class="gb-panel-close-btn" aria-label="Close guest boxes panel" style="
+      background:none;border:none;color:#6a90b8;font-size:16px;cursor:pointer;
+      padding:2px 6px;border-radius:6px;line-height:1;
+    ">▾</button>
+  </div>
+
+  <div class="guest-box-grid">
+
+    <!-- Box 1 -->
+    <div class="guest-box" id="guestBox1" data-box="1">
+      <div class="guest-box-video-wrap">
+        <video class="guest-box-video" id="guestVideo1" autoplay playsinline muted></video>
+        <div class="guest-box-status-label" id="guestBoxStatus1">Available</div>
+        <div class="guest-box-name-label" id="guestBoxName1"></div>
+      </div>
+      <div class="guest-box-actions" id="guestBoxActions1"></div>
+    </div>
+
+    <!-- Box 2 -->
+    <div class="guest-box" id="guestBox2" data-box="2">
+      <div class="guest-box-video-wrap">
+        <video class="guest-box-video" id="guestVideo2" autoplay playsinline muted></video>
+        <div class="guest-box-status-label" id="guestBoxStatus2">Available</div>
+        <div class="guest-box-name-label" id="guestBoxName2"></div>
+      </div>
+      <div class="guest-box-actions" id="guestBoxActions2"></div>
+    </div>
+
+    <!-- Box 3 -->
+    <div class="guest-box" id="guestBox3" data-box="3">
+      <div class="guest-box-video-wrap">
+        <video class="guest-box-video" id="guestVideo3" autoplay playsinline muted></video>
+        <div class="guest-box-status-label" id="guestBoxStatus3">Available</div>
+        <div class="guest-box-name-label" id="guestBoxName3"></div>
+      </div>
+      <div class="guest-box-actions" id="guestBoxActions3"></div>
+    </div>
+
+    <!-- Box 4 -->
+    <div class="guest-box" id="guestBox4" data-box="4">
+      <div class="guest-box-video-wrap">
+        <video class="guest-box-video" id="guestVideo4" autoplay playsinline muted></video>
+        <div class="guest-box-status-label" id="guestBoxStatus4">Available</div>
+        <div class="guest-box-name-label" id="guestBoxName4"></div>
+      </div>
+      <div class="guest-box-actions" id="guestBoxActions4"></div>
+    </div>
+
+  </div>
+</div><!-- #guestBoxPanel -->
+
+<!-- ── Viewer: Request a Box button (injected into viewer actions) ── -->
+<!-- Added dynamically by JS when in viewer mode -->
 
 
 <!-- ══════════════════════════════════════════════
