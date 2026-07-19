@@ -439,33 +439,38 @@ service cloud.firestore {
       allow delete: if isOwner(uid) || isFounder();
     }
 
-    // ── Live Signals (WebRTC signaling) ────────────────────────────────────────
+    // ── Live Connections (WebRTC signaling — new flat schema) ──────────────────
     //
-    //   /liveSignals/{roomId}/viewers/{viewerUid}
-    //     offer:  { type, sdp }     — viewer writes their SDP offer
-    //     answer: { type, sdp }     — host writes their SDP answer
-    //
-    //   /liveSignals/{roomId}/viewers/{viewerUid}/hostIce/{id}
-    //     host's ICE candidates for this viewer
-    //
-    //   /liveSignals/{roomId}/viewers/{viewerUid}/viewerIce/{id}
-    //     viewer's ICE candidates for the host
+    //   /liveConnections/{liveId}
+    //     offer             : { type, sdp }         — creator writes
+    //     answer            : { type, sdp }         — viewer writes
+    //     creatorCandidates : [ … ]                 — creator appends via arrayUnion
+    //     viewerCandidates  : [ … ]                 — viewer appends via arrayUnion
+
+    match /liveConnections/{liveId} {
+      // Any signed-in user can read (viewer needs the creator's offer)
+      allow read: if isSignedIn();
+      // Creator creates the doc (setDoc)
+      allow create: if isSignedIn();
+      // Viewer updates it (writes answer + viewerCandidates);
+      // Creator updates it (appends creatorCandidates)
+      allow update: if isSignedIn();
+      // Only Founder may delete (cleanup)
+      allow delete: if isFounder();
+    }
+
+    // ── Live Signals (WebRTC signaling — legacy, kept for compatibility) ───────
 
     match /liveSignals/{roomId} {
       allow read: if isSignedIn();
-      allow write: if false; // only sub-collections are written
+      allow write: if false;
 
       match /viewers/{viewerUid} {
-        // Any signed-in user can read (host needs to read viewer offers)
         allow read: if isSignedIn();
-        // Only the viewer themselves can create / update their own signal doc
         allow create: if isOwner(viewerUid);
-        allow update: if isSignedIn();   // host writes the answer field
+        allow update: if isSignedIn();
         allow delete: if isOwner(viewerUid) || isFounder();
 
-        // Host ICE candidates — written by the host, read by the viewer.
-        // Viewer deletes stale host ICE docs on reconnect (isOwner).
-        // Host may also clean up after session ends (isSignedIn).
         match /hostIce/{id} {
           allow read:   if isSignedIn();
           allow create: if isSignedIn();
@@ -473,8 +478,6 @@ service cloud.firestore {
           allow update: if false;
         }
 
-        // Viewer ICE candidates — written by the viewer, read by the host.
-        // Host deletes stale viewer ICE docs on reconnect (isSignedIn).
         match /viewerIce/{id} {
           allow read:   if isSignedIn();
           allow create: if isOwner(viewerUid);

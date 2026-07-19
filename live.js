@@ -3,28 +3,30 @@
  *
  * Architecture (WebRTC + Firebase Firestore signaling):
  *
- *  CREATOR (host):
+ *  CREATOR:
  *    1. Captures local camera + mic via getUserMedia.
  *    2. Creates a liveRooms/{roomId} Firestore doc (status: 'live').
- *    3. Listens on liveSignals/{roomId}/viewers/{viewerUid}/offer
- *       — when a viewer posts an offer, creates an RTCPeerConnection,
- *         sends back an answer, and streams video to them.
+ *    3. Creates one RTCPeerConnection, adds tracks, creates an SDP offer.
+ *    4. Writes offer to liveConnections/{roomId}.
+ *    5. Listens on liveConnections/{roomId} for viewer answers +
+ *       viewerCandidates arrays.  Applies them as they arrive.
  *
  *  VIEWER:
- *    1. Reads the liveRooms/{roomId} doc to confirm stream is live.
- *    2. Creates an RTCPeerConnection, generates an SDP offer.
- *    3. Writes offer to liveSignals/{roomId}/viewers/{myUid}/offer.
- *    4. Listens for liveSignals/{roomId}/viewers/{myUid}/answer
- *       — applies the answer SDP and starts displaying video.
- *    5. ICE candidates exchanged via liveSignals/{roomId}/hostIce/{idx}
- *       and liveSignals/{roomId}/viewers/{myUid}/ice/{idx}.
+ *    1. Reads liveRooms/{roomId} to confirm stream is live.
+ *    2. Reads liveConnections/{roomId} for the creator's offer.
+ *    3. Creates one RTCPeerConnection with recvonly transceivers.
+ *    4. Sets remote description (creator offer), creates answer.
+ *    5. Writes answer + viewerCandidates to liveConnections/{roomId}.
+ *    6. Receives remote tracks → displays video.
  *
  *  Chat + Likes:
  *    Stored in Firestore sub-collections under liveRooms/{roomId}.
  *
- *  Autoplay policy:
- *    Viewer video starts muted (required by browsers). A tap-to-unmute
- *    prompt is shown until the user interacts with the page.
+ *  Signaling collection:  liveConnections/{liveId}
+ *    ├── offer             : { type, sdp }
+ *    ├── answer            : { type, sdp }
+ *    ├── creatorCandidates : [ … ]
+ *    └── viewerCandidates  : [ … ]
  */
 
 'use strict';
@@ -38,7 +40,7 @@ import {
   getFirestore,
   doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
   collection, query, orderBy, limit, onSnapshot,
-  serverTimestamp, increment, where, deleteField, arrayUnion, writeBatch
+  serverTimestamp, increment, where, deleteField, arrayUnion
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
 const _CFG = {
@@ -60,7 +62,6 @@ const ICE = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    // Free relay servers — required for cross-NAT connections (mobile ↔ WiFi)
     {
       urls:       'turn:openrelay.metered.ca:80',
       username:   'openrelayproject',
@@ -80,28 +81,27 @@ const ICE = {
 };
 
 /* ── State ── */
-let _user       = null;   // Firebase Auth user
-let _userData   = null;   // Firestore user doc data
-let _mode       = null;   // 'creator' | 'viewer'
-let _roomId     = null;
-let _feedPostId = null;   // ID of the live post created in 'posts' collection
-let _localStream = null;
-let _camOn      = true;
-let _micOn      = true;
-let _facingMode = 'user';
+let _user         = null;   // Firebase Auth user
+let _userData     = null;   // Firestore user doc data
+let _mode         = null;   // 'creator' | 'viewer'
+let _roomId       = null;
+let _feedPostId   = null;   // ID of the live post created in 'posts' collection
+let _localStream  = null;
+let _camOn        = true;
+let _micOn        = true;
+let _facingMode   = 'user';
 
-// Creator — one RTCPeerConnection per viewer
-const _viewerPeers = {}; // viewerUid → { pc, unsubs: [] }
-let _viewerListUnsub = null;
+// WebRTC — one PeerConnection for creator, one for viewer
+let _creatorPc    = null;   // creator's single RTCPeerConnection
+let _connUnsub    = null;   // Firestore listener on liveConnections doc
 
-// Viewer — one RTCPeerConnection to the host
-let _viewerPc   = null;
-let _viewerUnsubs = [];
+let _viewerPc     = null;   // viewer's single RTCPeerConnection
+let _viewerUnsubs = [];     // cleanup handles for viewer
 
-let _chatUnsub       = null;
-let _viewerCountUnsub = null;  // unsubscribe handle for the viewer-count listener
-let _toastTimer      = null;
-let _viewerLeftFlag  = false;  // guard: prevent double-decrement on mobile
+let _chatUnsub        = null;
+let _viewerCountUnsub = null;
+let _toastTimer       = null;
+let _viewerLeftFlag   = false;  // guard: prevent double-decrement on mobile
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -400,8 +400,8 @@ async function startLive() {
   _attachLocalVideoToStage();
   _populateCreatorInfo(creatorData);
 
-  // Start watching for viewer join requests
-  _listenForViewers();
+  // Start the creator WebRTC offer + listen for viewer answer
+  await _startCreatorConnection();
 
   // Start chat listener
   _subscribeChat();
@@ -432,138 +432,104 @@ function _populateCreatorInfo(data) {
 }
 
 /* ═══════════════════════════════════════════════════
-   CREATOR — Listen for viewer connection requests
+   CREATOR — Create offer, write to liveConnections,
+             listen for viewer answer + candidates
    ═══════════════════════════════════════════════════ */
-function _listenForViewers() {
-  // liveSignals/{roomId}/viewers — subcollection of per-viewer signal docs
-  const viewersCol = collection(_db, 'liveSignals', _roomId, 'viewers');
-  _viewerListUnsub = onSnapshot(viewersCol, snap => {
-    snap.docChanges().forEach(change => {
-      const vUid = change.doc.id;
-      const data = change.doc.data();
+async function _startCreatorConnection() {
+  // Clean up any previous connection
+  _cleanupCreatorPc();
 
-      if (change.type === 'removed') {
-        _cleanupViewerPeer(vUid);
-        return;
-      }
-
-      // Only handle a viewer once per sessionId.
-      // Skip docs that already have an answer (we wrote it, or stale session).
-      if (data.offer && data.offer.sdp && !data.answer) {
-        const sessionId = data.sessionId || vUid;
-        // If we already have a peer for this exact session, skip
-        if (_viewerPeers[vUid]?.sessionId === sessionId) return;
-        // If we had a previous peer for a different session, clean it up first
-        if (_viewerPeers[vUid]) _cleanupViewerPeer(vUid);
-        _handleViewerOffer(vUid, data.offer.sdp, sessionId);
-      }
-    });
-  }, () => {});
-}
-
-async function _handleViewerOffer(viewerUid, offerSdp, sessionId) {
-  // Double-check in case of concurrent snapshot fires
-  if (_viewerPeers[viewerUid]?.sessionId === sessionId) return;
-
-  const pc = new RTCPeerConnection(ICE);
-  // Register the peer BEFORE any await so concurrent snapshot events are blocked
-  _viewerPeers[viewerUid] = { pc, unsubs: [], sessionId };
-
-  // Attach local stream tracks so the viewer receives video/audio
-  if (_localStream) {
-    _localStream.getTracks().forEach(track => pc.addTrack(track, _localStream));
-  } else {
-    console.warn('[Live Host] No local stream to send to viewer', viewerUid);
+  if (!_localStream) {
+    console.warn('[Creator] No local stream — cannot create WebRTC offer');
+    return;
   }
 
-  // Buffer viewer ICE candidates that arrive before setRemoteDescription completes
-  const _pendingViewerIce = [];
-  let _remoteDescSet = false;
+  _creatorPc = new RTCPeerConnection(ICE);
 
-  // Send host ICE candidates to viewer's doc
-  pc.onicecandidate = async e => {
+  // Add all local tracks so the viewer receives video + audio
+  _localStream.getTracks().forEach(track => _creatorPc.addTrack(track, _localStream));
+
+  // Collect and persist creator ICE candidates via arrayUnion
+  _creatorPc.onicecandidate = async e => {
     if (!e.candidate) return;
     try {
-      const iceCol = collection(_db, 'liveSignals', _roomId, 'viewers', viewerUid, 'hostIce');
-      await addDoc(iceCol, { ...e.candidate.toJSON(), sessionId });
+      await updateDoc(doc(_db, 'liveConnections', _roomId), {
+        creatorCandidates: arrayUnion(e.candidate.toJSON()),
+      });
     } catch (_) {}
   };
 
-  pc.onconnectionstatechange = () => {
-    const st = pc.connectionState;
-    console.log(`[Live Host] Viewer ${viewerUid} connection state: ${st}`);
-    if (st === 'disconnected' || st === 'failed' || st === 'closed') {
-      _cleanupViewerPeer(viewerUid);
-    }
+  _creatorPc.onconnectionstatechange = () => {
+    const st = _creatorPc?.connectionState;
+    console.log('[Creator] connection state:', st);
   };
 
-  pc.oniceconnectionstatechange = () => {
-    console.log(`[Live Host] Viewer ${viewerUid} ICE state: ${pc.iceConnectionState}`);
+  _creatorPc.oniceconnectionstatechange = () => {
+    console.log('[Creator] ICE state:', _creatorPc?.iceConnectionState);
   };
 
-  // Delete stale ICE candidates from any previous session before listening
-  await _deleteViewerIceCollection(viewerUid).catch(() => {});
-
-  // Listen for viewer ICE candidates — filter by sessionId to ignore stale ones
-  const iceCol = collection(_db, 'liveSignals', _roomId, 'viewers', viewerUid, 'viewerIce');
-  const iceUnsub = onSnapshot(iceCol, snap => {
-    snap.docChanges().forEach(ch => {
-      if (ch.type !== 'added') return;
-      const cand = ch.doc.data();
-      // Ignore candidates from a different session
-      if (cand.sessionId && cand.sessionId !== sessionId) return;
-      const { sessionId: _s, ...candData } = cand;
-      if (_remoteDescSet) {
-        pc.addIceCandidate(new RTCIceCandidate(candData)).catch(() => {});
-      } else {
-        _pendingViewerIce.push(candData);
-      }
-    });
-  }, () => {});
-  _viewerPeers[viewerUid].unsubs.push(iceUnsub);
-
+  // Create offer
+  let offer;
   try {
-    await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
-    _remoteDescSet = true;
-
-    // Drain any ICE candidates that arrived before remote description was set
-    for (const cand of _pendingViewerIce) {
-      pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-    }
-    _pendingViewerIce.length = 0;
-
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    // Write answer back — include sessionId so viewer knows it's for their session
-    await updateDoc(doc(_db, 'liveSignals', _roomId, 'viewers', viewerUid), {
-      answer: { type: 'answer', sdp: answer.sdp, sessionId }
-    });
+    offer = await _creatorPc.createOffer();
+    await _creatorPc.setLocalDescription(offer);
   } catch (e) {
-    console.warn('[Live Host] handleViewerOffer error:', e.message);
-    _cleanupViewerPeer(viewerUid);
+    console.error('[Creator] createOffer failed:', e.message);
     return;
   }
-}
 
-/** Delete all docs in a viewer's viewerIce subcollection (stale cleanup). */
-async function _deleteViewerIceCollection(viewerUid) {
+  // Write offer to Firestore (overwrites any stale connection doc)
   try {
-    const col = collection(_db, 'liveSignals', _roomId, 'viewers', viewerUid, 'viewerIce');
-    const snap = await getDocs(col);
-    if (snap.empty) return;
-    const batch = writeBatch(_db);
-    snap.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-  } catch (_) {}
+    await setDoc(doc(_db, 'liveConnections', _roomId), {
+      offer:             { type: offer.type, sdp: offer.sdp },
+      answer:            null,
+      creatorCandidates: [],
+      viewerCandidates:  [],
+      createdAt:         serverTimestamp(),
+    });
+  } catch (e) {
+    console.error('[Creator] Could not write offer:', e.message);
+    return;
+  }
+
+  console.log('[Creator] Offer written to liveConnections/' + _roomId);
+
+  // Track how many viewer candidates we have already applied
+  let _appliedViewerCandCount = 0;
+  let _answerApplied = false;
+
+  // Listen on the connection doc for answer + viewerCandidates
+  _connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
+    if (!snap.exists() || !_creatorPc) return;
+    const d = snap.data();
+
+    // Apply the viewer's answer once
+    if (!_answerApplied && d.answer && d.answer.sdp) {
+      _answerApplied = true;
+      try {
+        await _creatorPc.setRemoteDescription({ type: 'answer', sdp: d.answer.sdp });
+        console.log('[Creator] Remote description (answer) applied');
+      } catch (e) {
+        console.warn('[Creator] setRemoteDescription failed:', e.message);
+        _answerApplied = false;
+        return;
+      }
+    }
+
+    // Apply any new viewer ICE candidates
+    const viewerCands = d.viewerCandidates || [];
+    for (let i = _appliedViewerCandCount; i < viewerCands.length; i++) {
+      try {
+        await _creatorPc.addIceCandidate(new RTCIceCandidate(viewerCands[i]));
+      } catch (_) {}
+    }
+    _appliedViewerCandCount = viewerCands.length;
+  }, () => {});
 }
 
-function _cleanupViewerPeer(viewerUid) {
-  const peer = _viewerPeers[viewerUid];
-  if (!peer) return;
-  try { peer.pc.close(); } catch (_) {}
-  peer.unsubs.forEach(fn => fn());
-  delete _viewerPeers[viewerUid];
+function _cleanupCreatorPc() {
+  if (_connUnsub) { _connUnsub(); _connUnsub = null; }
+  if (_creatorPc) { try { _creatorPc.close(); } catch (_) {} _creatorPc = null; }
 }
 
 /* ── Subscribe to viewer count from Firestore ── */
@@ -606,13 +572,11 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
-    // Replace tracks on all existing peer connections
+    // Replace the video track on the creator's active peer connection
     const videoTrack = newStream.getVideoTracks()[0];
-    if (videoTrack) {
-      Object.values(_viewerPeers).forEach(({ pc }) => {
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) sender.replaceTrack(videoTrack).catch(() => {});
-      });
+    if (videoTrack && _creatorPc) {
+      const sender = _creatorPc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) sender.replaceTrack(videoTrack).catch(() => {});
     }
   } catch (e) {
     toast('⚠️ Could not flip camera: ' + e.message);
@@ -628,9 +592,8 @@ function toggleFullscreen() {
 }
 
 async function endLive() {
-  // Clean up all viewer peers
-  Object.keys(_viewerPeers).forEach(uid => _cleanupViewerPeer(uid));
-  if (_viewerListUnsub)  { _viewerListUnsub();  _viewerListUnsub  = null; }
+  // Clean up creator peer connection and signaling listener
+  _cleanupCreatorPc();
   if (_chatUnsub)        { _chatUnsub();         _chatUnsub        = null; }
   if (_viewerCountUnsub) { _viewerCountUnsub();  _viewerCountUnsub = null; }
 
@@ -672,6 +635,9 @@ async function endLive() {
       try { await updateDoc(shareDoc.ref, { isLive: false }); } catch (_) {}
     });
   } catch (_) {}
+
+  // Delete the liveConnections signaling doc so viewers can't use stale offer
+  try { await deleteDoc(doc(_db, 'liveConnections', _roomId)); } catch (_) {}
 
   // Remove the live story bubble
   _deleteLiveStory();
@@ -855,8 +821,6 @@ async function _viewerLeave() {
   if (_viewerPc) { try { _viewerPc.close(); } catch (_) {} _viewerPc = null; }
 
   try { await updateDoc(doc(_db, 'liveRooms', _roomId), { viewers: increment(-1) }); } catch (_) {}
-  // Clean up signal doc so the host stops seeing us
-  try { await deleteDoc(doc(_db, 'liveSignals', _roomId, 'viewers', _user.uid)); } catch (_) {}
 }
 
 function _setupViewerControls(roomData) {
@@ -870,46 +834,59 @@ function _setupViewerControls(roomData) {
 }
 
 async function _connectToHost(roomData) {
-  _showConnBanner('⏳ Connecting to stream…', 'Establishing connection with ' + roomData.hostName);
+  _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
 
   // Close any previous peer connection
-  if (_viewerPc) {
-    try { _viewerPc.close(); } catch (_) {}
-    _viewerPc = null;
-  }
   _viewerUnsubs.forEach(fn => fn());
   _viewerUnsubs = [];
+  if (_viewerPc) { try { _viewerPc.close(); } catch (_) {} _viewerPc = null; }
 
-  // Unique session ID to distinguish this connection from stale ones
-  const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  // Read the creator's offer from liveConnections
+  let connData;
+  try {
+    const connSnap = await getDoc(doc(_db, 'liveConnections', _roomId));
+    if (!connSnap.exists() || !connSnap.data().offer?.sdp) {
+      _showConnBanner('⚠️ No Offer Found', 'Waiting for creator to publish stream…');
+      // Retry after 3 s — creator may not have written the offer yet
+      setTimeout(() => {
+        if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
+      }, 3000);
+      return;
+    }
+    connData = connSnap.data();
+  } catch (e) {
+    _showConnBanner('⚠️ Connection Error', e.message);
+    return;
+  }
 
   _viewerPc = new RTCPeerConnection(ICE);
 
-  // Buffer host ICE candidates that arrive before setRemoteDescription completes
-  const _pendingHostIce = [];
-  let _remoteDescSet = false;
+  // Add recvonly transceivers so the answer SDP contains media sections
+  _viewerPc.addTransceiver('video', { direction: 'recvonly' });
+  _viewerPc.addTransceiver('audio', { direction: 'recvonly' });
 
-  // When we get the host's video/audio tracks — show them
+  // When we receive the creator's video/audio tracks — display them
   _viewerPc.ontrack = e => {
     console.log('[Viewer] ontrack fired, streams:', e.streams.length);
-    // Use the stream from the event; fall back to a new MediaStream from the track
     const stream = (e.streams && e.streams[0]) ? e.streams[0] : new MediaStream([e.track]);
     if (D.liveVideo) {
-      D.liveVideo.srcObject = stream;
-      // Start muted (browser autoplay policy). Tap-to-unmute prompt shown below.
-      D.liveVideo.muted = true;
-      D.liveVideo.play().catch(err => console.warn('[Viewer] video.play() failed:', err.message));
+      D.liveVideo.srcObject   = stream;
+      D.liveVideo.muted       = true;   // required for autoplay
+      D.liveVideo.autoplay    = true;
+      D.liveVideo.playsInline = true;
+      D.liveVideo.play().catch(err => console.warn('[Viewer] video.play():', err.message));
       _showUnmutePrompt();
     }
     _hideConnBanner();
   };
 
-  // Viewer's ICE candidates → write to Firestore with sessionId tag
+  // Viewer ICE candidates → append to liveConnections via arrayUnion
   _viewerPc.onicecandidate = async e => {
     if (!e.candidate) return;
     try {
-      const col = collection(_db, 'liveSignals', _roomId, 'viewers', _user.uid, 'viewerIce');
-      await addDoc(col, { ...e.candidate.toJSON(), sessionId });
+      await updateDoc(doc(_db, 'liveConnections', _roomId), {
+        viewerCandidates: arrayUnion(e.candidate.toJSON()),
+      });
     } catch (_) {}
   };
 
@@ -921,8 +898,7 @@ async function _connectToHost(roomData) {
     if (st === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
     if (st === 'failed' && !_retryScheduled) {
       _retryScheduled = true;
-      _showConnBanner('⚠️ Connection Failed', 'Could not reach stream. Retrying…');
-      // Auto-retry after 4 s — guard ensures only one retry is scheduled at a time
+      _showConnBanner('⚠️ Failed', 'Could not reach stream. Retrying…');
       setTimeout(() => {
         if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
       }, 4000);
@@ -932,95 +908,58 @@ async function _connectToHost(roomData) {
   _viewerPc.oniceconnectionstatechange = () => {
     const s = _viewerPc?.iceConnectionState;
     console.log('[Viewer] ICE state:', s);
-    if (s === 'checking')     _showConnBanner('⏳ Finding connection path…', 'Negotiating with stream host…');
+    if (s === 'checking')     _showConnBanner('Checking…', 'Finding connection path…');
     if (s === 'connected')    _hideConnBanner();
     if (s === 'completed')    _hideConnBanner();
-    if (s === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
-    if (s === 'failed')       _showConnBanner('⚠️ ICE Failed', 'No route to stream found. Retrying…');
+    if (s === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped…');
+    if (s === 'failed')       _showConnBanner('⚠️ Failed', 'No route to stream found. Retrying…');
   };
 
-  // Add recvonly transceivers so the SDP offer negotiates media sections.
-  // Without tracks or transceivers the SDP is empty and the host has nothing
-  // to answer — the most common cause of "Connecting…" that never resolves.
-  _viewerPc.addTransceiver('video', { direction: 'recvonly' });
-  _viewerPc.addTransceiver('audio', { direction: 'recvonly' });
-
-  // Attach answer and ICE listeners BEFORE writing the offer so we never
-  // miss a fast response from the host.
-  const answerUnsub = onSnapshot(doc(_db, 'liveSignals', _roomId, 'viewers', _user.uid), async snap => {
-    if (!snap.exists()) return;
-    const d = snap.data();
-    // Only accept an answer that matches our current sessionId
-    if (d.answer && d.answer.sdp && d.answer.sessionId === sessionId && !_remoteDescSet) {
-      _remoteDescSet = true;
-      try {
-        await _viewerPc.setRemoteDescription({ type: 'answer', sdp: d.answer.sdp });
-        console.log('[Viewer] Remote description set — draining', _pendingHostIce.length, 'buffered ICE candidates');
-        // Drain buffered host ICE candidates
-        for (const cand of _pendingHostIce) {
-          _viewerPc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-        }
-        _pendingHostIce.length = 0;
-      } catch (e) {
-        console.warn('[Viewer] setRemoteDescription error:', e.message);
-      }
-    }
-  }, () => {});
-  _viewerUnsubs.push(answerUnsub);
-
-  // Listen for host ICE candidates — filter by sessionId, buffer until remote desc is set
-  const hostIceCol = collection(_db, 'liveSignals', _roomId, 'viewers', _user.uid, 'hostIce');
-  const iceUnsub = onSnapshot(hostIceCol, snap => {
-    snap.docChanges().forEach(ch => {
-      if (ch.type !== 'added') return;
-      const cand = ch.doc.data();
-      // Ignore ICE candidates from a different session (stale data)
-      if (cand.sessionId && cand.sessionId !== sessionId) return;
-      const { sessionId: _s, ...candData } = cand;
-      if (_remoteDescSet) {
-        _viewerPc?.addIceCandidate(new RTCIceCandidate(candData)).catch(() => {});
-      } else {
-        _pendingHostIce.push(candData);
-      }
-    });
-  }, () => {});
-  _viewerUnsubs.push(iceUnsub);
-
-  // Delete stale host ICE docs from any previous session, then write the offer
+  // Set creator offer as remote description
   try {
-    await _deleteHostIceCollection();
-  } catch (_) {}
-
-  // Create offer and write to Firestore
-  try {
-    const offer = await _viewerPc.createOffer();
-    await _viewerPc.setLocalDescription(offer);
-    console.log('[Viewer] Writing offer to Firestore, sessionId:', sessionId);
-    // Use setDoc to fully replace any stale signal doc (answer included)
-    await setDoc(doc(_db, 'liveSignals', _roomId, 'viewers', _user.uid), {
-      viewerUid:    _user.uid,
-      viewerName:   _userData.displayName || 'Viewer',
-      sessionId,
-      offer:        { type: 'offer', sdp: offer.sdp },
-      createdAt:    serverTimestamp(),
-    });
+    await _viewerPc.setRemoteDescription({ type: 'offer', sdp: connData.offer.sdp });
   } catch (e) {
-    _showConnBanner('⚠️ Connection Error', e.message);
-    console.error('[Viewer] offer write error:', e);
+    _showConnBanner('⚠️ SDP Error', 'Could not read stream offer: ' + e.message);
     return;
   }
-}
 
-/** Delete all docs in the viewer's hostIce subcollection (stale cleanup). */
-async function _deleteHostIceCollection() {
+  // Apply any creator ICE candidates that are already stored
+  let _appliedCreatorCandCount = 0;
+  const applyCreatorCands = (cands) => {
+    for (let i = _appliedCreatorCandCount; i < cands.length; i++) {
+      _viewerPc?.addIceCandidate(new RTCIceCandidate(cands[i])).catch(() => {});
+    }
+    _appliedCreatorCandCount = cands.length;
+  };
+  applyCreatorCands(connData.creatorCandidates || []);
+
+  // Create and write answer
+  let answer;
   try {
-    const col = collection(_db, 'liveSignals', _roomId, 'viewers', _user.uid, 'hostIce');
-    const snap = await getDocs(col);
-    if (snap.empty) return;
-    const batch = writeBatch(_db);
-    snap.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-  } catch (_) {}
+    answer = await _viewerPc.createAnswer();
+    await _viewerPc.setLocalDescription(answer);
+  } catch (e) {
+    _showConnBanner('⚠️ SDP Error', 'Could not create answer: ' + e.message);
+    return;
+  }
+
+  try {
+    await updateDoc(doc(_db, 'liveConnections', _roomId), {
+      answer:          { type: 'answer', sdp: answer.sdp },
+      viewerCandidates: [],   // reset viewer candidates for this new session
+    });
+    console.log('[Viewer] Answer written to liveConnections/' + _roomId);
+  } catch (e) {
+    _showConnBanner('⚠️ Connection Error', e.message);
+    return;
+  }
+
+  // Listen for new creator ICE candidates that trickle in after the answer
+  const connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), snap => {
+    if (!snap.exists()) return;
+    applyCreatorCands(snap.data().creatorCandidates || []);
+  }, () => {});
+  _viewerUnsubs.push(connUnsub);
 }
 
 /* ═══════════════════════════════════════════════════
