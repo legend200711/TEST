@@ -60,6 +60,22 @@ const ICE = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    // Free relay servers — required for cross-NAT connections (mobile ↔ WiFi)
+    {
+      urls:       'turn:openrelay.metered.ca:80',
+      username:   'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls:       'turn:openrelay.metered.ca:443',
+      username:   'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls:       'turns:openrelay.metered.ca:443',
+      username:   'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
 };
 
@@ -897,14 +913,16 @@ async function _connectToHost(roomData) {
     } catch (_) {}
   };
 
+  let _retryScheduled = false;
   _viewerPc.onconnectionstatechange = () => {
     const st = _viewerPc?.connectionState;
     console.log('[Viewer] connection state:', st);
-    if (st === 'connected')    _hideConnBanner();
+    if (st === 'connected')    { _retryScheduled = false; _hideConnBanner(); }
     if (st === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
-    if (st === 'failed') {
+    if (st === 'failed' && !_retryScheduled) {
+      _retryScheduled = true;
       _showConnBanner('⚠️ Connection Failed', 'Could not reach stream. Retrying…');
-      // Auto-retry after 4 s
+      // Auto-retry after 4 s — guard ensures only one retry is scheduled at a time
       setTimeout(() => {
         if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
       }, 4000);
@@ -912,7 +930,13 @@ async function _connectToHost(roomData) {
   };
 
   _viewerPc.oniceconnectionstatechange = () => {
-    console.log('[Viewer] ICE state:', _viewerPc?.iceConnectionState);
+    const s = _viewerPc?.iceConnectionState;
+    console.log('[Viewer] ICE state:', s);
+    if (s === 'checking')     _showConnBanner('⏳ Finding connection path…', 'Negotiating with stream host…');
+    if (s === 'connected')    _hideConnBanner();
+    if (s === 'completed')    _hideConnBanner();
+    if (s === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
+    if (s === 'failed')       _showConnBanner('⚠️ ICE Failed', 'No route to stream found. Retrying…');
   };
 
   // Add recvonly transceivers so the SDP offer negotiates media sections.
