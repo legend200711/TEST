@@ -860,7 +860,6 @@ async function _startCreatorWebRTC() {
 
   _rtcPc.onconnectionstatechange = () => {
     if (_rtcPc.connectionState === 'connected') {
-      toast('🟢 Viewer connected');
     }
   };
 
@@ -948,7 +947,7 @@ async function _startCreatorWebRTC() {
     }
   });
 
-  toast('📡 Waiting for viewers…');
+  toast('🔴 Live now — share your link!');
 }
 
 /* ═══════════════════════════════════════════════════
@@ -956,7 +955,7 @@ async function _startCreatorWebRTC() {
    Uses LIVE Realtime Database for signaling.
    ═══════════════════════════════════════════════════ */
 async function _startViewerWebRTC(roomData) {
-  _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
+  _showConnBanner('Connecting…', 'Joining stream…');
 
   const connRef = ref(_liveDB, `liveConnections/${_roomId}`);
 
@@ -997,7 +996,7 @@ async function _startViewerWebRTC(roomData) {
   _rtcPc.onconnectionstatechange = () => {
     if (_rtcPc.connectionState === 'connected') {
       _hideConnBanner();
-      toast('🟢 Connected to live stream');
+      // connected — banner already hidden by ontrack
     } else if (_rtcPc.connectionState === 'disconnected' || _rtcPc.connectionState === 'failed') {
       _showConnBanner('⚠️ Connection lost', 'Reconnecting…');
     }
@@ -1071,7 +1070,7 @@ async function _startViewerWebRTC(roomData) {
     }
   });
 
-  _showConnBanner('🔄 Completing handshake…', 'Answer sent — connecting…');
+  _showConnBanner('Connecting…', 'Please wait…');
 }
 
 /* ═══════════════════════════════════════════════════
