@@ -10,7 +10,7 @@
  * GitHub Pages (/ShadowNexusSocial/) and any local dev server (/).
  */
 
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v10';
 const CACHE_NAME    = `shadow-nexus-${CACHE_VERSION}`;
 
 // Detect base path from the SW's own URL (e.g. /ShadowNexusSocial/ or /)
@@ -32,11 +32,11 @@ const SHELL_FILES = [
   'favicon.ico',
   'favicon-32x32.png',
   'favicon-16x16.png',
-  // Live streaming pages
-  'live.html',
-  'live.js',
-  'live.css',
+  // live.html / live.js / live.css intentionally excluded — always network-fresh
 ];
+
+/** Paths that must always go to the network (never served from cache) */
+const NETWORK_FIRST_PATHS = ['live.html', 'live.js', 'live.css'];
 
 const PRECACHE_URLS = SHELL_FILES.map(f => BASE + f);
 
@@ -124,6 +124,14 @@ self.addEventListener('fetch', (event) => {
           )
         )
     );
+    return;
+  }
+
+  // Live streaming files — always network, never cache
+  const pathname = url.pathname;
+  if (url.origin === self.location.origin &&
+      NETWORK_FIRST_PATHS.some(p => pathname.endsWith(p))) {
+    event.respondWith(fetch(request));
     return;
   }
 

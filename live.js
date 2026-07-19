@@ -92,36 +92,8 @@ let _camOn        = true;
 let _micOn        = true;
 let _facingMode   = 'user';
 
-/* ── On-screen debug panel ──────────────────────────────────────────────────
-   Shows a live step-by-step status overlay so failures are visible on mobile
-   without needing DevTools. Tap it 3× to dismiss. Remove once stable.       */
 function _dbg(msg, isError) {
-  const colour = isError ? '#ff6688' : '#39FF14';
   console[isError ? 'error' : 'log']('[SNX-Live]', msg);
-
-  let el = document.getElementById('_snxDbgPanel');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = '_snxDbgPanel';
-    el.style.cssText = [
-      'position:fixed','top:0','left:0','right:0','z-index:99999',
-      'background:rgba(0,0,0,0.88)','padding:8px 10px',
-      'font-family:monospace','font-size:11px','line-height:1.55',
-      'max-height:42vh','overflow-y:auto','pointer-events:auto',
-      'border-bottom:1px solid rgba(0,174,239,0.4)',
-    ].join(';');
-    let _tapCount = 0;
-    el.addEventListener('click', () => { if (++_tapCount >= 3) el.remove(); });
-    document.body.appendChild(el);
-  }
-
-  const row = document.createElement('div');
-  row.style.color = colour;
-  row.textContent = new Date().toISOString().slice(11,19) + ' ' + msg;
-  el.appendChild(row);
-  el.scrollTop = el.scrollHeight;
-  // Cap at 40 lines
-  while (el.children.length > 40) el.removeChild(el.firstChild);
 }
 
 // WebRTC
@@ -403,6 +375,19 @@ async function startLive() {
     return;
   }
   _dbg('Auth ok | uid=' + _user.uid.slice(0,8) + '…');
+
+  // ── Kill any previous stuck live session for this user ──
+  // Handles the case where the broadcaster closed the tab without pressing END LIVE
+  try {
+    const userSnap = await getDoc(doc(_db, 'users', _user.uid));
+    const prevRoomId = userSnap.exists() ? userSnap.data().liveRoomId : null;
+    if (prevRoomId) {
+      _dbg('Cleaning up previous stuck room: ' + prevRoomId);
+      await update(ref(_liveDB, `liveRooms/${prevRoomId}`), { status: 'ended', isLive: false, endedAt: Date.now() });
+      await remove(ref(_liveDB, `liveConnections/${prevRoomId}`));
+      await updateDoc(doc(_db, 'users', _user.uid), { isLive: deleteField(), liveRoomId: deleteField() });
+    }
+  } catch (_) {}
 
   const titleVal = (D.setupTitle?.value || '').trim();
   if (D.goLiveBtn) { D.goLiveBtn.disabled = true; D.goLiveBtn.textContent = 'Going Live…'; }
