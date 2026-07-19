@@ -221,7 +221,104 @@
 
 
 <!-- ══════════════════════════════════════════════
-     GUEST BOXES PANEL
+     LAYOUT SWITCHER — host only, shown inside stage
+     ══════════════════════════════════════════════ -->
+<div id="layoutSwitcher" class="layout-switcher" style="display:none;" aria-label="Layout switcher">
+  <button class="layout-btn layout-btn-active" data-layout="side"     title="Host + Side Boxes">⬛▐</button>
+  <button class="layout-btn"                   data-layout="grid"     title="Auto Grid">⊞</button>
+  <button class="layout-btn"                   data-layout="floating" title="Fullscreen + Floating">⧉</button>
+  <button class="layout-btn"                   data-layout="equal"    title="Equal Boxes">⊟</button>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     GUEST STAGE — multi-participant video area
+     Replaces single liveVideo when guests are active
+     Layout controlled by body class: layout-side / layout-grid / layout-floating / layout-equal
+     ══════════════════════════════════════════════ -->
+<div id="guestStage" class="guest-stage" style="display:none;" aria-label="Guest stage">
+
+  <!-- Host tile (always present) -->
+  <div class="gs-tile gs-host-tile" id="gsTileHost">
+    <video class="gs-video" id="gsHostVideo" autoplay playsinline muted aria-label="Host video"></video>
+    <div class="gs-cam-off" id="gsHostCamOff">📷</div>
+    <div class="gs-name-bar">
+      <span class="gs-avatar" id="gsHostAvatar"></span>
+      <span class="gs-name"   id="gsHostName">Host</span>
+      <span class="gs-badge gs-badge-host">HOST</span>
+    </div>
+    <div class="gs-conn-warn" id="gsHostConnWarn" style="display:none;">⚠ Weak</div>
+  </div>
+
+  <!-- Guest tile 1 -->
+  <div class="gs-tile gs-guest-tile" id="gsTile1" data-box="1" style="display:none;">
+    <video class="gs-video" id="gsGuestVideo1" autoplay playsinline aria-label="Guest 1 video"></video>
+    <div class="gs-cam-off" id="gsGuest1CamOff" style="display:none;">📷</div>
+    <div class="gs-indicators">
+      <span class="gs-ind gs-ind-cam"  id="gsGuest1Cam"  title="Camera">🎥</span>
+      <span class="gs-ind gs-ind-mic"  id="gsGuest1Mic"  title="Microphone">🎤</span>
+      <span class="gs-ind gs-ind-conn" id="gsGuest1Conn" title="Connection">●</span>
+    </div>
+    <div class="gs-name-bar">
+      <span class="gs-avatar" id="gsGuest1Avatar"></span>
+      <span class="gs-name"   id="gsGuest1Name">Guest 1</span>
+    </div>
+    <div class="gs-conn-warn" id="gsGuest1ConnWarn" style="display:none;">⚠ Weak</div>
+  </div>
+
+  <!-- Guest tile 2 -->
+  <div class="gs-tile gs-guest-tile" id="gsTile2" data-box="2" style="display:none;">
+    <video class="gs-video" id="gsGuestVideo2" autoplay playsinline aria-label="Guest 2 video"></video>
+    <div class="gs-cam-off" id="gsGuest2CamOff" style="display:none;">📷</div>
+    <div class="gs-indicators">
+      <span class="gs-ind gs-ind-cam"  id="gsGuest2Cam"  title="Camera">🎥</span>
+      <span class="gs-ind gs-ind-mic"  id="gsGuest2Mic"  title="Microphone">🎤</span>
+      <span class="gs-ind gs-ind-conn" id="gsGuest2Conn" title="Connection">●</span>
+    </div>
+    <div class="gs-name-bar">
+      <span class="gs-avatar" id="gsGuest2Avatar"></span>
+      <span class="gs-name"   id="gsGuest2Name">Guest 2</span>
+    </div>
+    <div class="gs-conn-warn" id="gsGuest2ConnWarn" style="display:none;">⚠ Weak</div>
+  </div>
+
+  <!-- Guest tile 3 -->
+  <div class="gs-tile gs-guest-tile" id="gsTile3" data-box="3" style="display:none;">
+    <video class="gs-video" id="gsGuestVideo3" autoplay playsinline aria-label="Guest 3 video"></video>
+    <div class="gs-cam-off" id="gsGuest3CamOff" style="display:none;">📷</div>
+    <div class="gs-indicators">
+      <span class="gs-ind gs-ind-cam"  id="gsGuest3Cam"  title="Camera">🎥</span>
+      <span class="gs-ind gs-ind-mic"  id="gsGuest3Mic"  title="Microphone">🎤</span>
+      <span class="gs-ind gs-ind-conn" id="gsGuest3Conn" title="Connection">●</span>
+    </div>
+    <div class="gs-name-bar">
+      <span class="gs-avatar" id="gsGuest3Avatar"></span>
+      <span class="gs-name"   id="gsGuest3Name">Guest 3</span>
+    </div>
+    <div class="gs-conn-warn" id="gsGuest3ConnWarn" style="display:none;">⚠ Weak</div>
+  </div>
+
+  <!-- Guest tile 4 -->
+  <div class="gs-tile gs-guest-tile" id="gsTile4" data-box="4" style="display:none;">
+    <video class="gs-video" id="gsGuestVideo4" autoplay playsinline aria-label="Guest 4 video"></video>
+    <div class="gs-cam-off" id="gsGuest4CamOff" style="display:none;">📷</div>
+    <div class="gs-indicators">
+      <span class="gs-ind gs-ind-cam"  id="gsGuest4Cam"  title="Camera">🎥</span>
+      <span class="gs-ind gs-ind-mic"  id="gsGuest4Mic"  title="Microphone">🎤</span>
+      <span class="gs-ind gs-ind-conn" id="gsGuest4Conn" title="Connection">●</span>
+    </div>
+    <div class="gs-name-bar">
+      <span class="gs-avatar" id="gsGuest4Avatar"></span>
+      <span class="gs-name"   id="gsGuest4Name">Guest 4</span>
+    </div>
+    <div class="gs-conn-warn" id="gsGuest4ConnWarn" style="display:none;">⚠ Weak</div>
+  </div>
+
+</div><!-- #guestStage -->
+
+
+<!-- ══════════════════════════════════════════════
+     GUEST BOXES PANEL — host management panel
      Sits below liveStage on desktop, overlay on mobile
      ══════════════════════════════════════════════ -->
 <div id="guestBoxPanel" class="guest-box-panel" style="display:none;">
@@ -241,8 +338,21 @@
     <div class="guest-box" id="guestBox1" data-box="1">
       <div class="guest-box-video-wrap">
         <video class="guest-box-video" id="guestVideo1" autoplay playsinline muted></video>
+        <!-- Profile picture (shown when no video) -->
+        <div class="gb-avatar-wrap" id="gbAvatar1">
+          <img class="gb-avatar-img" id="gbAvatarImg1" src="" alt="" style="display:none;">
+          <div class="gb-avatar-initial" id="gbAvatarInitial1"></div>
+        </div>
         <div class="guest-box-status-label" id="guestBoxStatus1">Available</div>
-        <div class="guest-box-name-label" id="guestBoxName1"></div>
+        <div class="guest-box-name-label"   id="guestBoxName1"></div>
+        <!-- Camera / Mic / Connection status icons -->
+        <div class="gb-status-icons" id="gbStatusIcons1" style="display:none;">
+          <span class="gb-icon-cam"  id="gbIconCam1"  title="Camera">🎥</span>
+          <span class="gb-icon-mic"  id="gbIconMic1"  title="Mic">🎤</span>
+          <span class="gb-icon-conn" id="gbIconConn1" title="Connection">●</span>
+        </div>
+        <!-- Weak connection badge -->
+        <div class="gb-conn-warn" id="gbConnWarn1" style="display:none;">⚠ Weak Signal</div>
       </div>
       <div class="guest-box-actions" id="guestBoxActions1"></div>
     </div>
@@ -251,8 +361,18 @@
     <div class="guest-box" id="guestBox2" data-box="2">
       <div class="guest-box-video-wrap">
         <video class="guest-box-video" id="guestVideo2" autoplay playsinline muted></video>
+        <div class="gb-avatar-wrap" id="gbAvatar2">
+          <img class="gb-avatar-img" id="gbAvatarImg2" src="" alt="" style="display:none;">
+          <div class="gb-avatar-initial" id="gbAvatarInitial2"></div>
+        </div>
         <div class="guest-box-status-label" id="guestBoxStatus2">Available</div>
-        <div class="guest-box-name-label" id="guestBoxName2"></div>
+        <div class="guest-box-name-label"   id="guestBoxName2"></div>
+        <div class="gb-status-icons" id="gbStatusIcons2" style="display:none;">
+          <span class="gb-icon-cam"  id="gbIconCam2"  title="Camera">🎥</span>
+          <span class="gb-icon-mic"  id="gbIconMic2"  title="Mic">🎤</span>
+          <span class="gb-icon-conn" id="gbIconConn2" title="Connection">●</span>
+        </div>
+        <div class="gb-conn-warn" id="gbConnWarn2" style="display:none;">⚠ Weak Signal</div>
       </div>
       <div class="guest-box-actions" id="guestBoxActions2"></div>
     </div>
@@ -261,8 +381,18 @@
     <div class="guest-box" id="guestBox3" data-box="3">
       <div class="guest-box-video-wrap">
         <video class="guest-box-video" id="guestVideo3" autoplay playsinline muted></video>
+        <div class="gb-avatar-wrap" id="gbAvatar3">
+          <img class="gb-avatar-img" id="gbAvatarImg3" src="" alt="" style="display:none;">
+          <div class="gb-avatar-initial" id="gbAvatarInitial3"></div>
+        </div>
         <div class="guest-box-status-label" id="guestBoxStatus3">Available</div>
-        <div class="guest-box-name-label" id="guestBoxName3"></div>
+        <div class="guest-box-name-label"   id="guestBoxName3"></div>
+        <div class="gb-status-icons" id="gbStatusIcons3" style="display:none;">
+          <span class="gb-icon-cam"  id="gbIconCam3"  title="Camera">🎥</span>
+          <span class="gb-icon-mic"  id="gbIconMic3"  title="Mic">🎤</span>
+          <span class="gb-icon-conn" id="gbIconConn3" title="Connection">●</span>
+        </div>
+        <div class="gb-conn-warn" id="gbConnWarn3" style="display:none;">⚠ Weak Signal</div>
       </div>
       <div class="guest-box-actions" id="guestBoxActions3"></div>
     </div>
@@ -271,8 +401,18 @@
     <div class="guest-box" id="guestBox4" data-box="4">
       <div class="guest-box-video-wrap">
         <video class="guest-box-video" id="guestVideo4" autoplay playsinline muted></video>
+        <div class="gb-avatar-wrap" id="gbAvatar4">
+          <img class="gb-avatar-img" id="gbAvatarImg4" src="" alt="" style="display:none;">
+          <div class="gb-avatar-initial" id="gbAvatarInitial4"></div>
+        </div>
         <div class="guest-box-status-label" id="guestBoxStatus4">Available</div>
-        <div class="guest-box-name-label" id="guestBoxName4"></div>
+        <div class="guest-box-name-label"   id="guestBoxName4"></div>
+        <div class="gb-status-icons" id="gbStatusIcons4" style="display:none;">
+          <span class="gb-icon-cam"  id="gbIconCam4"  title="Camera">🎥</span>
+          <span class="gb-icon-mic"  id="gbIconMic4"  title="Mic">🎤</span>
+          <span class="gb-icon-conn" id="gbIconConn4" title="Connection">●</span>
+        </div>
+        <div class="gb-conn-warn" id="gbConnWarn4" style="display:none;">⚠ Weak Signal</div>
       </div>
       <div class="guest-box-actions" id="guestBoxActions4"></div>
     </div>
@@ -282,6 +422,13 @@
 
 <!-- ── Viewer: Request a Box button (injected into viewer actions) ── -->
 <!-- Added dynamically by JS when in viewer mode -->
+
+<!-- ── Guest self-controls bar (shown when viewer is accepted into a box) ── -->
+<div id="guestSelfControls" class="guest-self-controls" style="display:none;" aria-label="Guest controls">
+  <button id="btnGuestCam" class="guest-ctrl-btn" title="Toggle Camera">📷 Cam</button>
+  <button id="btnGuestMic" class="guest-ctrl-btn" title="Toggle Microphone">🎤 Mic</button>
+  <button id="btnGuestLeave" class="guest-ctrl-btn guest-ctrl-leave" title="Leave Box">↩ Leave</button>
+</div>
 
 
 <!-- ══════════════════════════════════════════════

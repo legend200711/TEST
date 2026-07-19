@@ -384,11 +384,15 @@ service cloud.firestore {
       // Allowed updates:
       //  - host can update anything in their own room (uid == doc key)
       //  - any signed-in user can increment viewers / likes (fields only)
+      //  - guestBoxes layoutMode is updated by the host via RTDB (not Firestore) but
+      //    guests update their cameraEnabled / microphoneEnabled fields inside RTDB boxes
       allow update: if isSignedIn()
         && (
           resource.data.hostId == request.auth.uid
           || request.resource.data.diff(resource.data)
                .affectedKeys().hasOnly(['viewers', 'likes'])
+          || request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['viewers'])
         );
 
       // Only the host or Founder may delete a room

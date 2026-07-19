@@ -92,7 +92,7 @@ let _camOn        = true;
 let _micOn        = true;
 let _facingMode   = 'user';
 
-// WebRTC
+// WebRTC (host↔viewer 1-to-1 stream)
 let _rtcPc           = null;   // RTCPeerConnection
 let _rtcSignalUnsub  = null;   // RTDB listener unsubscribe (off ref)
 let _rtcSignalRef    = null;   // RTDB ref being listened to
@@ -103,6 +103,17 @@ let _viewerCountUnsub = null;
 let _toastTimer       = null;
 let _viewerLeftFlag   = false;  // guard: prevent double-decrement on mobile
 let _creatorEndedFlag = false;  // guard: prevent beforeunload re-running endLive cleanup
+
+// Guest WebRTC — one RTCPeerConnection per box (both host and guest perspectives)
+// _guestPcs[boxNum] = { pc: RTCPeerConnection, statsInterval, guestId, localStream }
+const _guestPcs = {};
+// Layout mode
+let _layoutMode = 'side';   // 'side' | 'grid' | 'floating' | 'equal'
+// Guest self-stream (the guest's own camera/mic when they are in a box)
+let _guestSelfStream   = null;
+let _guestSelfCamOn    = true;
+let _guestSelfMicOn    = true;
+let _guestSelfBoxNum   = null;  // which box number I (the guest) am in
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -154,6 +165,21 @@ document.addEventListener('DOMContentLoaded', () => {
     guestQueueCount:    document.getElementById('guestQueueCount'),
     btnCloseGuestPanel: document.getElementById('btnCloseGuestPanel'),
 
+    // Guest stage (multi-participant video area)
+    guestStage:      document.getElementById('guestStage'),
+    gsHostVideo:     document.getElementById('gsHostVideo'),
+    gsHostCamOff:    document.getElementById('gsHostCamOff'),
+    gsHostAvatar:    document.getElementById('gsHostAvatar'),
+    gsHostName:      document.getElementById('gsHostName'),
+    gsHostConnWarn:  document.getElementById('gsHostConnWarn'),
+    layoutSwitcher:  document.getElementById('layoutSwitcher'),
+
+    // Guest self-controls bar
+    guestSelfControls: document.getElementById('guestSelfControls'),
+    btnGuestCam:       document.getElementById('btnGuestCam'),
+    btnGuestMic:       document.getElementById('btnGuestMic'),
+    btnGuestLeave:     document.getElementById('btnGuestLeave'),
+
     // Viewer controls
     likeBtn:         document.getElementById('btnLike'),
     likeBtnCount:    document.getElementById('likeBtnCount'),
@@ -187,6 +213,20 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnEnd  && D.btnEnd.addEventListener('click',   endLive);
   D.btnGuestBoxes      && D.btnGuestBoxes.addEventListener('click', _gbTogglePanel);
   D.btnCloseGuestPanel && D.btnCloseGuestPanel.addEventListener('click', _gbTogglePanel);
+
+  // Layout switcher buttons
+  if (D.layoutSwitcher) {
+    D.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
+      btn.addEventListener('click', () => _setLayout(btn.dataset.layout));
+    });
+  }
+
+  // Guest self-controls (visible when viewer is accepted into a box)
+  D.btnGuestCam   && D.btnGuestCam.addEventListener('click',   _guestToggleCam);
+  D.btnGuestMic   && D.btnGuestMic.addEventListener('click',   _guestToggleMic);
+  D.btnGuestLeave && D.btnGuestLeave.addEventListener('click', () => {
+    if (_guestSelfBoxNum !== null) _gbViewerLeave(_guestSelfBoxNum);
+  });
 
   D.likeBtn          && D.likeBtn.addEventListener('click',          sendLike);
   D.btnShare         && D.btnShare.addEventListener('click',         shareLive);
@@ -1519,6 +1559,8 @@ async function _gbInitCreator() {
   try {
     await set(_gbRef('boxes'), initialBoxes);
     await set(_gbQueueRef(), null);          // clear any old queue
+    /* persist initial layout mode to RTDB */
+    await set(_gbRef('layoutMode'), _layoutMode);
   } catch (_) {}
 
   /* show panel and subscribe */
@@ -1533,6 +1575,11 @@ async function _gbInitCreator() {
     dot.id = '_gbNotifDot';
     D.btnGuestBoxes.appendChild(dot);
   }
+
+  /* populate host tile in guest stage */
+  _gsPopulateHostTile();
+  /* apply default layout */
+  _setLayout(_layoutMode);
 }
 
 /* ════════════════════════════════════════════
@@ -1557,6 +1604,14 @@ function _gbInitViewer(roomData) {
   /* show the panel for viewers (read-only view of boxes + request btn) */
   _gbShowPanel();
   _gbSubscribeBoxes('viewer');
+
+  /* listen for layout mode changes from the host */
+  onValue(_gbRef('layoutMode'), snap => {
+    if (snap.exists()) _setLayout(snap.val(), false);
+  });
+
+  /* populate guest stage host tile for viewers too */
+  if (roomData) _gsPopulateHostTileViewer(roomData);
 }
 
 /* ════════════════════════════════════════════
@@ -1632,6 +1687,8 @@ function _gbRenderBox(boxNum, data, role) {
   if (!boxEl || !statusEl || !actionsEl) return;
 
   const status = data.status || 'available';
+  const prevStatus = boxEl.dataset.prevStatus || 'available';
+  boxEl.dataset.prevStatus = status;
 
   /* reset classes */
   boxEl.classList.remove('gb-available', 'gb-pending', 'gb-occupied');
@@ -1655,6 +1712,61 @@ function _gbRenderBox(boxNum, data, role) {
     }
   }
 
+  /* ── Profile picture ── */
+  const avatarWrap    = document.getElementById(`gbAvatar${boxNum}`);
+  const avatarImg     = document.getElementById(`gbAvatarImg${boxNum}`);
+  const avatarInitial = document.getElementById(`gbAvatarInitial${boxNum}`);
+  if (avatarWrap) {
+    if (status === 'occupied' || status === 'pending') {
+      avatarWrap.classList.add('visible');
+      const av = data.guestAvatar || '';
+      const nm = data.guestName   || '?';
+      if (av) {
+        if (avatarImg) { avatarImg.src = av; avatarImg.style.display = 'block'; }
+        if (avatarInitial) avatarInitial.style.display = 'none';
+      } else {
+        if (avatarImg) avatarImg.style.display = 'none';
+        if (avatarInitial) {
+          avatarInitial.textContent  = nm[0].toUpperCase();
+          avatarInitial.style.display = 'flex';
+        }
+      }
+    } else {
+      avatarWrap.classList.remove('visible');
+    }
+  }
+
+  /* ── Status icons (cam / mic / conn) — only when occupied ── */
+  const iconsEl = document.getElementById(`gbStatusIcons${boxNum}`);
+  if (iconsEl) {
+    if (status === 'occupied') {
+      iconsEl.style.display = 'flex';
+      const camIcon  = document.getElementById(`gbIconCam${boxNum}`);
+      const micIcon  = document.getElementById(`gbIconMic${boxNum}`);
+      const connIcon = document.getElementById(`gbIconConn${boxNum}`);
+      if (camIcon)  camIcon.classList.toggle('off',  data.cameraEnabled    === false);
+      if (micIcon)  micIcon.classList.toggle('off',  data.microphoneEnabled === false);
+      if (connIcon) {
+        const q = data.connectionQuality || 'good';
+        connIcon.className = 'gb-icon-conn conn-' + q;
+        connIcon.title = 'Connection: ' + q;
+      }
+    } else {
+      iconsEl.style.display = 'none';
+    }
+  }
+
+  /* ── Weak connection warning badge ── */
+  const warnEl = document.getElementById(`gbConnWarn${boxNum}`);
+  if (warnEl) {
+    const isWeak = status === 'occupied' &&
+      (data.connectionQuality === 'weak' || data.connectionQuality === 'bad');
+    warnEl.classList.toggle('visible', isWeak);
+  }
+
+  /* ── Guest stage tile: show/hide + populate ── */
+  _gsUpdateTile(boxNum, data, role);
+
   /* action buttons */
   actionsEl.innerHTML = '';
 
@@ -1665,9 +1777,14 @@ function _gbRenderBox(boxNum, data, role) {
         _gbMakeBtn('✘ Decline', 'gb-btn-decline', () => _gbCreatorDecline(boxNum, data))
       );
     } else if (status === 'occupied') {
+      /* Mute guest mic button */
+      const micLabel = data.microphoneEnabled === false ? '🔇 Unmute Mic' : '🔇 Mute Mic';
+      const camLabel = data.cameraEnabled     === false ? '📷 Enable Cam' : '📷 Disable Cam';
       actionsEl.append(
-        _gbMakeBtn('Remove', 'gb-btn-remove', () => _gbCreatorRemove(boxNum, data)),
-        _gbMakeBtn('Close',  'gb-btn-close',  () => _gbCreatorClose(boxNum))
+        _gbMakeBtn(micLabel,  'gb-btn-remove', () => _gbHostToggleGuestMic(boxNum, data)),
+        _gbMakeBtn(camLabel,  'gb-btn-close',  () => _gbHostToggleGuestCam(boxNum, data)),
+        _gbMakeBtn('Remove',  'gb-btn-remove', () => _gbCreatorRemove(boxNum, data)),
+        _gbMakeBtn('Close',   'gb-btn-close',  () => _gbCreatorClose(boxNum))
       );
     } else {
       /* available — host can manually close/reopen (noop for clean state) */
@@ -1678,6 +1795,12 @@ function _gbRenderBox(boxNum, data, role) {
       actionsEl.append(
         _gbMakeBtn('Leave Box', 'gb-btn-leave', () => _gbViewerLeave(boxNum))
       );
+    }
+    /* if I was just removed (prev = occupied, now = available and was mine) */
+    if (prevStatus === 'occupied' && status === 'available' && _guestSelfBoxNum === boxNum) {
+      _guestSelfBoxNum = null;
+      _gsHideSelfControls();
+      toast('You have been removed from the guest box.');
     }
   }
 }
@@ -1807,12 +1930,15 @@ function _gbWatchOwnRequest() {
     const d = snap.val();
     if (d.status === 'accepted') {
       _gbMyBoxNum = d.boxNumber;
+      _guestSelfBoxNum = d.boxNumber;
       toast('✅ You are in a guest box! Joining…');
       if (_gbRequestBtn) {
         _gbRequestBtn.disabled = true;
         _gbRequestBtn.querySelector('span:last-child').textContent = 'In Box ' + _gbMyBoxNum;
       }
       off(reqRef);
+      /* start capturing local stream + WebRTC signaling to host */
+      _guestStartStream(d.boxNumber);
     } else if (d.status === 'declined') {
       toast('❌ Your request was declined.');
       if (_gbRequestBtn) {
@@ -1834,7 +1960,10 @@ async function _gbViewerLeave(boxNum) {
   try {
     await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
     await remove(_gbReqRef(_user.uid)).catch(() => {});
-    _gbMyBoxNum = null;
+    _gbMyBoxNum    = null;
+    _guestSelfBoxNum = null;
+    _guestStopStream(boxNum);
+    _gsHideSelfControls();
     if (_gbRequestBtn) {
       _gbRequestBtn.disabled = false;
       _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
@@ -1865,6 +1994,8 @@ async function _gbCreatorAccept(boxNum, data) {
     await set(_gbReqRef(data.guestId), { ...data, status: 'accepted', boxNumber: boxNum });
     /* notify guest */
     await _gbNotifyGuest(data.guestId, 'accepted', boxNum);
+    /* host begins watching for guest WebRTC offer */
+    _gbHostWatchGuestWebRTC(boxNum);
     toast(`✅ ${data.guestName || 'Guest'} accepted into Box ${boxNum}`);
   } catch (_) {
     toast('Could not accept. Try again.');
@@ -1893,6 +2024,8 @@ async function _gbCreatorAcceptFromQueue(boxNum, queueKey, userData) {
     await remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${queueKey}`)).catch(() => {});
     /* notify guest */
     await _gbNotifyGuest(userData.guestId, 'accepted', boxNum);
+    /* host begins watching for guest WebRTC offer */
+    _gbHostWatchGuestWebRTC(boxNum);
     toast(`✅ ${userData.guestName || 'Guest'} accepted into Box ${boxNum}`);
   } catch (_) {
     toast('Could not accept. Try again.');
@@ -1920,6 +2053,7 @@ async function _gbCreatorDecline(boxNum, data) {
 async function _gbCreatorRemove(boxNum, data) {
   if (!_roomId) return;
   try {
+    _guestStopStream(boxNum);   // close host-side WebRTC for this box
     await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
     await remove(_gbReqRef(data.guestId)).catch(() => {});
     await _gbNotifyGuest(data.guestId, 'removed', boxNum);
@@ -1999,16 +2133,40 @@ async function _gbNotifyGuest(guestId, action, boxNum) {
 }
 
 /* ════════════════════════════════════════════
+   HOST — Mute / unmute guest mic via RTDB flag
+   Guest client watches this flag and applies it to their local track
+   ════════════════════════════════════════════ */
+async function _gbHostToggleGuestMic(boxNum, data) {
+  if (!_roomId) return;
+  const nowEnabled = data.microphoneEnabled !== false;  // default true
+  try {
+    await update(_gbBoxRef(boxNum), { microphoneEnabled: !nowEnabled });
+    toast(`${data.guestName || 'Guest'} mic ${!nowEnabled ? 'unmuted' : 'muted'} by host`);
+  } catch (_) { toast('Could not mute. Try again.'); }
+}
+
+async function _gbHostToggleGuestCam(boxNum, data) {
+  if (!_roomId) return;
+  const nowEnabled = data.cameraEnabled !== false;  // default true
+  try {
+    await update(_gbBoxRef(boxNum), { cameraEnabled: !nowEnabled });
+    toast(`${data.guestName || 'Guest'} camera ${!nowEnabled ? 'enabled' : 'disabled'} by host`);
+  } catch (_) { toast('Could not change camera. Try again.'); }
+}
+
+/* ════════════════════════════════════════════
    CLEANUP
    ════════════════════════════════════════════ */
 function _gbCleanupCreator() {
   if (_gbBoxesUnsub) { try { off(_gbRef('boxes')); } catch (_) {} _gbBoxesUnsub = null; }
   if (_gbQueueUnsub) { try { off(_gbQueueRef());   } catch (_) {} _gbQueueUnsub = null; }
-
+  /* close all guest WebRTC connections */
+  for (let i = 1; i <= _GB_MAX_BOXES; i++) _guestStopStream(i);
   /* clear all guestBoxes data from RTDB when host ends the live */
   if (_roomId) {
     try { remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes`)).catch(() => {}); } catch (_) {}
   }
+  _gsHideStage();
 }
 
 function _gbCleanupViewer() {
@@ -2019,6 +2177,8 @@ function _gbCleanupViewer() {
     try { set(_gbBoxRef(_gbMyBoxNum), { status: 'available', guestId: null }).catch(() => {}); } catch (_) {}
     _gbMyBoxNum = null;
   }
+  /* stop self stream + cleanup WebRTC */
+  if (_guestSelfBoxNum !== null) { _guestStopStream(_guestSelfBoxNum); _guestSelfBoxNum = null; }
   /* if viewer is in the queue, remove their entry */
   if (_gbMyRequestKey && _roomId) {
     try {
@@ -2029,5 +2189,542 @@ function _gbCleanupViewer() {
   /* clear own request record */
   if (_user && _roomId) {
     try { remove(_gbReqRef(_user.uid)).catch(() => {}); } catch (_) {}
+  }
+  _gsHideStage();
+  _gsHideSelfControls();
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   GUEST STAGE — multi-participant video area
+   Four layout modes: side | grid | floating | equal
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Populate host tile (creator side) ── */
+function _gsPopulateHostTile() {
+  if (!_localStream) return;
+  const v = D.gsHostVideo;
+  if (v) { v.srcObject = _localStream; v.play().catch(() => {}); }
+  if (D.gsHostName && _userData) D.gsHostName.textContent = _userData.displayName || 'Host';
+  if (D.gsHostAvatar && _userData) {
+    const av = _userData.avatar || _userData.profilePicture || '';
+    if (av) {
+      D.gsHostAvatar.style.backgroundImage = `url('${av}')`;
+      D.gsHostAvatar.textContent = '';
+    } else {
+      D.gsHostAvatar.textContent = (_userData.displayName || 'H')[0].toUpperCase();
+    }
+  }
+}
+
+/* ── Populate host tile (viewer side — shows host name/avatar, no local stream) ── */
+function _gsPopulateHostTileViewer(roomData) {
+  if (D.gsHostName)   D.gsHostName.textContent = roomData.hostName || 'Host';
+  if (D.gsHostAvatar) {
+    if (roomData.hostAvatar) {
+      D.gsHostAvatar.style.backgroundImage = `url('${roomData.hostAvatar}')`;
+      D.gsHostAvatar.textContent = '';
+    } else {
+      D.gsHostAvatar.textContent = (roomData.hostName || 'H')[0].toUpperCase();
+    }
+  }
+  /* Viewer can't see host video in guest stage — host video plays via main liveVideo */
+  const hv = D.gsHostVideo;
+  if (hv && D.liveVideo && D.liveVideo.srcObject) {
+    hv.srcObject = D.liveVideo.srcObject;
+    hv.play().catch(() => {});
+  }
+}
+
+/* ── Update a single guest tile when box data changes ── */
+function _gsUpdateTile(boxNum, data, role) {
+  const tileEl = document.getElementById(`gsTile${boxNum}`);
+  if (!tileEl) return;
+
+  const status = data.status || 'available';
+
+  if (status !== 'occupied') {
+    tileEl.style.display = 'none';
+    _gsRefreshActiveCount();
+    return;
+  }
+
+  tileEl.style.display = '';
+
+  /* name + avatar */
+  const nameEl   = document.getElementById(`gsGuest${boxNum}Name`);
+  const avatarEl = document.getElementById(`gsGuest${boxNum}Avatar`);
+  if (nameEl)   nameEl.textContent = data.guestName || `Guest ${boxNum}`;
+  if (avatarEl) {
+    const av = data.guestAvatar || '';
+    if (av) {
+      avatarEl.style.backgroundImage = `url('${av}')`;
+      avatarEl.textContent = '';
+    } else {
+      avatarEl.style.backgroundImage = '';
+      avatarEl.textContent = (data.guestName || 'G')[0].toUpperCase();
+    }
+  }
+
+  /* cam/mic indicators */
+  const camInd  = document.getElementById(`gsGuest${boxNum}Cam`);
+  const micInd  = document.getElementById(`gsGuest${boxNum}Mic`);
+  const connInd = document.getElementById(`gsGuest${boxNum}Conn`);
+  if (camInd)  camInd.classList.toggle('off',  data.cameraEnabled    === false);
+  if (micInd)  micInd.classList.toggle('off',  data.microphoneEnabled === false);
+  if (connInd) {
+    const q = data.connectionQuality || 'good';
+    connInd.className = 'gs-ind gs-ind-conn conn-' + q;
+  }
+
+  /* cam off overlay in tile */
+  const camOffEl = document.getElementById(`gsGuest${boxNum}CamOff`);
+  if (camOffEl) {
+    camOffEl.style.display = data.cameraEnabled === false ? 'flex' : 'none';
+  }
+
+  /* weak conn warning */
+  const warnEl = document.getElementById(`gsGuest${boxNum}ConnWarn`);
+  if (warnEl) {
+    const isWeak = data.connectionQuality === 'weak' || data.connectionQuality === 'bad';
+    warnEl.style.display = isWeak ? 'block' : 'none';
+  }
+
+  /* if I (viewer/guest) am watching my own hosted stream, apply track state */
+  if (role === 'viewer' && data.guestId === _user?.uid && _guestSelfStream) {
+    _guestSelfStream.getAudioTracks().forEach(t => {
+      t.enabled = data.microphoneEnabled !== false;
+    });
+    _guestSelfStream.getVideoTracks().forEach(t => {
+      t.enabled = data.cameraEnabled !== false;
+    });
+  }
+
+  _gsRefreshActiveCount();
+  /* activate guest stage when at least one guest is live */
+  _gsActivateIfNeeded();
+}
+
+/* ── Count visible (occupied) tiles + update data-count attribute ── */
+function _gsRefreshActiveCount() {
+  const stageEl = D.guestStage;
+  if (!stageEl) return;
+  const visibleTiles = stageEl.querySelectorAll('.gs-tile:not([style*="display: none"])');
+  stageEl.dataset.count = visibleTiles.length;
+}
+
+/* ── Show guest stage (replaces the single liveVideo area) ── */
+function _gsActivateIfNeeded() {
+  const stageEl = D.guestStage;
+  if (!stageEl) return;
+  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile:not([style*="display: none"])');
+  if (visibleGuests.length > 0 && !document.body.classList.contains('gs-active')) {
+    document.body.classList.add('gs-active');
+    stageEl.style.display = '';
+    stageEl.classList.add('active');
+    /* layout switcher shown (CSS handles it via gs-active body class) */
+  }
+  if (visibleGuests.length === 0 && document.body.classList.contains('gs-active')) {
+    _gsHideStage();
+  }
+}
+
+function _gsHideStage() {
+  document.body.classList.remove('gs-active');
+  if (D.guestStage) {
+    D.guestStage.classList.remove('active');
+    D.guestStage.style.display = 'none';
+  }
+}
+
+function _gsHideSelfControls() {
+  if (D.guestSelfControls) D.guestSelfControls.style.display = 'none';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   LAYOUT — set layout mode (side | grid | floating | equal)
+   ════════════════════════════════════════════════════════════════════ */
+function _setLayout(mode, persistToRTDB) {
+  const validModes = ['side', 'grid', 'floating', 'equal'];
+  if (!validModes.includes(mode)) mode = 'side';
+  _layoutMode = mode;
+
+  /* remove all layout classes */
+  document.body.classList.remove('layout-side', 'layout-grid', 'layout-floating', 'layout-equal');
+  document.body.classList.add('layout-' + mode);
+
+  /* update active button */
+  if (D.layoutSwitcher) {
+    D.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
+      btn.classList.toggle('layout-btn-active', btn.dataset.layout === mode);
+    });
+  }
+
+  /* persist to RTDB so viewers follow (creator only, default persistToRTDB = true) */
+  if (persistToRTDB !== false && _mode === 'creator' && _roomId) {
+    set(_gbRef('layoutMode'), mode).catch(() => {});
+  }
+
+  /* enable drag for floating layout */
+  if (mode === 'floating') _gsEnableDrag();
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DRAG — floating tiles can be repositioned (layout-floating only)
+   ════════════════════════════════════════════════════════════════════ */
+function _gsEnableDrag() {
+  const tiles = document.querySelectorAll('.gs-guest-tile');
+  tiles.forEach(tile => {
+    if (tile._dragEnabled) return;
+    tile._dragEnabled = true;
+    let startX, startY, origLeft, origBottom;
+
+    const onDown = (e) => {
+      if (!document.body.classList.contains('layout-floating')) return;
+      const evt = e.touches ? e.touches[0] : e;
+      startX = evt.clientX; startY = evt.clientY;
+      const rect = tile.getBoundingClientRect();
+      origLeft   = rect.left;
+      origBottom = window.innerHeight - rect.bottom;
+      tile.style.left    = origLeft   + 'px';
+      tile.style.bottom  = origBottom + 'px';
+      tile.style.right   = 'auto';
+      tile.style.top     = 'auto';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onUp);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend',  onUp);
+    };
+    const onMove = (e) => {
+      if (e.cancelable) e.preventDefault();
+      const evt = e.touches ? e.touches[0] : e;
+      const dx = evt.clientX - startX;
+      const dy = evt.clientY - startY;
+      tile.style.left   = Math.max(0, origLeft   + dx) + 'px';
+      tile.style.bottom = Math.max(0, origBottom - dy) + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend',  onUp);
+    };
+    tile.addEventListener('mousedown',  onDown);
+    tile.addEventListener('touchstart', onDown, { passive: true });
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   GUEST WebRTC — guest captures their stream and signals host
+   Architecture:
+     Guest → RTDB path: liveRooms/{roomId}/guestBoxes/webrtc/{boxNum}
+       guestOffer, guestCandidates
+     Host  → RTDB path: same node
+       hostAnswer, hostCandidates
+   ════════════════════════════════════════════════════════════════════ */
+
+function _gbGuestSignalRef(boxNum) {
+  return ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}`);
+}
+
+/* ── Guest: start camera/mic stream + create WebRTC offer ── */
+async function _guestStartStream(boxNum) {
+  /* acquire camera + mic */
+  try {
+    _guestSelfStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: true,
+    });
+  } catch (err) {
+    try {
+      _guestSelfStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      _guestSelfCamOn = false;
+      toast('Camera not available — joining with audio only.');
+    } catch (e) {
+      toast('Camera & mic access denied. Cannot join box.');
+      return;
+    }
+  }
+
+  /* show self-controls bar */
+  if (D.guestSelfControls) D.guestSelfControls.style.display = 'flex';
+
+  /* update RTDB with initial cam/mic state */
+  try {
+    await update(_gbBoxRef(boxNum), {
+      cameraEnabled:    _guestSelfCamOn,
+      microphoneEnabled: _guestSelfMicOn,
+    });
+  } catch (_) {}
+
+  /* show own video in the guest stage tile (mirrored) */
+  const selfVid = document.getElementById(`gsGuestVideo${boxNum}`);
+  if (selfVid) {
+    selfVid.srcObject = _guestSelfStream;
+    selfVid.style.transform = 'scaleX(-1)';
+    selfVid.play().catch(() => {});
+    const tile = document.getElementById(`gsTile${boxNum}`);
+    if (tile) tile.style.display = '';
+    _gsActivateIfNeeded();
+  }
+
+  /* create WebRTC peer connection — guest is the offerer */
+  const pc = new RTCPeerConnection(_ICE_SERVERS);
+  _guestPcs[boxNum] = { pc, guestId: _user?.uid };
+
+  _guestSelfStream.getTracks().forEach(track => pc.addTrack(track, _guestSelfStream));
+
+  const signalRef = _gbGuestSignalRef(boxNum);
+  const pendingCandidates = [];
+  let offerWritten = false;
+
+  pc.onicecandidate = async (e) => {
+    if (!e.candidate) return;
+    if (!offerWritten) { pendingCandidates.push(e.candidate.toJSON()); return; }
+    try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/guestCandidates`), e.candidate.toJSON()); }
+    catch (_) {}
+  };
+
+  pc.onconnectionstatechange = () => {
+    const state = pc.connectionState;
+    const quality = state === 'connected'     ? 'good' :
+                    state === 'disconnected'  ? 'weak' :
+                    state === 'failed'        ? 'bad'  : 'good';
+    if (_roomId) {
+      update(_gbBoxRef(boxNum), { connectionQuality: quality }).catch(() => {});
+    }
+    if (state === 'failed') {
+      toast('Connection lost. Trying to reconnect…');
+      _guestReconnect(boxNum);
+    }
+  };
+
+  /* start stats polling for quality reporting */
+  _guestStartStatsPolling(boxNum, pc);
+
+  let offer;
+  try { offer = await pc.createOffer(); } catch (e) { return; }
+  await pc.setLocalDescription(offer);
+
+  try {
+    await set(signalRef, {
+      guestOffer:       { type: offer.type, sdp: offer.sdp },
+      guestCandidates:  {},
+      hostAnswer:       null,
+      hostCandidates:   {},
+    });
+    offerWritten = true;
+  } catch (e) { return; }
+
+  /* flush buffered candidates */
+  for (const cand of pendingCandidates) {
+    try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/guestCandidates`), cand); } catch (_) {}
+  }
+
+  /* watch for host answer */
+  let appliedHostCandKeys = new Set();
+  onValue(signalRef, async snap => {
+    if (!snap.exists()) return;
+    const d = snap.val();
+    if (d.hostAnswer && pc.remoteDescription === null) {
+      try { await pc.setRemoteDescription(new RTCSessionDescription(d.hostAnswer)); } catch (_) {}
+    }
+    if (pc.remoteDescription && d.hostCandidates) {
+      for (const [key, cand] of Object.entries(d.hostCandidates)) {
+        if (appliedHostCandKeys.has(key)) continue;
+        appliedHostCandKeys.add(key);
+        try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+      }
+    }
+  });
+}
+
+/* ── Host: watches each box for guest WebRTC offer and answers ── */
+function _gbHostWatchGuestWebRTC(boxNum) {
+  if (!_roomId) return;
+  const signalRef = _gbGuestSignalRef(boxNum);
+
+  onValue(signalRef, async snap => {
+    if (!snap.exists()) return;
+    const d = snap.val();
+    if (!d.guestOffer) return;
+
+    /* clean up old PC for this box if one exists */
+    if (_guestPcs[boxNum]?.pc) {
+      try { _guestPcs[boxNum].pc.close(); } catch (_) {}
+    }
+
+    const pc = new RTCPeerConnection(_ICE_SERVERS);
+    _guestPcs[boxNum] = { pc };
+
+    pc.ontrack = (e) => {
+      const stream = e.streams[0] || new MediaStream([e.track]);
+      const vid = document.getElementById(`gsGuestVideo${boxNum}`);
+      if (vid) {
+        vid.srcObject = stream;
+        vid.play().catch(() => {});
+      }
+      /* also populate the management panel video */
+      const panelVid = document.getElementById(`guestVideo${boxNum}`);
+      if (panelVid) { panelVid.srcObject = stream; panelVid.play().catch(() => {}); }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      const quality = state === 'connected'    ? 'good' :
+                      state === 'disconnected' ? 'weak' :
+                      state === 'failed'       ? 'bad'  : 'good';
+      update(_gbBoxRef(boxNum), { connectionQuality: quality }).catch(() => {});
+    };
+
+    await pc.setRemoteDescription(new RTCSessionDescription(d.guestOffer));
+
+    /* wire ICE before createAnswer */
+    const pendingCandidates = [];
+    let answerWritten = false;
+
+    pc.onicecandidate = async (e) => {
+      if (!e.candidate) return;
+      if (!answerWritten) { pendingCandidates.push(e.candidate.toJSON()); return; }
+      try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/hostCandidates`), e.candidate.toJSON()); }
+      catch (_) {}
+    };
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    try {
+      await update(signalRef, { hostAnswer: { type: answer.type, sdp: answer.sdp } });
+      answerWritten = true;
+    } catch (e) { return; }
+
+    for (const cand of pendingCandidates) {
+      try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/hostCandidates`), cand); } catch (_) {}
+    }
+
+    /* apply any existing guest ICE candidates */
+    const existingCands = d.guestCandidates || {};
+    const appliedKeys = new Set(Object.keys(existingCands));
+    for (const cand of Object.values(existingCands)) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+    }
+
+    /* listen for new guest ICE candidates */
+    onValue(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/guestCandidates`), async candSnap => {
+      if (!candSnap.exists()) return;
+      for (const [key, cand] of Object.entries(candSnap.val())) {
+        if (appliedKeys.has(key)) continue;
+        appliedKeys.add(key);
+        try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+      }
+    });
+  });
+}
+
+/* ── Stop/cleanup a guest's WebRTC for a given box ── */
+function _guestStopStream(boxNum) {
+  if (_guestPcs[boxNum]) {
+    const { pc, statsInterval } = _guestPcs[boxNum];
+    if (statsInterval) clearInterval(statsInterval);
+    try { pc.close(); } catch (_) {}
+    delete _guestPcs[boxNum];
+  }
+  /* stop self stream if this was the self box */
+  if (_guestSelfBoxNum === boxNum && _guestSelfStream) {
+    _guestSelfStream.getTracks().forEach(t => t.stop());
+    _guestSelfStream = null;
+  }
+  /* clean up RTDB WebRTC signaling */
+  if (_roomId) {
+    try { remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}`)).catch(() => {}); } catch (_) {}
+  }
+  /* hide tile */
+  const tile = document.getElementById(`gsTile${boxNum}`);
+  if (tile) tile.style.display = 'none';
+  _gsRefreshActiveCount();
+  _gsActivateIfNeeded();
+}
+
+/* ── Guest: auto-reconnect on connection failure ── */
+async function _guestReconnect(boxNum) {
+  await new Promise(r => setTimeout(r, 3000));
+  if (_guestSelfBoxNum !== boxNum) return;  // was removed
+  if (_guestSelfStream) _guestStartStream(boxNum);
+}
+
+/* ── Quality stats polling: checks packet loss / bandwidth every 5s ── */
+function _guestStartStatsPolling(boxNum, pc) {
+  const interval = setInterval(async () => {
+    if (!pc || pc.connectionState === 'closed') { clearInterval(interval); return; }
+    try {
+      const stats = await pc.getStats();
+      let packetsLost = 0, packetsSent = 0;
+      stats.forEach(report => {
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          packetsLost  += report.packetsLost  || 0;
+          packetsSent  += report.packetsSent  || 1;
+        }
+      });
+      const lossRate = packetsLost / (packetsSent || 1);
+      const quality  = lossRate > 0.15 ? 'bad' : lossRate > 0.05 ? 'weak' : 'good';
+
+      /* lower quality if connection is bad */
+      if (quality !== 'good' && _guestSelfStream) {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) {
+          const params = sender.getParameters();
+          if (params.encodings?.length) {
+            params.encodings[0].maxBitrate = quality === 'bad' ? 100000 : 300000;
+            sender.setParameters(params).catch(() => {});
+          }
+        }
+      }
+
+      /* update RTDB with quality */
+      if (_roomId) {
+        update(_gbBoxRef(boxNum), { connectionQuality: quality }).catch(() => {});
+      }
+    } catch (_) {}
+  }, 5000);
+
+  if (_guestPcs[boxNum]) _guestPcs[boxNum].statsInterval = interval;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   GUEST SELF-CONTROLS (viewer in a box)
+   ════════════════════════════════════════════════════════════════════ */
+
+function _guestToggleCam() {
+  _guestSelfCamOn = !_guestSelfCamOn;
+  if (_guestSelfStream) {
+    _guestSelfStream.getVideoTracks().forEach(t => t.enabled = _guestSelfCamOn);
+  }
+  if (D.btnGuestCam) {
+    D.btnGuestCam.textContent = _guestSelfCamOn ? '📷 Cam' : '📷 Cam Off';
+    D.btnGuestCam.classList.toggle('off', !_guestSelfCamOn);
+  }
+  /* update RTDB so host can see */
+  if (_roomId && _guestSelfBoxNum !== null) {
+    update(_gbBoxRef(_guestSelfBoxNum), { cameraEnabled: _guestSelfCamOn }).catch(() => {});
+  }
+  /* cam-off overlay in tile */
+  if (_guestSelfBoxNum !== null) {
+    const camOff = document.getElementById(`gsGuest${_guestSelfBoxNum}CamOff`);
+    if (camOff) camOff.style.display = _guestSelfCamOn ? 'none' : 'flex';
+  }
+}
+
+function _guestToggleMic() {
+  _guestSelfMicOn = !_guestSelfMicOn;
+  if (_guestSelfStream) {
+    _guestSelfStream.getAudioTracks().forEach(t => t.enabled = _guestSelfMicOn);
+  }
+  if (D.btnGuestMic) {
+    D.btnGuestMic.textContent = _guestSelfMicOn ? '🎤 Mic' : '🔇 Muted';
+    D.btnGuestMic.classList.toggle('off', !_guestSelfMicOn);
+  }
+  /* update RTDB so host can see */
+  if (_roomId && _guestSelfBoxNum !== null) {
+    update(_gbBoxRef(_guestSelfBoxNum), { microphoneEnabled: _guestSelfMicOn }).catch(() => {});
   }
 }
