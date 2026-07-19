@@ -693,18 +693,6 @@ async function _startCreatorWebRTC() {
   // Attach local tracks
   _localStream.getTracks().forEach(track => _rtcPc.addTrack(track, _localStream));
 
-  // Collect ICE candidates and write them to Firestore
-  _rtcPc.onicecandidate = async (e) => {
-    if (!e.candidate) return;
-    try {
-      await setDoc(doc(_db, 'liveConnections', _roomId), {
-        creatorCandidates: arrayUnion(e.candidate.toJSON()),
-      }, { merge: true });
-    } catch (err) {
-      console.warn('[Creator WebRTC] ICE write error:', err.message);
-    }
-  };
-
   _rtcPc.onconnectionstatechange = () => {
     console.log('[Creator WebRTC] Connection state:', _rtcPc.connectionState);
     if (_rtcPc.connectionState === 'connected') {
@@ -712,11 +700,11 @@ async function _startCreatorWebRTC() {
     }
   };
 
-  // Create offer
+  // Create offer and set local description FIRST
   const offer = await _rtcPc.createOffer();
   await _rtcPc.setLocalDescription(offer);
 
-  // Write offer to Firestore
+  // Write the offer doc to Firestore — this MUST complete before ICE writes
   try {
     await setDoc(doc(_db, 'liveConnections', _roomId), {
       offer:             { type: offer.type, sdp: offer.sdp },
@@ -729,11 +717,27 @@ async function _startCreatorWebRTC() {
     return;
   }
 
-  // Listen for viewer answer + ICE candidates
+  // NOW wire up ICE — the doc already exists so arrayUnion is safe
+  _rtcPc.onicecandidate = async (e) => {
+    if (!e.candidate) return;
+    try {
+      await updateDoc(doc(_db, 'liveConnections', _roomId), {
+        creatorCandidates: arrayUnion(e.candidate.toJSON()),
+      });
+    } catch (err) {
+      console.warn('[Creator WebRTC] ICE write error:', err.message);
+    }
+  };
+
+  // Track which viewer ICE candidates we have already applied
+  let _appliedViewerCandCount = 0;
+
+  // Listen for viewer answer + new ICE candidates
   _rtcSignalUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
     if (!snap.exists()) return;
     const d = snap.data();
 
+    // Apply answer exactly once
     if (d.answer && _rtcPc.remoteDescription === null) {
       try {
         await _rtcPc.setRemoteDescription(new RTCSessionDescription(d.answer));
@@ -743,12 +747,14 @@ async function _startCreatorWebRTC() {
       }
     }
 
-    if (d.viewerCandidates && Array.isArray(d.viewerCandidates)) {
-      for (const cand of d.viewerCandidates) {
-        if (_rtcPc.remoteDescription) {
-          try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
-        }
+    // Only apply viewer ICE candidates we haven't processed yet
+    const cands = d.viewerCandidates || [];
+    if (_rtcPc.remoteDescription && cands.length > _appliedViewerCandCount) {
+      const newCands = cands.slice(_appliedViewerCandCount);
+      for (const cand of newCands) {
+        try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
+      _appliedViewerCandCount = cands.length;
     }
   });
 
@@ -760,6 +766,35 @@ async function _startCreatorWebRTC() {
    Reads offer, creates answer, exchanges ICE.
    ═══════════════════════════════════════════════════ */
 async function _startViewerWebRTC(roomData) {
+  _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
+
+  // Read offer from Firestore BEFORE creating RTCPeerConnection.
+  // If the offer isn't there yet, poll without allocating a PC — no orphan connections.
+  let connSnap;
+  try {
+    connSnap = await getDoc(doc(_db, 'liveConnections', _roomId));
+  } catch (e) {
+    _showConnBanner('⚠️ Signaling error', 'Could not read offer: ' + e.message);
+    return;
+  }
+
+  if (!connSnap.exists() || !connSnap.data().offer) {
+    _showConnBanner('⏳ Waiting for stream…', 'No offer yet — retrying…');
+    // Poll every 2 s — no RTCPeerConnection allocated until an offer exists
+    const pollInterval = setInterval(async () => {
+      try {
+        const retry = await getDoc(doc(_db, 'liveConnections', _roomId));
+        if (retry.exists() && retry.data().offer) {
+          clearInterval(pollInterval);
+          _startViewerWebRTC(roomData);
+        }
+      } catch (_) {}
+    }, 2000);
+    return;
+  }
+
+  // Offer is available — now create the peer connection
+  if (_rtcPc) { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   _rtcPc = new RTCPeerConnection(_ICE_SERVERS);
 
   // When remote track arrives, attach to <video>
@@ -774,17 +809,6 @@ async function _startViewerWebRTC(roomData) {
     _hideConnBanner();
   };
 
-  _rtcPc.onicecandidate = async (e) => {
-    if (!e.candidate) return;
-    try {
-      await setDoc(doc(_db, 'liveConnections', _roomId), {
-        viewerCandidates: arrayUnion(e.candidate.toJSON()),
-      }, { merge: true });
-    } catch (err) {
-      console.warn('[Viewer WebRTC] ICE write error:', err.message);
-    }
-  };
-
   _rtcPc.onconnectionstatechange = () => {
     console.log('[Viewer WebRTC] Connection state:', _rtcPc.connectionState);
     if (_rtcPc.connectionState === 'connected') {
@@ -794,29 +818,6 @@ async function _startViewerWebRTC(roomData) {
       _showConnBanner('⚠️ Connection lost', 'WebRTC connection failed');
     }
   };
-
-  _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
-
-  // Read offer from Firestore
-  let connSnap;
-  try {
-    connSnap = await getDoc(doc(_db, 'liveConnections', _roomId));
-    if (!connSnap.exists() || !connSnap.data().offer) {
-      _showConnBanner('⏳ Waiting for stream…', 'No offer yet — waiting…');
-      // Poll every 2 s until offer appears
-      const pollInterval = setInterval(async () => {
-        const retry = await getDoc(doc(_db, 'liveConnections', _roomId));
-        if (retry.exists() && retry.data().offer) {
-          clearInterval(pollInterval);
-          _startViewerWebRTC(roomData);
-        }
-      }, 2000);
-      return;
-    }
-  } catch (e) {
-    _showConnBanner('⚠️ Signaling error', 'Could not read offer: ' + e.message);
-    return;
-  }
 
   const offer = connSnap.data().offer;
   try {
@@ -831,31 +832,48 @@ async function _startViewerWebRTC(roomData) {
   const answer = await _rtcPc.createAnswer();
   await _rtcPc.setLocalDescription(answer);
 
+  // Wire up ICE — doc already exists so updateDoc is safe
+  _rtcPc.onicecandidate = async (e) => {
+    if (!e.candidate) return;
+    try {
+      await updateDoc(doc(_db, 'liveConnections', _roomId), {
+        viewerCandidates: arrayUnion(e.candidate.toJSON()),
+      });
+    } catch (err) {
+      console.warn('[Viewer WebRTC] ICE write error:', err.message);
+    }
+  };
+
   // Write answer to Firestore
   try {
-    await setDoc(doc(_db, 'liveConnections', _roomId), {
+    await updateDoc(doc(_db, 'liveConnections', _roomId), {
       answer: { type: answer.type, sdp: answer.sdp },
-    }, { merge: true });
+    });
     console.log('[Viewer WebRTC] Answer written to Firestore');
   } catch (e) {
     _showConnBanner('⚠️ Answer write error', e.message);
     return;
   }
 
-  // Add any existing creator ICE candidates
-  const creatorCands = connSnap.data().creatorCandidates || [];
-  for (const cand of creatorCands) {
+  // Apply creator ICE candidates already present in the snapshot
+  let _appliedCreatorCandCount = 0;
+  const existingCands = connSnap.data().creatorCandidates || [];
+  for (const cand of existingCands) {
     try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
   }
+  _appliedCreatorCandCount = existingCands.length;
 
-  // Listen for new creator ICE candidates
+  // Listen for new creator ICE candidates — only apply ones we haven't seen yet
   _rtcSignalUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
     if (!snap.exists()) return;
     const d = snap.data();
-    if (d.creatorCandidates && Array.isArray(d.creatorCandidates)) {
-      for (const cand of d.creatorCandidates) {
+    const cands = d.creatorCandidates || [];
+    if (cands.length > _appliedCreatorCandCount) {
+      const newCands = cands.slice(_appliedCreatorCandCount);
+      for (const cand of newCands) {
         try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
+      _appliedCreatorCandCount = cands.length;
     }
   });
 
