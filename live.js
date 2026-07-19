@@ -49,7 +49,7 @@ const _db   = getFirestore(_app);
 
 /* ── LiveKit ── */
 // Token is minted server-side by the Cloudflare Worker (credentials never in client code).
-const LIVEKIT_URL       = 'wss://project-s-iaamddo2.livekit.cloud';
+const LIVEKIT_URL       = 'wss://chris-oxi8fwap.livekit.cloud';
 const LIVEKIT_TOKEN_URL = 'https://yellow-term-11e6.nthntjrn.workers.dev/livekit-token';
 
 /* ── State ── */

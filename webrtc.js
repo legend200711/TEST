@@ -13,7 +13,7 @@
 /* ── LiveKit server ─────────────────────────────────────────────────── */
 // API key + secret live in the Cloudflare Worker as encrypted secrets.
 // Fetch a short-lived token from: POST https://yellow-term-11e6.nthntjrn.workers.dev/livekit-token
-export const LIVEKIT_URL        = 'wss://project-s-iaamddo2.livekit.cloud';
+export const LIVEKIT_URL        = 'wss://chris-oxi8fwap.livekit.cloud';
 export const LIVEKIT_TOKEN_URL  = 'https://yellow-term-11e6.nthntjrn.workers.dev/livekit-token';
 
 /* ── ICE server config ──────────────────────────────────────────────── */
