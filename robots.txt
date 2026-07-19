@@ -1,14 +1,14 @@
 # Shadow Nexus Social — robots.txt
-# https://legend200711.github.io/ShadowNexusSocial/
+# https://legend200711.github.io/TEST/
 
 User-agent: *
-Allow: /ShadowNexusSocial/
+Allow: /TEST/
 
 # Block private/internal paths from indexing
-Disallow: /ShadowNexusSocial/admin
-Disallow: /ShadowNexusSocial/settings
-Disallow: /ShadowNexusSocial/messages
-Disallow: /ShadowNexusSocial/notifications
+Disallow: /TEST/admin
+Disallow: /TEST/settings
+Disallow: /TEST/messages
+Disallow: /TEST/notifications
 
 # Sitemap
-Sitemap: https://legend200711.github.io/ShadowNexusSocial/sitemap.xml
+Sitemap: https://legend200711.github.io/TEST/sitemap.xml

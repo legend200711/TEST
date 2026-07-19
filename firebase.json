@@ -1,0 +1,42 @@
+{
+  "projects": {
+    "default": "horr-a08f4"
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firestore.rules",
+      "database.rules.json",
+      ".firebaserc",
+      ".git/**",
+      ".idea/**",
+      ".wrangler/**",
+      "node_modules/**",
+      "push_to_github.ps1",
+      "generate_icons.py",
+      "wrangler.jsonc"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|mjs)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=3600" }
+        ]
+      }
+    ]
+  }
+}

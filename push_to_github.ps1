@@ -1,6 +1,6 @@
 $token = "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"
 $headers = @{ Authorization = "token $token"; "Content-Type" = "application/json" }
-$repo = "legend200711/ShadowNexusSocial"
+$repo = "legend200711/TEST"
 $baseDir = "c:\Users\Legend\Desktop\websites\feed"
 $msg = "Add push notifications and full admin panel"
 
@@ -26,4 +26,4 @@ Push-File "$baseDir\manifest.json"           "manifest.json"
 Push-File "$baseDir\style.css"               "style.css"
 Push-File "$baseDir\offline.html"            "offline.html"
 
-Write-Host "Done! Check https://legend200711.github.io/ShadowNexusSocial/"
+Write-Host "Done! Check https://legend200711.github.io/TEST/"

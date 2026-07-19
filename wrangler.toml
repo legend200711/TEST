@@ -3,6 +3,36 @@ main = "upload-worker.js"
 compatibility_date = "2024-01-01"
 account_id = "f276c4406b82d3c1e35efed1ef486235"
 
+# ── Cloudflare R2 Bucket ──────────────────────────────────────────────────────
+# All Shadow Nexus Social media files are stored here:
+#   profile pictures, post images, videos, music, message attachments
+# Firebase stores only the public URL + metadata — never the raw file.
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "legend"
+
+# ── Cloudflare Security Notes ─────────────────────────────────────────────────
+# Enable these in the Cloudflare Dashboard for full protection:
+#
+#   1. Firewall Rules (WAF)
+#      - Rate limit: 100 requests/minute per IP on POST /
+#      - Block requests with suspicious User-Agents (bots, scrapers)
+#      - Block requests from known malicious IPs (automatic with Pro plan)
+#
+#   2. DDoS Protection
+#      - Enabled automatically on all Cloudflare plans
+#      - Set sensitivity to "High" for the /upload-worker route
+#
+#   3. Bot Management
+#      - Enable "Bot Fight Mode" (free) or Bot Management (Pro+)
+#      - Blocks automated upload attempts and credential stuffing
+#
+#   4. CDN + Caching
+#      - Media files are served with Cache-Control: immutable (1 year)
+#      - Cloudflare edge caches all GET requests automatically
+#      - Use Cache Rules to set Edge TTL = 1 month for /{uid}/* paths
+#
+#   5. Access Control
+#      - Origin check: worker validates Origin header against ALLOWED_ORIGINS
+#      - UID-scoped storage: each file path is prefixed with {userUid}/
+#      - File type allowlist enforced server-side (images/video/audio only)

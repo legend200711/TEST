@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shadow Nexus Social — Maintenance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0066FF">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #000000;
+  --blue:       #00AEEF;
+  --blue-dim:   #0077bb;
+  --blue-glow:  rgba(0,174,239,0.55);
+  --blue-mist:  rgba(0,100,200,0.12);
+  --text:       #e0f0ff;
+  --muted:      #4a7090;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ── Full-page container ── */
+#maint-wrap {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  z-index: 1;
+}
+
+/* ── Background canvas ── */
+#bgCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Logo ── */
+.maint-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 35%, #003d99 0%, #050f1e 100%);
+  border: 2.5px solid rgba(0,174,239,0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  box-shadow: 0 0 40px rgba(0,174,239,0.6), 0 0 80px rgba(0,100,200,0.3);
+  margin: 0 auto 24px;
+  animation: logoPulse 3s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes logoPulse {
+  0%, 100% { box-shadow: 0 0 40px rgba(0,174,239,0.6), 0 0 80px rgba(0,100,200,0.3); }
+  50%       { box-shadow: 0 0 60px rgba(0,174,239,0.85), 0 0 120px rgba(0,140,255,0.45); }
+}
+
+/* ── Title ── */
+.maint-title {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 0 14px rgba(0,174,239,0.7), 0 0 30px rgba(0,100,200,0.4);
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Subtitle ── */
+.maint-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 36px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Card ── */
+.maint-card {
+  background: rgba(0,30,70,0.6);
+  border: 1px solid rgba(0,174,239,0.3);
+  border-radius: 18px;
+  padding: 28px 32px;
+  max-width: 440px;
+  width: 100%;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 50px rgba(0,100,200,0.18), inset 0 0 30px rgba(0,50,120,0.1);
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Maintenance icon row ── */
+.maint-icon-row {
+  font-size: 40px;
+  margin-bottom: 14px;
+  animation: wrenchBounce 2.2s ease-in-out infinite;
+}
+@keyframes wrenchBounce {
+  0%, 100% { transform: rotate(-8deg) scale(1);   }
+  50%       { transform: rotate(8deg)  scale(1.08); }
+}
+
+/* ── Message text ── */
+.maint-msg {
+  font-size: 15px;
+  line-height: 1.65;
+  color: #b0cce8;
+  margin-bottom: 22px;
+}
+
+/* ── Loading dots ── */
+.maint-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.maint-loading span {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+.maint-loading span:nth-child(1) { animation-delay: 0s; }
+.maint-loading span:nth-child(2) { animation-delay: 0.2s; }
+.maint-loading span:nth-child(3) { animation-delay: 0.4s; }
+.maint-loading span:nth-child(4) { animation-delay: 0.6s; }
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%            { transform: scale(1.1); opacity: 1;   }
+}
+
+/* ── Lightning bolts (pure CSS, decorative) ── */
+.lightning {
+  position: fixed;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--blue), transparent);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  animation: lightningFlash 5s ease-in-out infinite;
+  border-radius: 2px;
+}
+.lightning:nth-child(1) { left: 12%; height: 180px; top: 5%;  animation-delay: 0s;    animation-duration: 4.5s; }
+.lightning:nth-child(2) { left: 28%; height: 120px; top: 70%; animation-delay: 1.2s;  animation-duration: 5.2s; }
+.lightning:nth-child(3) { right:15%; height: 200px; top: 10%; animation-delay: 2.1s;  animation-duration: 3.8s; }
+.lightning:nth-child(4) { right:30%; height: 90px;  top: 65%; animation-delay: 0.6s;  animation-duration: 6s;   }
+.lightning:nth-child(5) { left: 50%; height: 150px; top: 80%; animation-delay: 3s;    animation-duration: 4s;   }
+@keyframes lightningFlash {
+  0%, 90%, 100% { opacity: 0; transform: scaleX(1);   }
+  93%            { opacity: 0.85; transform: scaleX(3); box-shadow: 0 0 12px var(--blue-glow); }
+  96%            { opacity: 0.4; transform: scaleX(1.5); }
+}
+
+@media (max-width: 480px) {
+  .maint-title { font-size: 20px; letter-spacing: 2px; }
+  .maint-card  { padding: 22px 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Lightning decorations -->
+<div class="lightning"></div>
+<div class="lightning"></div>
+<div class="lightning"></div>
+<div class="lightning"></div>
+<div class="lightning"></div>
+
+<!-- Background particle canvas -->
+<canvas id="bgCanvas"></canvas>
+
+<div id="maint-wrap">
+
+  <div class="maint-logo">🌑</div>
+
+  <div class="maint-title">Shadow Nexus Social</div>
+  <div class="maint-sub">⚡ System Maintenance ⚡</div>
+
+  <div class="maint-card">
+    <div class="maint-icon-row">🔧</div>
+    <div class="maint-msg" id="maintMsg">
+      Shadow Nexus Social is currently under maintenance. Please check back soon.
+    </div>
+    <div class="maint-loading">
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp, getApps }
+  from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getFirestore, doc, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+const FB_CONFIG = {
+  apiKey:            "AIzaSyByZRmp6R9HY17T2_WdJUFWeeaLNOP6y2Y",
+  authDomain:        "horr-a08f4.firebaseapp.com",
+  databaseURL:       "https://horr-a08f4-default-rtdb.firebaseio.com",
+  projectId:         "horr-a08f4",
+  storageBucket:     "horr-a08f4.firebasestorage.app",
+  messagingSenderId: "933810617818",
+  appId:             "1:933810617818:web:efb24f123337dd987c14e3"
+};
+const fbApp = getApps().length ? getApps()[0] : initializeApp(FB_CONFIG);
+const auth  = getAuth(fbApp);
+const db    = getFirestore(fbApp);
+
+// Listen for maintenance lift — redirect everyone back when it's off
+onSnapshot(doc(db, 'siteSettings', 'config'), snap => {
+  if (!snap.exists()) return;
+  const cfg = snap.data();
+  // Update message if customised
+  if (cfg.maintenanceMessage) {
+    const el = document.getElementById('maintMsg');
+    if (el) el.textContent = cfg.maintenanceMessage;
+  }
+  // If maintenance is OFF, redirect signed-in users back to the app
+  if (cfg.maintenanceMode === false) {
+    window.location.replace('index.html');
+  }
+});
+
+// If the user is the founder, allow them back immediately
+onAuthStateChanged(auth, async user => {
+  if (!user) return;
+  try {
+    const { getDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    if (snap.exists() && snap.data().role === 'founder') {
+      window.location.replace('index.html');
+    }
+  } catch (_) {}
+});
+</script>
+
+<script>
+// Blue electric particle canvas
+(function() {
+  const canvas = document.getElementById('bgCanvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  for (let i = 0; i < 55; i++) {
+    particles.push({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      r: Math.random() * 1.5 + 0.5,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: -Math.random() * 0.5 - 0.2,
+      alpha: Math.random() * 0.7 + 0.2,
+      hue: Math.random() > 0.18 ? 200 : 160
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.y < -10) { p.y = H + 5; p.x = Math.random() * W; }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${p.hue}, 100%, 65%, ${p.alpha})`;
+      ctx.shadowColor = `hsla(${p.hue}, 100%, 70%, 0.6)`;
+      ctx.shadowBlur  = 6;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+</body>
+</html>

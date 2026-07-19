@@ -2,8 +2,8 @@
   "name": "Shadow Nexus Social",
   "short_name": "Shadow Nexus",
   "description": "Shadow Nexus Social is a social media platform for connecting with friends, posting updates, messaging, and sharing content.",
-  "start_url": "/ShadowNexusSocial/",
-  "scope": "/ShadowNexusSocial/",
+  "start_url": "/TEST/",
+  "scope": "/TEST/",
   "display": "standalone",
   "orientation": "any",
   "lang": "en-US",
@@ -48,14 +48,14 @@
       "name": "Home Feed",
       "short_name": "Feed",
       "description": "Open the Eclipse Feed",
-      "url": "/ShadowNexusSocial/#feed",
+      "url": "/TEST/#feed",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Messages",
       "short_name": "DMs",
       "description": "Open your Nexus DMs",
-      "url": "/ShadowNexusSocial/#messages",
+      "url": "/TEST/#messages",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ],

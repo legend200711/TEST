@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yellow-term-11e6",
+  "main": "upload-worker.js",
+  "compatibility_date": "2024-01-01",
+  "account_id": "f276c4406b82d3c1e35efed1ef486235",
+
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "legend"
+    }
+  ]
+
+}
