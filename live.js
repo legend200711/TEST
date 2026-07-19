@@ -444,6 +444,20 @@ async function _startCreatorConnection() {
     return;
   }
 
+  // Write the connection doc BEFORE creating the offer so ICE candidates have a target
+  try {
+    await setDoc(doc(_db, 'liveConnections', _roomId), {
+      offer:             null,
+      answer:            null,
+      creatorCandidates: [],
+      viewerCandidates:  [],
+      createdAt:         serverTimestamp(),
+    });
+  } catch (e) {
+    console.error('[Creator] Could not create liveConnections doc:', e.message);
+    return;
+  }
+
   _creatorPc = new RTCPeerConnection(ICE);
 
   // Add all local tracks so the viewer receives video + audio
@@ -456,7 +470,9 @@ async function _startCreatorConnection() {
       await updateDoc(doc(_db, 'liveConnections', _roomId), {
         creatorCandidates: arrayUnion(e.candidate.toJSON()),
       });
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Creator] Failed to write ICE candidate:', err.message);
+    }
   };
 
   _creatorPc.onconnectionstatechange = () => {
@@ -478,14 +494,10 @@ async function _startCreatorConnection() {
     return;
   }
 
-  // Write offer to Firestore (overwrites any stale connection doc)
+  // Write the offer to Firestore so viewer can read it
   try {
-    await setDoc(doc(_db, 'liveConnections', _roomId), {
-      offer:             { type: offer.type, sdp: offer.sdp },
-      answer:            null,
-      creatorCandidates: [],
-      viewerCandidates:  [],
-      createdAt:         serverTimestamp(),
+    await updateDoc(doc(_db, 'liveConnections', _roomId), {
+      offer: { type: offer.type, sdp: offer.sdp },
     });
   } catch (e) {
     console.error('[Creator] Could not write offer:', e.message);
@@ -497,6 +509,7 @@ async function _startCreatorConnection() {
   // Track how many viewer candidates we have already applied
   let _appliedViewerCandCount = 0;
   let _answerApplied = false;
+  const _pendingViewerCandidates = [];
 
   // Listen on the connection doc for answer + viewerCandidates
   _connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
@@ -509,6 +522,11 @@ async function _startCreatorConnection() {
       try {
         await _creatorPc.setRemoteDescription({ type: 'answer', sdp: d.answer.sdp });
         console.log('[Creator] Remote description (answer) applied');
+        // Now drain any pending viewer candidates
+        for (const cand of _pendingViewerCandidates) {
+          _creatorPc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+        }
+        _pendingViewerCandidates.length = 0;
       } catch (e) {
         console.warn('[Creator] setRemoteDescription failed:', e.message);
         _answerApplied = false;
@@ -516,12 +534,14 @@ async function _startCreatorConnection() {
       }
     }
 
-    // Apply any new viewer ICE candidates
+    // Buffer or apply viewer ICE candidates
     const viewerCands = d.viewerCandidates || [];
     for (let i = _appliedViewerCandCount; i < viewerCands.length; i++) {
-      try {
-        await _creatorPc.addIceCandidate(new RTCIceCandidate(viewerCands[i]));
-      } catch (_) {}
+      if (_answerApplied) {
+        _creatorPc.addIceCandidate(new RTCIceCandidate(viewerCands[i])).catch(() => {});
+      } else {
+        _pendingViewerCandidates.push(viewerCands[i]);
+      }
     }
     _appliedViewerCandCount = viewerCands.length;
   }, () => {});
@@ -804,7 +824,7 @@ async function _startViewer() {
     if (D.likeCount)   D.likeCount.textContent   = '❤️ ' + (d.likes   || 0);
   });
 
-  _connectToHost(roomData);
+  await _connectToHost(roomData);
 
   // Decrement viewer count on leave
   window.addEventListener('beforeunload', _viewerLeave);
@@ -841,125 +861,127 @@ async function _connectToHost(roomData) {
   _viewerUnsubs = [];
   if (_viewerPc) { try { _viewerPc.close(); } catch (_) {} _viewerPc = null; }
 
-  // Read the creator's offer from liveConnections
-  let connData;
-  try {
-    const connSnap = await getDoc(doc(_db, 'liveConnections', _roomId));
-    if (!connSnap.exists() || !connSnap.data().offer?.sdp) {
-      _showConnBanner('⚠️ No Offer Found', 'Waiting for creator to publish stream…');
-      // Retry after 3 s — creator may not have written the offer yet
-      setTimeout(() => {
-        if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
-      }, 3000);
+  // Wait for the creator's offer via onSnapshot (reactive, single-fire)
+  let _offerReceived = false;
+  const offerUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
+    if (_offerReceived) return;  // prevent double-fire on reconnect
+    if (!snap.exists() || !snap.data().offer?.sdp) {
+      _showConnBanner('⏳ Waiting for creator…', 'Stream offer not ready yet…');
       return;
     }
-    connData = connSnap.data();
-  } catch (e) {
-    _showConnBanner('⚠️ Connection Error', e.message);
-    return;
-  }
+    _offerReceived = true;
+    offerUnsub();  // stop listening once we have the offer
 
-  _viewerPc = new RTCPeerConnection(ICE);
+    const connData = snap.data();
 
-  // Add recvonly transceivers so the answer SDP contains media sections
-  _viewerPc.addTransceiver('video', { direction: 'recvonly' });
-  _viewerPc.addTransceiver('audio', { direction: 'recvonly' });
+    _viewerPc = new RTCPeerConnection(ICE);
 
-  // When we receive the creator's video/audio tracks — display them
-  _viewerPc.ontrack = e => {
-    console.log('[Viewer] ontrack fired, streams:', e.streams.length);
-    const stream = (e.streams && e.streams[0]) ? e.streams[0] : new MediaStream([e.track]);
-    if (D.liveVideo) {
-      D.liveVideo.srcObject   = stream;
-      D.liveVideo.muted       = true;   // required for autoplay
-      D.liveVideo.autoplay    = true;
-      D.liveVideo.playsInline = true;
-      D.liveVideo.play().catch(err => console.warn('[Viewer] video.play():', err.message));
-      _showUnmutePrompt();
+    // Add recvonly transceivers so the answer SDP contains media sections
+    _viewerPc.addTransceiver('video', { direction: 'recvonly' });
+    _viewerPc.addTransceiver('audio', { direction: 'recvonly' });
+
+    // When we receive the creator's video/audio tracks — display them
+    _viewerPc.ontrack = e => {
+      console.log('[Viewer] ontrack fired, streams:', e.streams.length);
+      const stream = (e.streams && e.streams[0]) ? e.streams[0] : new MediaStream([e.track]);
+      if (D.liveVideo) {
+        D.liveVideo.srcObject   = stream;
+        D.liveVideo.muted       = true;   // required for autoplay
+        D.liveVideo.autoplay    = true;
+        D.liveVideo.playsInline = true;
+        D.liveVideo.play().catch(err => console.warn('[Viewer] video.play():', err.message));
+        _showUnmutePrompt();
+      }
+      _hideConnBanner();
+    };
+
+    // Viewer ICE candidates → append to liveConnections via arrayUnion
+    _viewerPc.onicecandidate = async e => {
+      if (!e.candidate) return;
+      try {
+        await updateDoc(doc(_db, 'liveConnections', _roomId), {
+          viewerCandidates: arrayUnion(e.candidate.toJSON()),
+        });
+      } catch (err) {
+        console.warn('[Viewer] Failed to write ICE candidate:', err.message);
+      }
+    };
+
+    let _retryScheduled = false;
+    _viewerPc.onconnectionstatechange = () => {
+      const st = _viewerPc?.connectionState;
+      console.log('[Viewer] connection state:', st);
+      if (st === 'connected')    { _retryScheduled = false; _hideConnBanner(); }
+      if (st === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
+      if (st === 'failed' && !_retryScheduled) {
+        _retryScheduled = true;
+        _showConnBanner('⚠️ Failed', 'Could not reach stream. Retrying…');
+        setTimeout(() => {
+          if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
+        }, 4000);
+      }
+    };
+
+    _viewerPc.oniceconnectionstatechange = () => {
+      const s = _viewerPc?.iceConnectionState;
+      console.log('[Viewer] ICE state:', s);
+      if (s === 'checking')     _showConnBanner('Checking…', 'Finding connection path…');
+      if (s === 'connected')    _hideConnBanner();
+      if (s === 'completed')    _hideConnBanner();
+      if (s === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped…');
+      if (s === 'failed')       _showConnBanner('⚠️ Failed', 'No route to stream found. Retrying…');
+    };
+
+    // Set creator offer as remote description
+    try {
+      await _viewerPc.setRemoteDescription({ type: 'offer', sdp: connData.offer.sdp });
+    } catch (e) {
+      _showConnBanner('⚠️ SDP Error', 'Could not read stream offer: ' + e.message);
+      return;
     }
-    _hideConnBanner();
-  };
 
-  // Viewer ICE candidates → append to liveConnections via arrayUnion
-  _viewerPc.onicecandidate = async e => {
-    if (!e.candidate) return;
+    // Apply any creator ICE candidates that are already stored
+    let _appliedCreatorCandCount = 0;
+    const applyCreatorCands = (cands) => {
+      for (let i = _appliedCreatorCandCount; i < cands.length; i++) {
+        _viewerPc?.addIceCandidate(new RTCIceCandidate(cands[i])).catch(() => {});
+      }
+      _appliedCreatorCandCount = cands.length;
+    };
+    applyCreatorCands(connData.creatorCandidates || []);
+
+    // Create and write answer (do NOT touch viewerCandidates — arrayUnion handles append)
+    let answer;
+    try {
+      answer = await _viewerPc.createAnswer();
+      await _viewerPc.setLocalDescription(answer);
+    } catch (e) {
+      _showConnBanner('⚠️ SDP Error', 'Could not create answer: ' + e.message);
+      return;
+    }
+
     try {
       await updateDoc(doc(_db, 'liveConnections', _roomId), {
-        viewerCandidates: arrayUnion(e.candidate.toJSON()),
+        answer: { type: 'answer', sdp: answer.sdp },
       });
-    } catch (_) {}
-  };
-
-  let _retryScheduled = false;
-  _viewerPc.onconnectionstatechange = () => {
-    const st = _viewerPc?.connectionState;
-    console.log('[Viewer] connection state:', st);
-    if (st === 'connected')    { _retryScheduled = false; _hideConnBanner(); }
-    if (st === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
-    if (st === 'failed' && !_retryScheduled) {
-      _retryScheduled = true;
-      _showConnBanner('⚠️ Failed', 'Could not reach stream. Retrying…');
-      setTimeout(() => {
-        if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
-      }, 4000);
+      console.log('[Viewer] Answer written to liveConnections/' + _roomId);
+    } catch (e) {
+      _showConnBanner('⚠️ Connection Error', e.message);
+      return;
     }
-  };
 
-  _viewerPc.oniceconnectionstatechange = () => {
-    const s = _viewerPc?.iceConnectionState;
-    console.log('[Viewer] ICE state:', s);
-    if (s === 'checking')     _showConnBanner('Checking…', 'Finding connection path…');
-    if (s === 'connected')    _hideConnBanner();
-    if (s === 'completed')    _hideConnBanner();
-    if (s === 'disconnected') _showConnBanner('📡 Reconnecting…', 'Connection dropped…');
-    if (s === 'failed')       _showConnBanner('⚠️ Failed', 'No route to stream found. Retrying…');
-  };
+    // Listen for new creator ICE candidates that trickle in after the answer
+    const connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), snap => {
+      if (!snap.exists()) return;
+      applyCreatorCands(snap.data().creatorCandidates || []);
+    }, () => {});
+    _viewerUnsubs.push(connUnsub);
+  }, err => {
+    console.error('[Viewer] onSnapshot error:', err.message);
+    _showConnBanner('⚠️ Connection Error', err.message);
+  });
 
-  // Set creator offer as remote description
-  try {
-    await _viewerPc.setRemoteDescription({ type: 'offer', sdp: connData.offer.sdp });
-  } catch (e) {
-    _showConnBanner('⚠️ SDP Error', 'Could not read stream offer: ' + e.message);
-    return;
-  }
-
-  // Apply any creator ICE candidates that are already stored
-  let _appliedCreatorCandCount = 0;
-  const applyCreatorCands = (cands) => {
-    for (let i = _appliedCreatorCandCount; i < cands.length; i++) {
-      _viewerPc?.addIceCandidate(new RTCIceCandidate(cands[i])).catch(() => {});
-    }
-    _appliedCreatorCandCount = cands.length;
-  };
-  applyCreatorCands(connData.creatorCandidates || []);
-
-  // Create and write answer
-  let answer;
-  try {
-    answer = await _viewerPc.createAnswer();
-    await _viewerPc.setLocalDescription(answer);
-  } catch (e) {
-    _showConnBanner('⚠️ SDP Error', 'Could not create answer: ' + e.message);
-    return;
-  }
-
-  try {
-    await updateDoc(doc(_db, 'liveConnections', _roomId), {
-      answer:          { type: 'answer', sdp: answer.sdp },
-      viewerCandidates: [],   // reset viewer candidates for this new session
-    });
-    console.log('[Viewer] Answer written to liveConnections/' + _roomId);
-  } catch (e) {
-    _showConnBanner('⚠️ Connection Error', e.message);
-    return;
-  }
-
-  // Listen for new creator ICE candidates that trickle in after the answer
-  const connUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), snap => {
-    if (!snap.exists()) return;
-    applyCreatorCands(snap.data().creatorCandidates || []);
-  }, () => {});
-  _viewerUnsubs.push(connUnsub);
+  _viewerUnsubs.push(offerUnsub);
 }
 
 /* ═══════════════════════════════════════════════════
