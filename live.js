@@ -48,8 +48,9 @@ const _auth = getAuth(_app);
 const _db   = getFirestore(_app);
 
 /* ── LiveKit ── */
-// Token is minted server-side by the Cloudflare Worker (credentials never in client code).
+// All credentials live in the Cloudflare Worker — never in client code.
 const LIVEKIT_URL       = 'wss://chris-oxi8fwap.livekit.cloud';
+const LIVEKIT_ROOM_URL  = 'https://yellow-term-11e6.nthntjrn.workers.dev/livekit-room';
 const LIVEKIT_TOKEN_URL = 'https://yellow-term-11e6.nthntjrn.workers.dev/livekit-token';
 
 /* ── State ── */
@@ -321,28 +322,44 @@ async function startLive() {
   const titleVal = (D.setupTitle?.value || '').trim();
   if (D.goLiveBtn) { D.goLiveBtn.disabled = true; D.goLiveBtn.textContent = 'Going Live…'; }
 
-  // Generate room ID
+  // Generate room ID — also used as the LiveKit room name
   _roomId = `${_user.uid}_${Date.now().toString(36)}`;
 
+  // Create the room on the LiveKit server FIRST so participants can join
+  try {
+    const res = await fetch(LIVEKIT_ROOM_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ roomName: _roomId }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    toast('⚠️ Could not create stream room: ' + e.message);
+    if (D.goLiveBtn) { D.goLiveBtn.disabled = false; D.goLiveBtn.textContent = 'Start Live'; }
+    return;
+  }
+
   const creatorData = {
-    roomId:       _roomId,
-    hostId:       _user.uid,
-    hostName:     _userData.displayName || _user.email?.split('@')[0] || 'Creator',
-    hostUsername: _userData.username || '',
-    hostAvatar:   _userData.avatar || _userData.profilePicture || '',
-    title:        titleVal || 'Shadow Nexus LIVE',
-    status:       'live',
-    isLive:       true,
-    viewers:      0,
-    likes:        0,
-    createdAt:    serverTimestamp(),
+    roomId:          _roomId,
+    liveKitRoomName: _roomId,   // viewers use this to join the LiveKit room
+    hostId:          _user.uid,
+    hostName:        _userData.displayName || _user.email?.split('@')[0] || 'Creator',
+    hostUsername:    _userData.username || '',
+    hostAvatar:      _userData.avatar || _userData.profilePicture || '',
+    title:           titleVal || 'Shadow Nexus LIVE',
+    status:          'live',
+    isLive:          true,
+    viewers:         0,
+    likes:           0,
+    createdAt:       serverTimestamp(),
   };
 
   try {
     await setDoc(doc(_db, 'liveRooms', _roomId), creatorData);
   } catch (e) {
     toast('⚠️ Could not start live: ' + e.message);
-    if (D.goLiveBtn) { D.goLiveBtn.disabled = false; D.goLiveBtn.textContent = '🔴 Start Live'; }
+    if (D.goLiveBtn) { D.goLiveBtn.disabled = false; D.goLiveBtn.textContent = 'Start Live'; }
     return;
   }
 
@@ -411,7 +428,7 @@ async function _startCreatorConnection() {
     return;
   }
 
-  // Fetch a short-lived token from the Worker
+  // Fetch a short-lived publisher token from the Worker
   let token;
   try {
     const res = await fetch(LIVEKIT_TOKEN_URL, {
@@ -423,40 +440,52 @@ async function _startCreatorConnection() {
         canPublish:      true,
       }),
     });
-    ({ token } = await res.json());
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    token = data.token;
   } catch (e) {
     toast('⚠️ Could not get stream token: ' + e.message);
     return;
   }
 
-  const { Room, RoomEvent, Track, LocalVideoTrack, LocalAudioTrack } = LivekitClient;
+  const { Room, RoomEvent, Track } = LivekitClient;
 
   _lkRoom = new Room({ adaptiveStream: true, dynacast: true });
 
-  _lkRoom.on(RoomEvent.Connected, () => {
-    console.log('[Creator] LiveKit connected');
-  });
+  _lkRoom.on(RoomEvent.Connected,     () => console.log('[Creator] LiveKit connected:', _roomId));
+  _lkRoom.on(RoomEvent.Reconnecting,  () => console.log('[Creator] LiveKit reconnecting…'));
+  _lkRoom.on(RoomEvent.Reconnected,   () => console.log('[Creator] LiveKit reconnected'));
+  _lkRoom.on(RoomEvent.Disconnected,  (r) => console.warn('[Creator] LiveKit disconnected:', r));
 
-  _lkRoom.on(RoomEvent.Disconnected, () => {
-    console.log('[Creator] LiveKit disconnected');
-  });
-
-  await _lkRoom.connect(LIVEKIT_URL, token);
-
-  // Publish existing local tracks
-  const videoTrack = _localStream.getVideoTracks()[0];
-  const audioTrack = _localStream.getAudioTracks()[0];
-
-  if (videoTrack) {
-    const lkVideo = new LocalVideoTrack(videoTrack);
-    await _lkRoom.localParticipant.publishTrack(lkVideo, { source: Track.Source.Camera });
-  }
-  if (audioTrack) {
-    const lkAudio = new LocalAudioTrack(audioTrack);
-    await _lkRoom.localParticipant.publishTrack(lkAudio, { source: Track.Source.Microphone });
+  try {
+    await _lkRoom.connect(LIVEKIT_URL, token);
+  } catch (e) {
+    toast('⚠️ Could not connect to stream server: ' + e.message);
+    return;
   }
 
-  console.log('[Creator] Tracks published to LiveKit room:', _roomId);
+  // Publish camera + mic using the tracks already captured by getUserMedia
+  try {
+    const rawVideo = _localStream.getVideoTracks()[0];
+    const rawAudio = _localStream.getAudioTracks()[0];
+
+    if (rawVideo) {
+      await _lkRoom.localParticipant.publishTrack(rawVideo, {
+        source: Track.Source.Camera,
+        simulcast: false,
+        videoCodec: 'vp8',
+      });
+    }
+    if (rawAudio) {
+      await _lkRoom.localParticipant.publishTrack(rawAudio, {
+        source: Track.Source.Microphone,
+      });
+    }
+    console.log('[Creator] Tracks published to LiveKit room:', _roomId);
+  } catch (e) {
+    toast('⚠️ Could not publish tracks: ' + e.message);
+    console.error('[Creator] publishTrack error:', e);
+  }
 }
 
 /* ── Subscribe to viewer count from Firestore ── */
@@ -499,10 +528,18 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
-    // Replace the video track in the LiveKit room
+    // Replace the published video track in LiveKit
     if (_lkRoom && newStream.getVideoTracks()[0]) {
-      const pub = [..._lkRoom.localParticipant.videoTrackPublications.values()][0];
-      if (pub?.track) pub.track.replaceTrack(newStream.getVideoTracks()[0]).catch(() => {});
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const pubs = [..._lkRoom.localParticipant.videoTrackPublications.values()];
+      if (pubs[0]?.track) {
+        // v2: republish — unpublish old, publish new
+        await _lkRoom.localParticipant.unpublishTrack(pubs[0].track.mediaStreamTrack).catch(() => {});
+        await _lkRoom.localParticipant.publishTrack(newVideoTrack, {
+          source: LivekitClient.Track.Source.Camera,
+          simulcast: false, videoCodec: 'vp8',
+        }).catch(() => {});
+      }
     }
   } catch (e) {
     toast('⚠️ Could not flip camera: ' + e.message);
@@ -766,16 +803,20 @@ async function _connectToHost(roomData) {
   // Fetch a viewer token (canPublish: false) from the Worker
   let token;
   try {
+    // Use liveKitRoomName from Firestore (set by creator at stream start)
+    const lkRoom = roomData.liveKitRoomName || _roomId;
     const res = await fetch(LIVEKIT_TOKEN_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        roomName:        _roomId,
-        participantName: _user.uid + '_viewer_' + Date.now(),
+        roomName:        lkRoom,
+        participantName: _user.uid + '_v_' + Date.now(),
         canPublish:      false,
       }),
     });
-    ({ token } = await res.json());
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    token = data.token;
   } catch (e) {
     _showConnBanner('⚠️ Token Error', 'Could not get viewer token: ' + e.message);
     return;
@@ -785,32 +826,48 @@ async function _connectToHost(roomData) {
 
   _lkRoom = new Room({ adaptiveStream: true });
 
-  // When a remote track is published and subscribed — display it
-  _lkRoom.on(RoomEvent.TrackSubscribed, (track) => {
-    if (track.kind === Track.Kind.Video) {
-      const mediaStream = new MediaStream([track.mediaStreamTrack]);
-      if (D.liveVideo) {
-        D.liveVideo.srcObject   = mediaStream;
-        D.liveVideo.muted       = true;
-        D.liveVideo.autoplay    = true;
-        D.liveVideo.playsInline = true;
-        D.liveVideo.play().catch(err => console.warn('[Viewer] video.play():', err.message));
-        _showUnmutePrompt();
+  // Rebuild the <video> srcObject from all currently subscribed remote tracks
+  function _rebuildVideoSrc() {
+    if (!D.liveVideo) return;
+    const tracks = [];
+    for (const p of _lkRoom.remoteParticipants.values()) {
+      for (const pub of p.videoTrackPublications.values()) {
+        if (pub.track?.mediaStreamTrack) tracks.push(pub.track.mediaStreamTrack);
       }
-      _hideConnBanner();
-      console.log('[Viewer] Video track subscribed');
+      for (const pub of p.audioTrackPublications.values()) {
+        if (pub.track?.mediaStreamTrack) tracks.push(pub.track.mediaStreamTrack);
+      }
     }
+    if (!tracks.length) return;
+    D.liveVideo.srcObject   = new MediaStream(tracks);
+    D.liveVideo.muted       = true;
+    D.liveVideo.autoplay    = true;
+    D.liveVideo.playsInline = true;
+    D.liveVideo.play().catch(err => console.warn('[Viewer] play():', err.message));
+    _showUnmutePrompt();
+    _hideConnBanner();
+    console.log('[Viewer] Video attached, tracks:', tracks.length);
+  }
+
+  // A new track was subscribed (fires for both video and audio)
+  _lkRoom.on(RoomEvent.TrackSubscribed, (track) => {
+    console.log('[Viewer] TrackSubscribed kind:', track.kind);
+    _rebuildVideoSrc();
   });
 
   _lkRoom.on(RoomEvent.Connected, () => {
-    console.log('[Viewer] LiveKit connected');
+    console.log('[Viewer] LiveKit connected to room:', _roomId);
     _showConnBanner('⏳ Waiting for stream…', 'Connected — waiting for creator video…');
+    // Attach any tracks already in the room (creator was live before viewer joined)
+    _rebuildVideoSrc();
   });
 
-  _lkRoom.on(RoomEvent.Disconnected, () => {
-    console.log('[Viewer] LiveKit disconnected');
-    _showConnBanner('📡 Reconnecting…', 'Connection dropped. Trying to reconnect…');
-    // Auto-retry after 4 s
+  _lkRoom.on(RoomEvent.Reconnecting,  () => _showConnBanner('📡 Reconnecting…', 'Connection dropped…'));
+  _lkRoom.on(RoomEvent.Reconnected,   () => { _hideConnBanner(); _rebuildVideoSrc(); });
+
+  _lkRoom.on(RoomEvent.Disconnected, (reason) => {
+    console.warn('[Viewer] LiveKit disconnected:', reason);
+    _showConnBanner('📡 Reconnecting…', 'Connection dropped. Retrying…');
     setTimeout(() => {
       if (_mode === 'viewer' && _roomId) _connectToHost(roomData);
     }, 4000);
@@ -820,6 +877,7 @@ async function _connectToHost(roomData) {
     await _lkRoom.connect(LIVEKIT_URL, token);
   } catch (e) {
     _showConnBanner('⚠️ Connection Error', 'Could not reach stream: ' + e.message);
+    console.error('[Viewer] connect error:', e);
   }
 }
 

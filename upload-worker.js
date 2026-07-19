@@ -94,6 +94,100 @@ function mimeFromExt(filename) {
   return map[ext] || null;
 }
 
+// ── Shared: sign a LiveKit JWT ────────────────────────────────────────────────
+async function signLiveKitJwt(apiKey, apiSecret, payload) {
+  const b64url = s => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const enc    = s => b64url(unescape(encodeURIComponent(s)));
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const h = enc(JSON.stringify(header));
+  const p = enc(JSON.stringify(payload));
+  const sigInput = `${h}.${p}`;
+  const keyData  = new TextEncoder().encode(apiSecret);
+  const msgData  = new TextEncoder().encode(sigInput);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuffer)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${sigInput}.${sigB64}`;
+}
+
+// ── LiveKit room creator ──────────────────────────────────────────────────────
+// POST /livekit-room   body: { roomName }
+// Creates the room on the LiveKit server so participants can join it.
+async function handleLiveKitRoom(request, env, cors, sec) {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405, headers: mergeHeaders(cors, sec) });
+  }
+
+  const apiKey    = env.LIVEKIT_API_KEY;
+  const apiSecret = env.LIVEKIT_API_SECRET;
+  const livekitUrl = (env.LIVEKIT_URL || '').replace('wss://', 'https://');
+
+  if (!apiKey || !apiSecret) {
+    return new Response(JSON.stringify({ error: 'LiveKit credentials not configured' }), {
+      status: 500,
+      headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+      status: 400, headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  const { roomName } = body;
+  if (!roomName) {
+    return new Response(JSON.stringify({ error: 'roomName is required' }), {
+      status: 400, headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  // Mint an admin JWT (roomCreate grant) to call the LiveKit REST API
+  const now = Math.floor(Date.now() / 1000);
+  const adminToken = await signLiveKitJwt(apiKey, apiSecret, {
+    iss: apiKey, sub: 'server', iat: now, exp: now + 60, nbf: now,
+    video: { roomCreate: true },
+  });
+
+  // Call LiveKit REST API — CreateRoom (Twirp/JSON)
+  let lkResp;
+  try {
+    lkResp = await fetch(`${livekitUrl}/twirp/livekit.RoomService/CreateRoom`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        name:              roomName,
+        empty_timeout:     300,   // close room 5 min after last participant leaves
+        max_participants:  500,
+      }),
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'LiveKit API unreachable: ' + e.message }), {
+      status: 502, headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  const lkBody = await lkResp.text();
+  if (!lkResp.ok) {
+    return new Response(JSON.stringify({ error: 'LiveKit room creation failed: ' + lkBody }), {
+      status: lkResp.status, headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+    });
+  }
+
+  return new Response(JSON.stringify({ roomName, created: true }), {
+    status: 200,
+    headers: mergeHeaders(cors, sec, { 'Content-Type': 'application/json' })
+  });
+}
+
 // ── LiveKit JWT token generator ───────────────────────────────────────────────
 // Signs an access token using the LiveKit API key + secret stored as Worker secrets.
 // POST /livekit-token   body: { roomName, participantName, canPublish }
@@ -129,45 +223,23 @@ async function handleLiveKitToken(request, env, cors, sec) {
     });
   }
 
-  // Build LiveKit access token (JWT HS256)
-  const now   = Math.floor(Date.now() / 1000);
-  const exp   = now + 6 * 3600; // 6-hour expiry
-
-  const header  = { alg: 'HS256', typ: 'JWT' };
-  const payload = {
+  // Build LiveKit access token using shared JWT signer
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signLiveKitJwt(apiKey, apiSecret, {
     iss:  apiKey,
     sub:  participantName,
     iat:  now,
-    exp,
+    exp:  now + 6 * 3600,
     nbf:  now,
     name: participantName,
     video: {
-      room:          roomName,
-      roomJoin:      true,
+      room:           roomName,
+      roomJoin:       true,
       canPublish,
-      canSubscribe:  true,
+      canSubscribe:   true,
       canPublishData: true,
     },
-  };
-
-  const b64url = s => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const enc    = s => b64url(unescape(encodeURIComponent(s)));
-
-  const headerB64  = enc(JSON.stringify(header));
-  const payloadB64 = enc(JSON.stringify(payload));
-  const sigInput   = `${headerB64}.${payloadB64}`;
-
-  // HMAC-SHA256 via Web Crypto
-  const keyData  = new TextEncoder().encode(apiSecret);
-  const msgData  = new TextEncoder().encode(sigInput);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
-  const sigB64    = btoa(String.fromCharCode(...new Uint8Array(sigBuffer)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-  const token = `${sigInput}.${sigB64}`;
+  });
 
   return new Response(JSON.stringify({ token, url: env.LIVEKIT_URL }), {
     status: 200,
@@ -190,10 +262,9 @@ export default {
       });
     }
 
-    // ── LiveKit token endpoint ──
-    if (url.pathname === '/livekit-token') {
-      return handleLiveKitToken(request, env, cors, sec);
-    }
+    // ── LiveKit endpoints ──
+    if (url.pathname === '/livekit-room')  return handleLiveKitRoom(request, env, cors, sec);
+    if (url.pathname === '/livekit-token') return handleLiveKitToken(request, env, cors, sec);
 
     // ── GET: serve a file from R2 (CDN delivery) ──────────────────────────────
     if (request.method === 'GET') {
