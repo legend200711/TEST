@@ -15850,13 +15850,13 @@ async function snxLoadProfileWall(uid) {
                             onclick="snxToggleWallPostLike('${w.id}','${uid}')">
                         ${iLiked ? '❤️' : '🤍'} <span id="pwlcount-${w.id}">${likeCount}</span>
                     </button>
-                    <button class="snx-pwall-social-btn"
-                            onclick="snxToggleWallComments('${w.id}')">
-                        💬 <span id="pwccount-${w.id}">${commentCount}</span>
-                    </button>
                     <button class="snx-pwall-social-btn share-btn"
                             onclick="snxShareWallPost('${w.id}','${uid}','${_esc(w.text || '')}','${_esc(w.mediaUrl || '')}')">
                         📤 Share
+                    </button>
+                    <button class="snx-pwall-social-btn"
+                            onclick="snxToggleWallComments('${w.id}')">
+                        💬 <span id="pwccount-${w.id}">${commentCount}</span>
                     </button>
                     ${ownerActions ? `<div style="flex:1;display:flex;justify-content:flex-end;gap:6px;">${ownerActions}</div>` : ''}
                 </div>
