@@ -1,18 +1,29 @@
 /**
  * Shadow Nexus Live — live.js
  *
- * Architecture (Firebase Firestore + WebRTC — no third-party streaming service):
+ * Firebase split architecture:
+ *
+ *  MAIN Firebase (horr-a08f4) — Firestore:
+ *    - Auth / user profiles
+ *    - Feed posts, stories, notifications
+ *    - Live chat messages  (liveRooms/{roomId}/liveMessages)
+ *    - Likes counter       (liveRooms/{roomId}.likes)
+ *
+ *  LIVE Firebase (Shadow Nexus Live) — Realtime Database:
+ *    - Room status         (liveRooms/{roomId})
+ *    - WebRTC offer/answer (liveConnections/{roomId})
+ *    - ICE candidates      (liveConnections/{roomId}/creatorCandidates | viewerCandidates)
  *
  *  CREATOR:
  *    1. Captures local camera + mic via getUserMedia.
- *    2. Creates a liveRooms/{roomId} Firestore doc (status: 'live').
- *    3. Creates RTCPeerConnection, writes SDP offer to liveConnections/{roomId}.
+ *    2. Creates liveRooms/{roomId} in RTDB (status: 'live').
+ *    3. Creates RTCPeerConnection, writes SDP offer to liveConnections/{roomId} in RTDB.
  *    4. Waits for viewer answer + ICE, then streams directly via WebRTC.
  *
  *  VIEWER:
- *    1. Reads liveRooms/{roomId} to confirm stream is live.
- *    2. Reads SDP offer from liveConnections/{roomId}.
- *    3. Creates RTCPeerConnection, sends answer + ICE back to Firestore.
+ *    1. Reads liveRooms/{roomId} from RTDB to confirm stream is live.
+ *    2. Reads SDP offer from liveConnections/{roomId} in RTDB.
+ *    3. Creates RTCPeerConnection, sends answer + ICE back to RTDB.
  *    4. Receives creator tracks via WebRTC ontrack.
  *
  *  Chat + Likes:
@@ -21,18 +32,29 @@
 
 'use strict';
 
-/* ── Firebase imports ── */
-import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+/* ── Main Firebase imports (Firestore + Auth) ── */
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import {
   getAuth, onAuthStateChanged
-} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {
   getFirestore,
   doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
   collection, query, orderBy, limit, onSnapshot,
   serverTimestamp, increment, where, deleteField, arrayUnion
-} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
+/* ── Realtime Database imports (signaling + room status) ── */
+import {
+  getDatabase,
+  ref, set, get, update, remove, push, onValue, off, onDisconnect,
+  serverTimestamp as rtdbTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+/* ════════════════════════════════════════════════════
+   MAIN Firebase — live.html is a standalone page.
+   index.html is NOT loaded here — no conflict exists.
+   ════════════════════════════════════════════════════ */
 const _CFG = {
   apiKey:            'AIzaSyByZRmp6R9HY17T2_WdJUFWeeaLNOP6y2Y',
   authDomain:        'horr-a08f4.firebaseapp.com',
@@ -43,9 +65,10 @@ const _CFG = {
   appId:             '1:933810617818:web:efb24f123337dd987c14e3',
 };
 
-const _app  = getApps().find(a => a.name === '[DEFAULT]') || initializeApp(_CFG);
-const _auth = getAuth(_app);
-const _db   = getFirestore(_app);
+const _app    = initializeApp(_CFG);
+const _auth   = getAuth(_app);
+const _db     = getFirestore(_app);
+const _liveDB = getDatabase(_app);
 
 /* ── WebRTC ICE config ── */
 const _ICE_SERVERS = {
@@ -69,14 +92,49 @@ let _camOn        = true;
 let _micOn        = true;
 let _facingMode   = 'user';
 
+/* ── On-screen debug panel ──────────────────────────────────────────────────
+   Shows a live step-by-step status overlay so failures are visible on mobile
+   without needing DevTools. Tap it 3× to dismiss. Remove once stable.       */
+function _dbg(msg, isError) {
+  const colour = isError ? '#ff6688' : '#39FF14';
+  console[isError ? 'error' : 'log']('[SNX-Live]', msg);
+
+  let el = document.getElementById('_snxDbgPanel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '_snxDbgPanel';
+    el.style.cssText = [
+      'position:fixed','top:0','left:0','right:0','z-index:99999',
+      'background:rgba(0,0,0,0.88)','padding:8px 10px',
+      'font-family:monospace','font-size:11px','line-height:1.55',
+      'max-height:42vh','overflow-y:auto','pointer-events:auto',
+      'border-bottom:1px solid rgba(0,174,239,0.4)',
+    ].join(';');
+    let _tapCount = 0;
+    el.addEventListener('click', () => { if (++_tapCount >= 3) el.remove(); });
+    document.body.appendChild(el);
+  }
+
+  const row = document.createElement('div');
+  row.style.color = colour;
+  row.textContent = new Date().toISOString().slice(11,19) + ' ' + msg;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+  // Cap at 40 lines
+  while (el.children.length > 40) el.removeChild(el.firstChild);
+}
+
 // WebRTC
 let _rtcPc           = null;   // RTCPeerConnection
-let _rtcSignalUnsub  = null;   // Firestore listener for signaling
+let _rtcSignalUnsub  = null;   // RTDB listener unsubscribe (off ref)
+let _rtcSignalRef    = null;   // RTDB ref being listened to
 
 let _chatUnsub        = null;
+let _viewerCountRef   = null;   // RTDB ref for viewer count listener
 let _viewerCountUnsub = null;
 let _toastTimer       = null;
 let _viewerLeftFlag   = false;  // guard: prevent double-decrement on mobile
+let _creatorEndedFlag = false;  // guard: prevent beforeunload re-running endLive cleanup
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -138,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     endedBackBtn:    document.getElementById('endedBackBtn'),
   };
 
-  // Disable Go Live until Firebase auth resolves (prevents null _user crash)
+  // Disable Go Live until Firebase auth resolves
   if (D.goLiveBtn) { D.goLiveBtn.disabled = true; }
 
   // Wire up static buttons
@@ -165,11 +223,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.location.href = 'index.html';
   });
 
-  // Close/back button on live stage
   document.getElementById('liveCloseBtn') &&
     document.getElementById('liveCloseBtn').addEventListener('click', onCloseBtn);
 
-  // Tap stage to show/hide controls (creator only)
   D.stage && D.stage.addEventListener('click', e => {
     if (_mode !== 'creator') return;
     const ignore = ['.live-ctrl-btn','#btnEndLive','.live-chat-input','.live-chat-send',
@@ -178,7 +234,6 @@ document.addEventListener('DOMContentLoaded', () => {
     D.stage.classList.toggle('live-controls-hidden');
   });
 
-  // Wait for Firebase auth
   onAuthStateChanged(_auth, user => {
     if (!user) {
       _hideLoading();
@@ -205,11 +260,11 @@ async function _loadUserData() {
 
 /* ── Decide mode from URL hash ── */
 async function _resolveMode() {
-  const hash = location.hash;  // e.g. #watch=abc123
+  const hash = location.hash;
   localStorage.removeItem('snx_live_intent');
 
   if (hash.startsWith('#watch=')) {
-    _roomId = decodeURIComponent(hash.slice(7));
+    _roomId = hash.slice(7);   // roomId is plain [a-zA-Z0-9_] — no decoding needed
     _mode   = 'viewer';
     document.body.classList.add('is-viewer');
     await _startViewer();
@@ -244,8 +299,37 @@ async function _startCreatorSetup() {
       _updateSetupPreviewState(false);
       toast('📷 Camera not available — audio only');
     } catch (e) {
-      toast('⚠️ Camera & mic access denied. Check browser permissions.');
+      // Both camera AND mic denied — show a permanent error on the setup screen
+      // so the user knows exactly why Go Live won't work, even after the toast fades.
+      _showSetupPermError('⚠️ Camera & mic access denied. Open browser Settings → Site Permissions and allow Camera + Microphone, then refresh.');
     }
+  }
+}
+
+function _showSetupPermError(msg) {
+  toast(msg);
+  // Also inject a persistent red banner into the setup screen
+  const existing = document.getElementById('_snxSetupPermError');
+  if (existing) { existing.textContent = msg; return; }
+  const banner = document.createElement('div');
+  banner.id = '_snxSetupPermError';
+  banner.style.cssText = [
+    'width:100%', 'background:rgba(180,0,30,0.18)', 'border:1px solid rgba(255,50,70,0.55)',
+    'border-radius:10px', 'padding:12px 14px', 'font-size:13px', 'color:#ff8899',
+    'line-height:1.5', 'text-align:center',
+  ].join(';');
+  banner.textContent = msg;
+  // Insert after the setup-controls row, before the title input
+  const input = document.getElementById('setupTitleInput');
+  if (input && input.parentNode) {
+    input.parentNode.insertBefore(banner, input);
+  } else if (D.goLiveBtn && D.goLiveBtn.parentNode) {
+    D.goLiveBtn.parentNode.insertBefore(banner, D.goLiveBtn);
+  }
+  // Permanently disable Go Live when permissions are fully denied
+  if (D.goLiveBtn) {
+    D.goLiveBtn.disabled = true;
+    D.goLiveBtn.title = 'Camera & mic access required';
   }
 }
 
@@ -302,23 +386,30 @@ async function flipSetupCamera() {
    START LIVE (creator)
    ═══════════════════════════════════════════════════ */
 async function startLive() {
+  _dbg('▶ startLive() called');
   if (!_user) {
     toast('⚠️ Please wait — still signing in…');
+    _dbg('ABORT: no _user yet', true);
     return;
   }
   if (_user.isAnonymous) {
     toast('⚠️ You must be signed in with a real account to go live.');
+    _dbg('ABORT: user is anonymous', true);
     return;
   }
   if (!_localStream || !_localStream.getTracks().length) {
     toast('⚠️ No camera/mic available. Check browser permissions and refresh.');
+    _dbg('ABORT: no local media stream', true);
     return;
   }
+  _dbg('Auth ok | uid=' + _user.uid.slice(0,8) + '…');
 
   const titleVal = (D.setupTitle?.value || '').trim();
   if (D.goLiveBtn) { D.goLiveBtn.disabled = true; D.goLiveBtn.textContent = 'Going Live…'; }
 
-  _roomId = `${_user.uid}_${Date.now().toString(36)}`;
+  // Sanitize uid — strip any chars forbidden in RTDB keys (. # $ / [ ])
+  const _safeUid = _user.uid.replace(/[.#$/\[\]]/g, '_');
+  _roomId = `${_safeUid}_${Date.now().toString(36)}`;
 
   const creatorData = {
     roomId:       _roomId,
@@ -331,48 +422,54 @@ async function startLive() {
     isLive:       true,
     viewers:      0,
     likes:        0,
-    createdAt:    serverTimestamp(),
+    createdAt:    Date.now(),
   };
 
+  _dbg('roomId=' + _roomId);
+
+  /* ── Write room to LIVE Realtime Database ── */
+  _dbg('Writing liveRooms/' + _roomId + ' …');
   try {
-    await setDoc(doc(_db, 'liveRooms', _roomId), creatorData);
+    await set(ref(_liveDB, `liveRooms/${_roomId}`), creatorData);
+    _dbg('✅ liveRooms written (status=live)');
   } catch (e) {
+    _dbg('❌ liveRooms write FAILED: ' + e.message, true);
     toast('⚠️ Could not start live: ' + e.message);
     if (D.goLiveBtn) { D.goLiveBtn.disabled = false; D.goLiveBtn.textContent = 'Start Live'; }
     return;
   }
 
-  // Stamp the user's own doc so the feed shows the live ring + LIVE NOW badge
-  try {
-    await updateDoc(doc(_db, 'users', _user.uid), {
-      isLive:     true,
-      liveRoomId: _roomId,
-    });
-  } catch (_) {}
+  /* ── onDisconnect: registered AFTER offer is written, not here ── */
 
-  // Create a feed post so the main feed shows a LIVE card
-  await _createLiveFeedPost(creatorData);
+  /* ── Guard: prevent accidental cleanup if page unloads during live ── */
+  _creatorEndedFlag = false;
+  window.addEventListener('beforeunload', _creatorBeforeUnload);
+  window.addEventListener('pagehide',     _creatorBeforeUnload);
 
-  // Create a live story entry so the story bar shows a LIVE bubble
-  _createLiveStory(creatorData);
-
-  // Notify all followers that the creator is live
-  _notifyFollowersLive(creatorData);
-
-  // Transition from setup to stage
+  // ── Critical path: show stage + get offer into RTDB before any Firestore work ──
   if (D.setup) D.setup.style.display = 'none';
   _showStage();
   _attachLocalVideoToStage();
   _populateCreatorInfo(creatorData);
 
-  // Start WebRTC as creator
-  await _startCreatorWebRTC();
+  await _startCreatorWebRTC();   // offer must reach RTDB before anything else
 
-  // Start chat listener + viewer count
   _subscribeChat();
   _subscribeViewerCount();
 
+  // ── Show the share URL prominently so creator can copy it immediately ──
+  _showCreatorShareBar();
+
   toast('🔴 You are LIVE!');
+  _dbg('🔴 LIVE! Offer in RTDB. Waiting for viewers…');
+
+  // ── Non-critical side-work: runs after offer is already in RTDB ──
+  try {
+    await updateDoc(doc(_db, 'users', _user.uid), { isLive: true, liveRoomId: _roomId });
+  } catch (_) {}
+  await _createLiveFeedPost(creatorData);
+  _createLiveStory(creatorData);
+  _notifyFollowersLive(creatorData);
 }
 
 function _attachLocalVideoToStage() {
@@ -380,6 +477,70 @@ function _attachLocalVideoToStage() {
   D.liveVideo.srcObject = _localStream;
   D.liveVideo.play().catch(() => {});
   D.camOffOverlay && D.camOffOverlay.classList.toggle('visible', !_camOn);
+}
+
+/* ── Share bar: big visible URL strip shown on the live stage ──
+   Creator sees their exact watch link immediately so they can copy
+   and send it without going through the share modal.              */
+function _showCreatorShareBar() {
+  const old = document.getElementById('_snxCreatorShareBar');
+  if (old) old.remove();
+
+  const url = _buildLiveUrl();
+
+  const bar = document.createElement('div');
+  bar.id = '_snxCreatorShareBar';
+  bar.style.cssText = [
+    'position:absolute', 'top:64px', 'left:50%',
+    'transform:translateX(-50%)',
+    'z-index:50', 'max-width:calc(100vw - 24px)', 'width:420px',
+    'background:rgba(0,10,30,0.93)',
+    'border:1.5px solid rgba(0,174,239,0.7)',
+    'border-radius:12px', 'padding:10px 14px',
+    'display:flex', 'align-items:center', 'gap:10px',
+    'backdrop-filter:blur(8px)',
+  ].join(';');
+
+  bar.innerHTML = `
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:10px;color:#6a90b8;margin-bottom:3px;letter-spacing:.5px;text-transform:uppercase;">Your watch link — share this!</div>
+      <div id="_snxShareUrlText" style="font-size:12px;color:#00AEEF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:monospace;">${url}</div>
+    </div>
+    <button id="_snxCopyShareUrl" style="
+      flex-shrink:0;padding:8px 14px;border-radius:8px;
+      background:rgba(0,174,239,0.2);border:1px solid rgba(0,174,239,0.6);
+      color:#00AEEF;font-size:12px;font-weight:700;cursor:pointer;
+      white-space:nowrap;
+    ">📋 Copy</button>
+    <button id="_snxDismissShareBar" style="
+      flex-shrink:0;width:28px;height:28px;border-radius:50%;
+      background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+      color:#aaa;font-size:14px;cursor:pointer;
+    ">✕</button>
+  `;
+
+  // Copy button
+  bar.querySelector('#_snxCopyShareUrl').addEventListener('click', () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url)
+        .then(() => toast('✅ Link copied! Send it to your viewers.'))
+        .catch(() => window.prompt('Copy your watch link:', url));
+    } else {
+      window.prompt('Copy your watch link:', url);
+    }
+  });
+
+  // Dismiss
+  bar.querySelector('#_snxDismissShareBar').addEventListener('click', () => bar.remove());
+
+  // Auto-dismiss after 60 s so it doesn't stay forever
+  setTimeout(() => bar.remove(), 60000);
+
+  const stage = document.getElementById('liveStage');
+  const videoWrap = stage?.querySelector('.live-video-wrap');
+  (videoWrap || stage || document.body).appendChild(bar);
+
+  _dbg('Share URL: ' + url);
 }
 
 function _populateCreatorInfo(data) {
@@ -394,11 +555,11 @@ function _populateCreatorInfo(data) {
   }
 }
 
-/* ── Subscribe to viewer count from Firestore ── */
+/* ── Subscribe to viewer count + likes from LIVE RTDB ── */
 function _subscribeViewerCount() {
-  _viewerCountUnsub = onSnapshot(doc(_db, 'liveRooms', _roomId), snap => {
-    if (!snap.exists()) return;
-    const d = snap.data();
+  _viewerCountRef = ref(_liveDB, `liveRooms/${_roomId}`);
+  _viewerCountUnsub = onValue(_viewerCountRef, snap => {
+    const d = snap.val() || {};
     if (D.viewerCount) D.viewerCount.textContent = '👁 ' + (d.viewers || 0);
     if (D.likeCount)   D.likeCount.textContent   = '❤️ ' + (d.likes   || 0);
   });
@@ -434,7 +595,6 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
-    // Replace the video track in the existing RTCPeerConnection
     if (_rtcPc && newStream.getVideoTracks()[0]) {
       const newVideoTrack = newStream.getVideoTracks()[0];
       const sender = _rtcPc.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -455,30 +615,48 @@ function toggleFullscreen() {
   }
 }
 
-async function endLive() {
-  if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
-  if (_rtcSignalUnsub) { _rtcSignalUnsub(); _rtcSignalUnsub = null; }
-  if (_chatUnsub)        { _chatUnsub();         _chatUnsub        = null; }
-  if (_viewerCountUnsub) { _viewerCountUnsub();  _viewerCountUnsub = null; }
+/* ── Creator page unload guard — only fires if endLive() was NOT called ── */
+function _creatorBeforeUnload() {
+  if (_creatorEndedFlag || !_roomId) return;
+  // Can't do async work in beforeunload; onDisconnect handles the RTDB cleanup.
+  // Just stop the local media so the camera light goes off.
+  if (_localStream) { _localStream.getTracks().forEach(t => t.stop()); _localStream = null; }
+}
 
-  // Clean up WebRTC signaling doc from Firestore
+async function endLive() {
+  if (_creatorEndedFlag) return;   // prevent double-call
+  _creatorEndedFlag = true;
+
+  // Cancel the onDisconnect trigger — we are ending cleanly ourselves
   if (_roomId) {
-    try { await deleteDoc(doc(_db, 'liveConnections', _roomId)); } catch (_) {}
+    try { await onDisconnect(ref(_liveDB, `liveRooms/${_roomId}`)).cancel(); } catch (_) {}
   }
 
-  // Stop local tracks
+  window.removeEventListener('beforeunload', _creatorBeforeUnload);
+  window.removeEventListener('pagehide',     _creatorBeforeUnload);
+
+  if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
+  if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
+  if (_chatUnsub)        { _chatUnsub();         _chatUnsub        = null; }
+  if (_viewerCountRef && _viewerCountUnsub) { off(_viewerCountRef); _viewerCountRef = null; _viewerCountUnsub = null; }
+
+  /* ── Remove WebRTC signaling from LIVE RTDB ── */
+  if (_roomId) {
+    try { await remove(ref(_liveDB, `liveConnections/${_roomId}`)); } catch (_) {}
+  }
+
   if (_localStream) { _localStream.getTracks().forEach(t => t.stop()); _localStream = null; }
 
-  // Mark room as ended in Firestore
+  /* ── Mark room as ended in LIVE RTDB ── */
   try {
-    await updateDoc(doc(_db, 'liveRooms', _roomId), {
+    await update(ref(_liveDB, `liveRooms/${_roomId}`), {
       status:  'ended',
       isLive:  false,
-      endedAt: serverTimestamp(),
+      endedAt: Date.now(),
     });
   } catch (_) {}
 
-  // Clear live status from user doc
+  /* ── Clear live status from main Firestore user doc ── */
   try {
     await updateDoc(doc(_db, 'users', _user.uid), {
       isLive:     deleteField(),
@@ -486,13 +664,13 @@ async function endLive() {
     });
   } catch (_) {}
 
-  // Delete the primary live feed post
+  /* ── Delete live feed post from main Firestore ── */
   if (_feedPostId) {
     try { await deleteDoc(doc(_db, 'posts', _feedPostId)); } catch (_) {}
     _feedPostId = null;
   }
 
-  // Mark any share posts for this room as ended
+  /* ── Mark share posts as ended in main Firestore ── */
   try {
     const shareQ = query(
       collection(_db, 'posts'),
@@ -505,15 +683,12 @@ async function endLive() {
     });
   } catch (_) {}
 
-  // Remove the live story bubble
   _deleteLiveStory();
-
-  // Show ended overlay
   _showEndedOverlay(true);
 }
 
 /* ═══════════════════════════════════════════════════
-   LIVE FEED POST — create / delete in 'posts' collection
+   LIVE FEED POST — Firestore 'posts' collection
    ═══════════════════════════════════════════════════ */
 async function _createLiveFeedPost(creatorData) {
   if (!_user || !_roomId) return;
@@ -541,7 +716,7 @@ async function _createLiveFeedPost(creatorData) {
 }
 
 /* ═══════════════════════════════════════════════════
-   LIVE STORY — create / delete a story-bar bubble
+   LIVE STORY — Firestore 'stories' collection
    ═══════════════════════════════════════════════════ */
 function _liveStoryId() {
   return `live_${_user.uid}`;
@@ -576,7 +751,7 @@ async function _deleteLiveStory() {
 }
 
 /* ═══════════════════════════════════════════════════
-   FOLLOWER LIVE NOTIFICATIONS
+   FOLLOWER LIVE NOTIFICATIONS — Firestore 'notifications'
    ═══════════════════════════════════════════════════ */
 async function _notifyFollowersLive(creatorData) {
   if (!_user) return;
@@ -616,45 +791,89 @@ async function _notifyFollowersLive(creatorData) {
    VIEWER — join a live stream
    ═══════════════════════════════════════════════════ */
 async function _startViewer() {
+  _dbg('_startViewer() | roomId=' + _roomId);
   let roomData = null;
-  try {
-    const snap = await getDoc(doc(_db, 'liveRooms', _roomId));
-    if (!snap.exists() || snap.data().status !== 'live') {
+
+  /* ── Read room status from LIVE RTDB ──
+     Retry up to 8 times (16 s) to handle the race where the viewer
+     opens the share link a few seconds before the broadcaster's
+     RTDB write has propagated.                                        */
+  const _MAX_RETRIES = 8;
+  const _RETRY_MS    = 2000;
+
+  for (let attempt = 0; attempt < _MAX_RETRIES; attempt++) {
+    try {
+      _dbg('liveRooms check attempt ' + (attempt+1) + '/' + _MAX_RETRIES);
+      const snap = await get(ref(_liveDB, `liveRooms/${_roomId}`));
+      if (snap.exists() && snap.val().status === 'live') {
+        _dbg('✅ Room found — status=live');
+        roomData = snap.val();
+        break;   // found a live room
+      }
+      // Room exists but ended — no point retrying
+      if (snap.exists() && snap.val().status === 'ended') {
+        _dbg('Room status=ended — not retrying', true);
+        _hideLoading();
+        _showEndedOverlay(false, '⚫ Stream Ended', 'This live stream has already ended.');
+        return;
+      }
+      _dbg('Room not found (attempt ' + (attempt+1) + ') — status=' + (snap.exists() ? snap.val().status : 'missing'));
+    } catch (e) {
+      _dbg('❌ liveRooms read FAILED: ' + e.message, true);
       _hideLoading();
-      _showEndedOverlay(false, '⚫ Stream Not Found', 'This live stream has ended or does not exist.');
+      toast('⚠️ Could not connect: ' + e.message);
       return;
     }
-    roomData = snap.data();
-  } catch (e) {
-    _hideLoading();
-    toast('⚠️ Could not connect: ' + e.message);
+    // Room not found yet — show waiting banner and retry
+    if (attempt === 0) {
+      _hideLoading();
+      _showStage();
+      _showConnBanner('⏳ Waiting for stream…', 'Broadcaster is setting up — please wait…');
+    }
+    await new Promise(r => setTimeout(r, _RETRY_MS));
+  }
+
+  if (!roomData) {
+    _dbg('Room not found after all retries', true);
+    _showEndedOverlay(false, '⚫ Stream Not Found', 'This live stream has ended or does not exist.');
     return;
   }
 
   _hideLoading();
   _showStage();
+  _hideConnBanner();
   _populateCreatorInfo(roomData);
   _setupViewerControls(roomData);
   _subscribeChat();
 
-  // Increment viewer count
+  /* ── Increment viewer count in LIVE RTDB ── */
   try {
-    await updateDoc(doc(_db, 'liveRooms', _roomId), { viewers: increment(1) });
+    const viewersRef = ref(_liveDB, `liveRooms/${_roomId}/viewers`);
+    const currentSnap = await get(viewersRef);
+    await set(viewersRef, (currentSnap.val() || 0) + 1);
   } catch (_) {}
 
-  // Watch for stream ending
-  onSnapshot(doc(_db, 'liveRooms', _roomId), snap => {
-    if (!snap.exists() || snap.data().status === 'ended') {
-      _showEndedOverlay(false, '⚫ Stream Ended', `${roomData.hostName} has ended the live stream.`);
-    }
-    const d = snap.data() || {};
+  /* ── Watch for stream ending via LIVE RTDB ──
+     Skip the very first emission (which just echoes what we already
+     confirmed is 'live') to avoid instantly showing the ended overlay
+     if there is micro-lag between the write and the onValue callback.  */
+  let _roomWatchSeenFirst = false;
+  const roomWatchRef = ref(_liveDB, `liveRooms/${_roomId}`);
+  onValue(roomWatchRef, snap => {
+    const d = snap.val() || {};
     if (D.viewerCount) D.viewerCount.textContent = '👁 ' + (d.viewers || 0);
     if (D.likeCount)   D.likeCount.textContent   = '❤️ ' + (d.likes   || 0);
+    if (!_roomWatchSeenFirst) {
+      _roomWatchSeenFirst = true;
+      return;   // skip the first echo — we already verified status above
+    }
+    if (!snap.exists() || d.status === 'ended') {
+      _showEndedOverlay(false, '⚫ Stream Ended', `${roomData.hostName} has ended the live stream.`);
+    }
   });
 
   await _startViewerWebRTC(roomData);
 
-  // Decrement viewer count on leave
   window.addEventListener('beforeunload', _viewerLeave);
   window.addEventListener('pagehide',     _viewerLeave);
 }
@@ -664,9 +883,15 @@ async function _viewerLeave() {
   _viewerLeftFlag = true;
 
   if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
-  if (_rtcSignalUnsub) { _rtcSignalUnsub(); _rtcSignalUnsub = null; }
+  if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
 
-  try { await updateDoc(doc(_db, 'liveRooms', _roomId), { viewers: increment(-1) }); } catch (_) {}
+  /* ── Decrement viewer count in LIVE RTDB ── */
+  try {
+    const viewersRef = ref(_liveDB, `liveRooms/${_roomId}/viewers`);
+    const snap = await get(viewersRef);
+    const cur = snap.val() || 0;
+    await set(viewersRef, Math.max(0, cur - 1));
+  } catch (_) {}
 }
 
 function _setupViewerControls(roomData) {
@@ -680,175 +905,198 @@ function _setupViewerControls(roomData) {
 
 /* ═══════════════════════════════════════════════════
    WebRTC — CREATOR
-   Creates offer, writes to Firestore, listens for answer.
+   Uses LIVE Realtime Database for signaling.
    ═══════════════════════════════════════════════════ */
 async function _startCreatorWebRTC() {
-  console.log('[Creator WebRTC] Starting. roomId =', _roomId);
-  console.log('[Creator WebRTC] Auth uid =', _user?.uid, '| anonymous =', _user?.isAnonymous);
+  _dbg('_startCreatorWebRTC() | roomId=' + _roomId);
 
   if (!_localStream) {
+    _dbg('ABORT: no local stream', true);
     toast('⚠️ No local stream for WebRTC');
-    console.error('[Creator WebRTC] ABORT — no local stream');
     return;
   }
 
   _rtcPc = new RTCPeerConnection(_ICE_SERVERS);
-  console.log('[Creator WebRTC] RTCPeerConnection created');
+  _dbg('RTCPeerConnection created');
 
-  // Attach local tracks
+  // Add tracks with explicit sendonly direction — required on some mobile browsers
+  // to prevent createOffer() from hanging or producing an empty SDP
   _localStream.getTracks().forEach(track => {
-    _rtcPc.addTrack(track, _localStream);
-    console.log('[Creator WebRTC] Track added to PC:', track.kind, track.label);
+    const sender = _rtcPc.addTrack(track, _localStream);
+    _dbg('Track added: ' + track.kind);
+  });
+
+  // Ensure transceivers are explicitly set to sendonly (belt+braces for iOS Safari)
+  _rtcPc.getTransceivers().forEach(tc => {
+    tc.direction = 'sendonly';
   });
 
   _rtcPc.onconnectionstatechange = () => {
-    console.log('[Creator WebRTC] Connection state →', _rtcPc.connectionState);
+    _dbg('PC state → ' + _rtcPc.connectionState);
     if (_rtcPc.connectionState === 'connected') {
       toast('🟢 Viewer connected via WebRTC');
     }
   };
+  _rtcPc.oniceconnectionstatechange = () => { _dbg('ICE conn → ' + _rtcPc.iceConnectionState); };
+  _rtcPc.onicegatheringstatechange  = () => { _dbg('ICE gather → ' + _rtcPc.iceGatheringState);  };
 
-  _rtcPc.oniceconnectionstatechange = () => {
-    console.log('[Creator WebRTC] ICE connection state →', _rtcPc.iceConnectionState);
+  const connRef = ref(_liveDB, `liveConnections/${_roomId}`);
+  const _pendingCandidates = [];
+  let   _offerWritten      = false;
+
+  // Wire BEFORE createOffer so no early candidates are dropped
+  _rtcPc.onicecandidate = async (e) => {
+    if (!e.candidate) { _dbg('ICE gathering complete'); return; }
+    if (!_offerWritten) {
+      _pendingCandidates.push(e.candidate.toJSON());
+      _dbg('ICE buffered [' + e.candidate.type + ']');
+      return;
+    }
+    try { await push(ref(_liveDB, `liveConnections/${_roomId}/creatorCandidates`), e.candidate.toJSON()); }
+    catch (err) { _dbg('ICE write err: ' + err.message, true); }
   };
 
-  _rtcPc.onicegatheringstatechange = () => {
-    console.log('[Creator WebRTC] ICE gathering state →', _rtcPc.iceGatheringState);
-  };
-
-  // Create offer and set local description FIRST
-  const offer = await _rtcPc.createOffer();
-  await _rtcPc.setLocalDescription(offer);
-  console.log('[Creator WebRTC] Local description set (offer). SDP length =', offer.sdp.length);
-
-  // Write the offer doc to Firestore — this MUST complete before ICE writes
-  console.log('[Creator WebRTC] Writing offer to liveConnections/' + _roomId + ' …');
+  // createOffer with a 10-second timeout so mobile stalls are visible
+  _dbg('createOffer()…');
+  let offer;
   try {
-    await setDoc(doc(_db, 'liveConnections', _roomId), {
-      offer:             { type: offer.type, sdp: offer.sdp },
-      creatorCandidates: [],
-      viewerCandidates:  [],
-    });
-    console.log('[Creator WebRTC] ✅ Offer written to Firestore successfully');
+    offer = await Promise.race([
+      _rtcPc.createOffer(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('createOffer timed out after 10s')), 10000)),
+    ]);
   } catch (e) {
-    console.error('[Creator WebRTC] ❌ Firestore write FAILED:', e.code, e.message);
+    _dbg('❌ createOffer FAILED: ' + e.message, true);
+    toast('⚠️ WebRTC error: ' + e.message);
+    return;
+  }
+
+  _dbg('setLocalDescription…');
+  try {
+    await _rtcPc.setLocalDescription(offer);
+  } catch (e) {
+    _dbg('❌ setLocalDescription FAILED: ' + e.message, true);
+    toast('⚠️ WebRTC error: ' + e.message);
+    return;
+  }
+  _dbg('Local desc set. SDP len=' + offer.sdp.length);
+
+  // Write offer to RTDB
+  _dbg('Writing offer → RTDB…');
+  try {
+    await set(connRef, {
+      offer:             { type: offer.type, sdp: offer.sdp },
+      creatorCandidates: {},
+      viewerCandidates:  {},
+    });
+    _offerWritten = true;
+    _dbg('✅ Offer written to RTDB');
+  } catch (e) {
+    _dbg('❌ RTDB offer write FAILED: ' + e.code + ' ' + e.message, true);
     toast('⚠️ Could not write offer: ' + e.message);
     return;
   }
 
-  // NOW wire up ICE — the doc already exists so arrayUnion is safe
-  _rtcPc.onicecandidate = async (e) => {
-    if (!e.candidate) {
-      console.log('[Creator WebRTC] ICE gathering complete (null candidate)');
-      return;
-    }
-    console.log('[Creator WebRTC] New ICE candidate:', e.candidate.type, e.candidate.protocol);
-    try {
-      await updateDoc(doc(_db, 'liveConnections', _roomId), {
-        creatorCandidates: arrayUnion(e.candidate.toJSON()),
-      });
-    } catch (err) {
-      console.warn('[Creator WebRTC] ICE write error:', err.code, err.message);
-    }
-  };
+  // Register onDisconnect NOW — after offer is confirmed in RTDB
+  try {
+    await onDisconnect(ref(_liveDB, `liveRooms/${_roomId}`)).update({
+      status: 'ended', isLive: false, endedAt: Date.now(),
+    });
+    _dbg('✅ onDisconnect registered');
+  } catch (_) {}
 
-  // Track which viewer ICE candidates we have already applied
-  let _appliedViewerCandCount = 0;
+  // Flush buffered candidates
+  if (_pendingCandidates.length) {
+    _dbg('Flushing ' + _pendingCandidates.length + ' buffered ICE candidate(s)');
+    for (const cand of _pendingCandidates) {
+      try { await push(ref(_liveDB, `liveConnections/${_roomId}/creatorCandidates`), cand); } catch (_) {}
+    }
+    _pendingCandidates.length = 0;
+  }
 
-  // Listen for viewer answer + new ICE candidates
-  _rtcSignalUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
+  // Watch for viewer answer + ICE
+  let _appliedViewerCandKeys = new Set();
+  _rtcSignalRef   = connRef;
+  _rtcSignalUnsub = onValue(connRef, async snap => {
     if (!snap.exists()) return;
-    const d = snap.data();
+    const d = snap.val();
 
-    // Apply answer exactly once
     if (d.answer && _rtcPc.remoteDescription === null) {
-      console.log('[Creator WebRTC] Answer arrived — setting remote description');
+      _dbg('Viewer answer arrived — setting remote desc');
       try {
         await _rtcPc.setRemoteDescription(new RTCSessionDescription(d.answer));
-        console.log('[Creator WebRTC] ✅ Remote description set (answer)');
-      } catch (err) {
-        console.warn('[Creator WebRTC] setRemoteDescription error:', err.message);
-      }
+        _dbg('✅ Remote desc set (answer)');
+      } catch (err) { _dbg('❌ setRemoteDesc error: ' + err.message, true); }
     }
 
-    // Only apply viewer ICE candidates we haven't processed yet
-    const cands = d.viewerCandidates || [];
-    if (_rtcPc.remoteDescription && cands.length > _appliedViewerCandCount) {
-      const newCands = cands.slice(_appliedViewerCandCount);
-      console.log('[Creator WebRTC] Applying', newCands.length, 'new viewer ICE candidate(s)');
-      for (const cand of newCands) {
+    if (_rtcPc.remoteDescription && d.viewerCandidates) {
+      for (const [key, cand] of Object.entries(d.viewerCandidates)) {
+        if (_appliedViewerCandKeys.has(key)) continue;
+        _appliedViewerCandKeys.add(key);
         try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
-      _appliedViewerCandCount = cands.length;
     }
   });
 
+  _dbg('📡 Creator WebRTC ready — watching for viewer answer');
   toast('📡 Waiting for viewers…');
 }
 
 /* ═══════════════════════════════════════════════════
    WebRTC — VIEWER
-   Reads offer, creates answer, exchanges ICE.
+   Uses LIVE Realtime Database for signaling.
    ═══════════════════════════════════════════════════ */
 async function _startViewerWebRTC(roomData) {
-  console.log('[Viewer WebRTC] Starting. roomId =', _roomId);
-  console.log('[Viewer WebRTC] Auth uid =', _user?.uid, '| anonymous =', _user?.isAnonymous);
+  _dbg('_startViewerWebRTC() | roomId=' + _roomId);
 
   _showConnBanner('Connecting…', 'Establishing connection with ' + roomData.hostName);
 
-  // Read offer from Firestore BEFORE creating RTCPeerConnection.
-  // If the offer isn't there yet, poll without allocating a PC — no orphan connections.
+  const connRef = ref(_liveDB, `liveConnections/${_roomId}`);
+
+  /* ── Read offer from LIVE RTDB ── */
+  _dbg('Reading liveConnections/' + _roomId + ' …');
   let connSnap;
-  console.log('[Viewer WebRTC] Reading liveConnections/' + _roomId + ' …');
   try {
-    connSnap = await getDoc(doc(_db, 'liveConnections', _roomId));
+    connSnap = await get(connRef);
   } catch (e) {
-    console.error('[Viewer WebRTC] ❌ Firestore read FAILED:', e.code, e.message);
+    _dbg('❌ RTDB read FAILED: ' + e.code + ' ' + e.message, true);
     _showConnBanner('⚠️ Signaling error', 'Could not read offer: ' + e.message);
     return;
   }
 
-  if (!connSnap.exists() || !connSnap.data().offer) {
-    console.log('[Viewer WebRTC] No offer yet in liveConnections/' + _roomId + ' — polling…');
-    _showConnBanner('⏳ Waiting for stream…', 'No offer yet — retrying…');
-    // Poll every 2 s — no RTCPeerConnection allocated until an offer exists
-    const pollInterval = setInterval(async () => {
-      try {
-        const retry = await getDoc(doc(_db, 'liveConnections', _roomId));
-        if (retry.exists() && retry.data().offer) {
-          console.log('[Viewer WebRTC] Offer found on poll — proceeding');
-          clearInterval(pollInterval);
-          _startViewerWebRTC(roomData);
-        }
-      } catch (err) {
-        console.warn('[Viewer WebRTC] Poll read error:', err.code, err.message);
-      }
-    }, 2000);
+  if (!connSnap.exists() || !connSnap.val().offer) {
+    _dbg('No offer yet — watching liveConnections/' + _roomId);
+    _showConnBanner('⏳ Waiting for stream…', 'Broadcaster is setting up — please wait…');
+    const offerWaitRef = ref(_liveDB, `liveConnections/${_roomId}`);
+    let _offerWaitListener;
+    _offerWaitListener = onValue(offerWaitRef, async snap => {
+      _dbg('onValue fired — exists=' + snap.exists() + ' hasOffer=' + !!(snap.exists() && snap.val().offer));
+      if (!snap.exists() || !snap.val().offer) return;
+      _dbg('✅ Offer arrived — proceeding');
+      off(offerWaitRef, _offerWaitListener);
+      _startViewerWebRTC(roomData);
+    });
     return;
   }
 
-  console.log('[Viewer WebRTC] ✅ Offer found in Firestore. Fields:',
-    Object.keys(connSnap.data()).join(', '));
+  _dbg('✅ Offer found in RTDB');
 
-  // Offer is available — now create the peer connection
   if (_rtcPc) { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   _rtcPc = new RTCPeerConnection(_ICE_SERVERS);
-  console.log('[Viewer WebRTC] RTCPeerConnection created');
+  _dbg('RTCPeerConnection created');
 
-  // When remote track arrives, attach to <video>
   _rtcPc.ontrack = (e) => {
-    console.log('[Viewer WebRTC] ✅ Track received:', e.track.kind, e.track.label);
+    _dbg('✅ Track received: ' + e.track.kind + ' ' + e.track.label);
     if (!D.liveVideo) return;
     const stream = e.streams[0] || new MediaStream([e.track]);
     D.liveVideo.srcObject = stream;
     D.liveVideo.muted = true;
-    D.liveVideo.play().catch(err => console.warn('[Viewer WebRTC] play() error:', err.message));
+    D.liveVideo.play().catch(err => _dbg('play() error: ' + err.message, true));
     _showUnmutePrompt();
     _hideConnBanner();
   };
 
   _rtcPc.onconnectionstatechange = () => {
-    console.log('[Viewer WebRTC] Connection state →', _rtcPc.connectionState);
+    _dbg('PC state → ' + _rtcPc.connectionState);
     if (_rtcPc.connectionState === 'connected') {
       _hideConnBanner();
       toast('🟢 Connected to live stream');
@@ -858,87 +1106,105 @@ async function _startViewerWebRTC(roomData) {
   };
 
   _rtcPc.oniceconnectionstatechange = () => {
-    console.log('[Viewer WebRTC] ICE connection state →', _rtcPc.iceConnectionState);
+    _dbg('ICE conn → ' + _rtcPc.iceConnectionState);
   };
 
   _rtcPc.onicegatheringstatechange = () => {
-    console.log('[Viewer WebRTC] ICE gathering state →', _rtcPc.iceGatheringState);
+    _dbg('ICE gather → ' + _rtcPc.iceGatheringState);
   };
 
-  const offer = connSnap.data().offer;
-  console.log('[Viewer WebRTC] Setting remote description (offer)…');
+  /* ── Set remote description (offer) ── */
+  const offer = connSnap.val().offer;
+  _dbg('Setting remote desc (offer)…');
   try {
     await _rtcPc.setRemoteDescription(new RTCSessionDescription(offer));
-    console.log('[Viewer WebRTC] ✅ Remote description set');
+    _dbg('✅ Remote desc set (offer)');
   } catch (e) {
-    console.error('[Viewer WebRTC] ❌ setRemoteDescription failed:', e.message);
+    _dbg('❌ setRemoteDescription failed: ' + e.message, true);
     _showConnBanner('⚠️ Offer error', 'Could not set offer: ' + e.message);
     return;
   }
 
-  // Create answer
-  const answer = await _rtcPc.createAnswer();
-  await _rtcPc.setLocalDescription(answer);
-  console.log('[Viewer WebRTC] Local description set (answer). SDP length =', answer.sdp.length);
+  /* ── Wire ICE handler BEFORE createAnswer so viewer candidates aren't lost ── */
+  const _viewerPendingCands = [];
+  let   _viewerAnswerWritten = false;
 
-  // Wire up ICE — doc already exists so updateDoc is safe
   _rtcPc.onicecandidate = async (e) => {
     if (!e.candidate) {
-      console.log('[Viewer WebRTC] ICE gathering complete (null candidate)');
+      _dbg('Viewer ICE gathering complete');
       return;
     }
-    console.log('[Viewer WebRTC] New ICE candidate:', e.candidate.type, e.candidate.protocol);
+    if (!_viewerAnswerWritten) {
+      _viewerPendingCands.push(e.candidate.toJSON());
+      _dbg('Viewer ICE buffered [' + e.candidate.type + '/' + e.candidate.protocol + ']');
+      return;
+    }
+    _dbg('Viewer ICE → RTDB [' + e.candidate.type + '/' + e.candidate.protocol + ']');
     try {
-      await updateDoc(doc(_db, 'liveConnections', _roomId), {
-        viewerCandidates: arrayUnion(e.candidate.toJSON()),
-      });
+      await push(ref(_liveDB, `liveConnections/${_roomId}/viewerCandidates`), e.candidate.toJSON());
     } catch (err) {
-      console.warn('[Viewer WebRTC] ICE write error:', err.code, err.message);
+      _dbg('Viewer ICE write error: ' + err.message, true);
     }
   };
 
-  // Write answer to Firestore
-  console.log('[Viewer WebRTC] Writing answer to Firestore…');
+  _dbg('createAnswer()…');
+  const answer = await _rtcPc.createAnswer();
+  await _rtcPc.setLocalDescription(answer);
+  _dbg('Local desc set (answer). SDP len=' + answer.sdp.length);
+
+  /* ── Write answer to RTDB ── */
+  _dbg('Writing answer to RTDB…');
   try {
-    await updateDoc(doc(_db, 'liveConnections', _roomId), {
+    await update(connRef, {
       answer: { type: answer.type, sdp: answer.sdp },
     });
-    console.log('[Viewer WebRTC] ✅ Answer written to Firestore');
+    _viewerAnswerWritten = true;
+    _dbg('✅ Answer written to RTDB');
   } catch (e) {
-    console.error('[Viewer WebRTC] ❌ Answer write FAILED:', e.code, e.message);
+    _dbg('❌ Answer write FAILED: ' + e.code + ' ' + e.message, true);
     _showConnBanner('⚠️ Answer write error', e.message);
     return;
   }
 
-  // Apply creator ICE candidates already present in the snapshot
-  let _appliedCreatorCandCount = 0;
-  const existingCands = connSnap.data().creatorCandidates || [];
-  console.log('[Viewer WebRTC] Applying', existingCands.length, 'existing creator ICE candidate(s)');
-  for (const cand of existingCands) {
+  /* ── Flush any viewer ICE candidates buffered before the answer was written ── */
+  if (_viewerPendingCands.length) {
+    _dbg('Flushing ' + _viewerPendingCands.length + ' buffered viewer ICE candidate(s)');
+    for (const cand of _viewerPendingCands) {
+      try { await push(ref(_liveDB, `liveConnections/${_roomId}/viewerCandidates`), cand); } catch (_) {}
+    }
+    _viewerPendingCands.length = 0;
+  }
+
+  /* ── Apply existing creator ICE candidates ── */
+  let _appliedCreatorCandKeys = new Set();
+  const existingCands = connSnap.val().creatorCandidates || {};
+  _dbg('Applying ' + Object.keys(existingCands).length + ' existing creator ICE candidate(s)');
+  for (const [key, cand] of Object.entries(existingCands)) {
+    _appliedCreatorCandKeys.add(key);
     try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
   }
-  _appliedCreatorCandCount = existingCands.length;
 
-  // Listen for new creator ICE candidates — only apply ones we haven't seen yet
-  _rtcSignalUnsub = onSnapshot(doc(_db, 'liveConnections', _roomId), async snap => {
+  /* ── Listen for new creator ICE candidates ── */
+  _rtcSignalRef   = connRef;
+  _rtcSignalUnsub = onValue(connRef, async snap => {
     if (!snap.exists()) return;
-    const d = snap.data();
-    const cands = d.creatorCandidates || [];
-    if (cands.length > _appliedCreatorCandCount) {
-      const newCands = cands.slice(_appliedCreatorCandCount);
-      console.log('[Viewer WebRTC] Applying', newCands.length, 'new creator ICE candidate(s)');
-      for (const cand of newCands) {
+    const d = snap.val();
+    if (d.creatorCandidates) {
+      for (const [key, cand] of Object.entries(d.creatorCandidates)) {
+        if (_appliedCreatorCandKeys.has(key)) continue;
+        _appliedCreatorCandKeys.add(key);
+        _dbg('New creator ICE [' + cand.type + '/' + cand.protocol + ']');
         try { await _rtcPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
-      _appliedCreatorCandCount = cands.length;
     }
   });
 
+  _dbg('📡 Viewer WebRTC ready — handshake complete, waiting for tracks');
   _showConnBanner('🔄 Completing handshake…', 'Answer sent — connecting…');
 }
 
 /* ═══════════════════════════════════════════════════
-   CHAT
+   CHAT — Firestore sub-collection (unchanged)
    ═══════════════════════════════════════════════════ */
 function _subscribeChat() {
   if (!_roomId) return;
@@ -998,7 +1264,7 @@ async function sendChat() {
 }
 
 /* ═══════════════════════════════════════════════════
-   LIKES
+   LIKES — Firestore liveRooms (unchanged)
    ═══════════════════════════════════════════════════ */
 let _hasLiked = false;
 
@@ -1010,8 +1276,11 @@ async function sendLike() {
 
   _spawnHeartBurst();
 
+  /* ── Increment likes in LIVE RTDB ── */
   try {
-    await updateDoc(doc(_db, 'liveRooms', _roomId), { likes: increment(1) });
+    const likesRef = ref(_liveDB, `liveRooms/${_roomId}/likes`);
+    const snap = await get(likesRef);
+    await set(likesRef, (snap.val() || 0) + 1);
   } catch (_) {}
 
   setTimeout(() => {
@@ -1078,7 +1347,7 @@ function _showEndedOverlay(wasCreator, title, sub) {
     : 'The creator has ended this live stream.');
   D.ended.classList.add('visible');
   if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
-  if (_rtcSignalUnsub) { _rtcSignalUnsub(); _rtcSignalUnsub = null; }
+  if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
   if (_chatUnsub) { _chatUnsub(); _chatUnsub = null; }
 }
 
@@ -1101,7 +1370,9 @@ function shareLive() {
 
 function _buildLiveUrl() {
   const base = window.location.origin + window.location.pathname.replace('live.html', '');
-  return base + 'live.html#watch=' + encodeURIComponent(_roomId);
+  // roomId only contains [a-zA-Z0-9_] — no encoding needed; encoding causes
+  // mismatches when links are shared through apps that mangle %XX sequences
+  return base + 'live.html#watch=' + _roomId;
 }
 
 function _openShareModal() {

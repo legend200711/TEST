@@ -185,7 +185,10 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && (resource.data.uid == request.auth.uid
             || resource.data.authorUid == request.auth.uid
-            || isModerator());
+            || isModerator()
+            // Any signed-in user may like/unlike any post
+            || request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['likedBy', 'likes']));
       allow delete: if isSignedIn()
         && (resource.data.uid == request.auth.uid
             || resource.data.authorUid == request.auth.uid

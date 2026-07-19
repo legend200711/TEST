@@ -30,11 +30,13 @@
         "destination": "/index.html"
       }
     ],
+    "cleanUrls": false,
+    "trailingSlash": false,
     "headers": [
       {
-        "source": "**/*.@(js|mjs)",
+        "source": "**/*.@(js|mjs|html)",
         "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=3600" }
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
         ]
       }
     ]
