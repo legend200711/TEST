@@ -24,6 +24,12 @@
         ".write": "auth != null"
       }
     },
+    "liveGuests": {
+      "$roomId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
     "stormRooms": {
       "$roomId": {
         ".read":  "auth != null",

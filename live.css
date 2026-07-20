@@ -960,3 +960,75 @@ body.is-creator .live-viewer-actions { display: none !important; }
 body.is-viewer .guest-layout-btn      { display: none !important; }
 body.is-viewer .guest-request-queue   { display: none !important; }
 body.is-viewer #layoutSettingsPanel   { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════
+   VIEWER GUEST CARDS (vgc) — shown to non-host viewers
+   Replaces the <video> element with an avatar + overlay.
+   Uses the same .guest-cell layout so the grid CSS applies.
+   ═══════════════════════════════════════════════════════ */
+
+/* Avatar circle — centred in the cell */
+.vgc-avatar {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -60%);
+  width: 64px; height: 64px; border-radius: 50%;
+  background: #0B1F3A center/cover no-repeat;
+  border: 2.5px solid rgba(0,174,239,0.6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 800; color: #00AEEF;
+  overflow: hidden;
+  box-shadow: 0 0 18px rgba(0,174,239,0.3);
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+/* Camera-off overlay — dark bg + icon, shown when camOn === false */
+.vgc-cam-off {
+  display: none;
+  position: absolute; inset: 0;
+  background: #070d1a;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px; z-index: 3;
+  color: #3a5a7a;
+}
+.vgc-cam-off span:first-child { font-size: 30px; }
+.vgc-cam-off span:last-child  { font-size: 11px; }
+.vgc-cam-off--visible { display: flex !important; }
+
+/* Status bar — top-left corner icons */
+.vgc-status {
+  position: absolute;
+  top: 5px; left: 6px;
+  display: flex; align-items: center; gap: 3px;
+  z-index: 4;
+}
+.vgc-icon-cam,
+.vgc-icon-mic {
+  font-size: 12px;
+  background: rgba(0,0,0,0.55);
+  border-radius: 4px;
+  padding: 1px 3px;
+  line-height: 1.4;
+}
+
+/* HOST badge */
+.vgc-host-badge {
+  font-size: 9px; font-weight: 800;
+  background: #ff2244;
+  color: #fff;
+  border-radius: 5px;
+  padding: 1px 5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Name label — use existing .guest-cell-name but add a Live dot for host */
+.vgc-cell.host-cell .vgc-name::before {
+  content: '🔴 ';
+  font-size: 9px;
+}
+
+/* Viewer cells have no remove button — ensure it never shows */
+.vgc-cell .guest-cell-remove { display: none !important; }

@@ -115,6 +115,7 @@ let _guestStream       = null;     // viewer's own guest media stream
 let _guestCamOn        = true;     // viewer's guest cam state
 let _guestMicOn        = true;     // viewer's guest mic state
 let _shownReqUids      = new Set(); // host: tracks UIDs already shown in request queue
+let _viewerGuestUnsub  = null;     // viewer: RTDB listener for liveGuests presence
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -501,6 +502,19 @@ async function startLive() {
   // ── Start listening for guest box requests ──
   _hostListenForGuestRequests();
 
+  // ── Publish host's own presence to liveGuests (viewers see cam/mic status) ──
+  try {
+    await set(ref(_liveDB, `liveGuests/${_roomId}/_host_`), {
+      uid:      _user.uid,
+      name:     creatorData.hostName,
+      avatar:   creatorData.hostAvatar,
+      isHost:   true,
+      camOn:    _camOn,
+      micOn:    _micOn,
+      joinedAt: Date.now(),
+    });
+  } catch (_) {}
+
   toast('🔴 You are LIVE!');
 
   // ── Non-critical side-work ──
@@ -621,6 +635,8 @@ function toggleLiveCam() {
   if (_localStream) _localStream.getVideoTracks().forEach(t => t.enabled = _camOn);
   if (D.btnCam) { D.btnCam.textContent = _camOn ? '📷' : '🚫'; D.btnCam.classList.toggle('off', !_camOn); }
   if (D.camOffOverlay) D.camOffOverlay.classList.toggle('visible', !_camOn);
+  // Broadcast host cam state to viewers
+  if (_roomId) try { update(ref(_liveDB, `liveGuests/${_roomId}/_host_`), { camOn: _camOn }); } catch(_) {}
 }
 
 function toggleLiveMic() {
@@ -628,6 +644,8 @@ function toggleLiveMic() {
   if (_localStream) _localStream.getAudioTracks().forEach(t => t.enabled = _micOn);
   if (D.btnMic) { D.btnMic.textContent = _micOn ? '🎤' : '🔇'; D.btnMic.classList.toggle('off', !_micOn); }
   toast(_micOn ? 'Mic on' : 'Mic muted');
+  // Broadcast host mic state to viewers
+  if (_roomId) try { update(ref(_liveDB, `liveGuests/${_roomId}/_host_`), { micOn: _micOn }); } catch(_) {}
 }
 
 async function flipLiveCamera() {
@@ -889,6 +907,9 @@ async function _startViewer() {
   _setupViewerControls(roomData);
   _subscribeChat();
 
+  /* ── Subscribe to live guest presence (shows guest boxes to viewers) ── */
+  _startViewerGuestGrid();
+
   /* ── Increment viewer count in LIVE RTDB ── */
   try {
     const viewersRef = ref(_liveDB, `liveRooms/${_roomId}/viewers`);
@@ -924,6 +945,12 @@ async function _viewerLeave() {
 
   // Stop guest media stream if viewer was in a box
   if (_guestStream) { try { _guestStream.getTracks().forEach(t => t.stop()); } catch(_){} _guestStream = null; }
+
+  // Tear down viewer guest grid listener
+  if (_viewerGuestUnsub) {
+    try { off(ref(_liveDB, `liveGuests/${_roomId}`)); } catch(_) {}
+    _viewerGuestUnsub = null;
+  }
 
   // Clean up any pending box request (RTDB + Firestore)
   if (_user && _roomId) {
@@ -1545,6 +1572,117 @@ function _esc(s) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   VIEWER GUEST GRID — real-time presence display for followers
+   ─────────────────────────────────────────────────────────────
+   Watches liveGuests/{roomId} in RTDB.
+   Each entry: { uid, name, avatar, camOn, micOn, isHost? }
+   Renders placeholder cards (no live video) so all viewers see
+   who is in each box and their cam/mic status in real time.
+   ═══════════════════════════════════════════════════════════════ */
+
+function _startViewerGuestGrid() {
+  if (!_roomId) return;
+  const guestsRef = ref(_liveDB, `liveGuests/${_roomId}`);
+
+  _viewerGuestUnsub = onValue(guestsRef, snap => {
+    const grid = D.guestGrid;
+    if (!grid) return;
+
+    // Build current set of UIDs from RTDB snapshot
+    const incoming = {};
+    if (snap.exists()) {
+      snap.forEach(child => {
+        const g = child.val();
+        if (g && g.uid) incoming[child.key] = g;
+      });
+    }
+
+    // ── Remove cards for guests who left ──
+    grid.querySelectorAll('.vgc-cell').forEach(card => {
+      if (!incoming[card.dataset.guestKey]) card.remove();
+    });
+
+    // ── Add or update cards for current guests ──
+    const orderedKeys = Object.keys(incoming).sort((a, b) => {
+      // _host_ always first, then by joinedAt
+      if (a === '_host_') return -1;
+      if (b === '_host_') return  1;
+      return (incoming[a].joinedAt || 0) - (incoming[b].joinedAt || 0);
+    });
+
+    orderedKeys.forEach(key => {
+      const g = incoming[key];
+      let card = grid.querySelector(`.vgc-cell[data-guest-key="${key}"]`);
+
+      if (!card) {
+        // ── Create new card ──
+        card = document.createElement('div');
+        card.className = 'guest-cell vgc-cell' + (g.isHost ? ' host-cell' : '');
+        card.dataset.guestKey = key;
+        card.dataset.uid      = g.uid;
+
+        // Avatar circle
+        const avatarWrap = document.createElement('div');
+        avatarWrap.className = 'vgc-avatar';
+        if (g.avatar) {
+          avatarWrap.style.backgroundImage = `url('${_esc(g.avatar)}')`;
+        } else {
+          avatarWrap.textContent = (g.name || '?')[0].toUpperCase();
+        }
+        card.appendChild(avatarWrap);
+
+        // Camera-off overlay
+        const camOffEl = document.createElement('div');
+        camOffEl.className = 'vgc-cam-off';
+        camOffEl.innerHTML = '<span>📷</span><span>Camera off</span>';
+        card.appendChild(camOffEl);
+
+        // Name label
+        const nameEl = document.createElement('div');
+        nameEl.className = 'guest-cell-name vgc-name';
+        nameEl.textContent = g.isHost ? (g.name + ' (Host)') : (g.name || 'Guest');
+        card.appendChild(nameEl);
+
+        // Status icons bar
+        const statusBar = document.createElement('div');
+        statusBar.className = 'vgc-status';
+        statusBar.innerHTML = `
+          <span class="vgc-icon-cam">${g.camOn !== false ? '📷' : '🚫'}</span>
+          <span class="vgc-icon-mic">${g.micOn !== false ? '🎤' : '🔇'}</span>
+          ${g.isHost ? '<span class="vgc-host-badge">HOST</span>' : ''}
+        `;
+        card.appendChild(statusBar);
+
+        // Insert: host always first
+        if (g.isHost) {
+          grid.insertBefore(card, grid.firstChild);
+        } else {
+          grid.appendChild(card);
+        }
+      } else {
+        // ── Update existing card ──
+        const camIcon = card.querySelector('.vgc-icon-cam');
+        const micIcon = card.querySelector('.vgc-icon-mic');
+        const camOff  = card.querySelector('.vgc-cam-off');
+        if (camIcon) camIcon.textContent = g.camOn !== false ? '📷' : '🚫';
+        if (micIcon) micIcon.textContent = g.micOn !== false ? '🎤' : '🔇';
+        if (camOff)  camOff.classList.toggle('vgc-cam-off--visible', g.camOn === false);
+      }
+    });
+
+    // ── Show/hide grid based on whether any guests are present ──
+    const guestCount = orderedKeys.filter(k => !incoming[k].isHost).length;
+    grid.dataset.count = guestCount.toString();
+    if (guestCount > 0) {
+      grid.classList.add('has-guests');
+    } else {
+      grid.classList.remove('has-guests');
+    }
+    _applyGuestLayout();
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
    GUEST BOX SYSTEM
    ─────────────────────────────────────────────────────────────
    RTDB paths used:
@@ -1727,6 +1865,8 @@ function _toggleGuestCam() {
   if (D.btnGuestCamLabel) D.btnGuestCamLabel.textContent = _guestCamOn ? 'Cam' : 'Cam Off';
   const icon = D.btnGuestCam && D.btnGuestCam.querySelector('span:first-child');
   if (icon) icon.textContent = _guestCamOn ? '📷' : '🚫';
+  // Broadcast cam state so host and other viewers see the change
+  if (_user && _roomId) try { update(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`), { camOn: _guestCamOn }); } catch(_) {}
 }
 
 /* ── VIEWER: Guest mic toggle ── */
@@ -1739,6 +1879,8 @@ function _toggleGuestMic() {
   const icon = D.btnGuestMic && D.btnGuestMic.querySelector('span:first-child');
   if (icon) icon.textContent = _guestMicOn ? '🎤' : '🔇';
   toast(_guestMicOn ? 'Mic on' : 'Mic muted');
+  // Broadcast mic state so host and other viewers see the change
+  if (_user && _roomId) try { update(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`), { micOn: _guestMicOn }); } catch(_) {}
 }
 
 /* ── VIEWER: Join as a guest box (answerer) ── */
@@ -2087,6 +2229,18 @@ async function _hostAcceptGuest(req) {
   // Store peer
   _guestPeers[guestUid] = { pc: guestPc, name: req.name, avatar: req.avatar };
 
+  // ── Publish guest presence to RTDB so viewers can see the new box ──
+  try {
+    await set(ref(_liveDB, `liveGuests/${_roomId}/${guestUid}`), {
+      uid:       guestUid,
+      name:      req.name  || 'Guest',
+      avatar:    req.avatar || '',
+      camOn:     true,
+      micOn:     true,
+      joinedAt:  Date.now(),
+    });
+  } catch(_) {}
+
   toast(`✅ ${req.name || 'Guest'} joined!`);
 }
 
@@ -2205,8 +2359,10 @@ function _hostRemoveGuest(uid) {
   }
   // Allow this UID to send a new request in a future session
   _shownReqUids.delete(uid);
-  try { remove(ref(_liveDB, `guestRequests/${_roomId}/${uid}`)); } catch(_) {}
+  try { remove(ref(_liveDB, `guestRequests/${_roomId}/${uid}`)); }  catch(_) {}
   try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${uid}`)); } catch(_) {}
+  // Remove guest presence so viewers' grids update instantly
+  try { remove(ref(_liveDB, `liveGuests/${_roomId}/${uid}`)); } catch(_) {}
 
   const grid = D.guestGrid;
   if (!grid) return;
@@ -2235,10 +2391,11 @@ function _teardownAllGuestPeers() {
     D.guestGrid.classList.remove('has-guests');
     D.guestGrid.dataset.count = '0';
   }
-  // Clean up all signaling + requests for this room (RTDB)
+  // Clean up all signaling + requests + guest presence for this room (RTDB)
   if (_roomId) {
     try { remove(ref(_liveDB, `guestRequests/${_roomId}`)); }  catch(_) {}
     try { remove(ref(_liveDB, `guestSignaling/${_roomId}`)); } catch(_) {}
+    try { remove(ref(_liveDB, `liveGuests/${_roomId}`)); }     catch(_) {}
   }
   // Clean up all pending Firestore boxRequests for this room
   if (_roomId) {
