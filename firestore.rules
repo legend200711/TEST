@@ -641,15 +641,13 @@ service cloud.firestore {
       // Owner reads their own balance; Founder can audit
       allow read: if isOwner(uid) || isFounder();
 
-      // Owner can update their own balance:
-      //   - Sending gifts: balance decreases (enforced by runTransaction in gifts.js)
-      //   - Coin purchases: balance increases via setDoc with merge (demo mode)
-      //     In production replace with Cloud Functions / Admin SDK for purchases;
-      //     remove the `|| request.resource.data.coins > resource.data.coins` branch below.
+      // Owner can update their own balance (used by sendGift runTransaction to deduct coins).
+      // Coin PURCHASES are credited server-side by the capturePayPalOrder Cloud Function
+      // via Admin SDK, which bypasses these rules — no client update path for adding coins.
       allow update: if isOwner(uid)
         && request.resource.data.coins >= 0;
 
-      // Owner creates their own balance doc (used by gift module on first purchase).
+      // Owner creates their own balance doc on first gift send.
       allow create: if isOwner(uid)
         && request.resource.data.coins >= 0;
 

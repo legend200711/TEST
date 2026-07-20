@@ -61,9 +61,13 @@ const _fnRequestPayout = httpsCallable(_giftFns, 'requestPayout');
 /* ── PayPal Sandbox Client ID ── */
 // Replace with your real PayPal Client ID from developer.paypal.com
 // Sandbox: use for testing with anthonytijerinachris@gmail.com
+// ⚠️  REPLACE THIS VALUE before going live — do not ship the placeholder.
 const PAYPAL_CLIENT_ID = 'YOUR_PAYPAL_SANDBOX_CLIENT_ID';
 // Set to false when you go live with a real PayPal Business account
 const PAYPAL_SANDBOX = true;
+
+/* Internal flag so SDK load failures don't hang retry calls */
+let _paypalLoadFailed = false;
 
 /* ─────────────────────────────────────────────
    GIFT CATALOGUE
@@ -254,8 +258,15 @@ export async function sendGift(giftId) {
    BUY COINS — PayPal real payment flow
    ───────────────────────────────────────────── */
 export async function initiateCoinPurchase(packageId) {
-  if (!_currentUser) { _toast('Please sign in.'); return; }
+  if (!_currentUser) { _toast('Please sign in to buy coins.'); return; }
   if (_currentUser.isAnonymous) { _toast('Sign in to buy coins.'); return; }
+
+  // Catch unconfigured placeholder before hitting the network
+  if (!PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID.startsWith('YOUR_')) {
+    _toast('❌ Payment not configured. Contact support.');
+    console.error('[gifts] PAYPAL_CLIENT_ID is still the placeholder value. Set a real Client ID in gifts.js.');
+    return;
+  }
 
   const pkg = COIN_PACKAGES.find(p => p.id === packageId);
   if (!pkg) return;
@@ -273,7 +284,13 @@ export async function initiateCoinPurchase(packageId) {
       createdAt:   serverTimestamp(),
     });
   } catch (e) {
-    _toast('Could not start purchase. Try again.');
+    const code = e?.code || '';
+    if (code === 'permission-denied') {
+      _toast('❌ Permission denied creating purchase. Check Firestore rules.');
+    } else {
+      _toast('❌ Could not start purchase. Check your connection and try again.');
+    }
+    console.error('[gifts] coinPurchases addDoc error:', e);
     return;
   }
 
@@ -285,13 +302,22 @@ export async function initiateCoinPurchase(packageId) {
       purchaseDocId: purchaseRef.id,
     });
     const { orderId } = result.data;
-    if (!orderId) throw new Error('No orderId returned');
+    if (!orderId) throw new Error('No orderId returned from createPayPalOrder');
 
     /* 3. Open PayPal approval modal */
     _openPayPalApprovalModal(pkg, purchaseRef.id, orderId);
   } catch (err) {
-    _toast('PayPal setup failed. Try again.');
-    console.error('[gifts] createPayPalOrder error:', err);
+    const code = err?.code || err?.details?.code || '';
+    if (code === 'unauthenticated') {
+      _toast('❌ Sign in required to buy coins.');
+    } else if (code === 'permission-denied') {
+      _toast('❌ Permission denied. Sign in with a non-anonymous account.');
+    } else if (code === 'unavailable' || code === 'internal') {
+      _toast('❌ Payment service unavailable. Try again in a moment.');
+    } else {
+      _toast('❌ PayPal setup failed. Check console for details.');
+    }
+    console.error('[gifts] createPayPalOrder error — code:', code, '| full:', err);
   }
 }
 
@@ -381,9 +407,11 @@ function _openPayPalApprovalModal(pkg, purchaseDocId, orderId) {
       },
     }).render('#snxPayPalBtnContainer');
 
-  }).catch(() => {
+  }).catch((loadErr) => {
+    console.error('[gifts] PayPal SDK load error:', loadErr?.message || loadErr);
     const container = modal.querySelector('#snxPayPalBtnContainer');
-    if (container) container.innerHTML = '<span style="color:#ff8888;font-size:13px;">Failed to load PayPal. Check your connection.</span>';
+    if (container) container.innerHTML = '<span style="color:#ff8888;font-size:13px;">Failed to load PayPal. Check your internet connection and try again.</span>';
+    _toast('❌ Could not load PayPal. Check your connection.');
   });
 }
 
@@ -395,10 +423,14 @@ function _closePayPalModal() {
 /* Load the PayPal JS SDK script once */
 function _loadPayPalSDK() {
   if (_paypalLoaded) return Promise.resolve();
+  // If a previous load attempt failed, reject immediately — don't hang.
+  if (_paypalLoadFailed) return Promise.reject(new Error('PayPal SDK failed to load previously'));
   if (_paypalLoading) {
-    return new Promise(resolve => {
+    // Poll until the in-flight load resolves or fails
+    return new Promise((resolve, reject) => {
       const check = setInterval(() => {
-        if (_paypalLoaded) { clearInterval(check); resolve(); }
+        if (_paypalLoaded)      { clearInterval(check); resolve(); }
+        else if (_paypalLoadFailed) { clearInterval(check); reject(new Error('PayPal SDK load failed')); }
       }, 100);
     });
   }
@@ -407,8 +439,8 @@ function _loadPayPalSDK() {
     const s = document.createElement('script');
     const mode = PAYPAL_SANDBOX ? '&buyer-country=US' : '';
     s.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD${mode}`;
-    s.onload  = () => { _paypalLoaded = true; _paypalLoading = false; resolve(); };
-    s.onerror = () => { _paypalLoading = false; reject(new Error('PayPal SDK load failed')); };
+    s.onload  = () => { _paypalLoaded = true;  _paypalLoading = false; resolve(); };
+    s.onerror = () => { _paypalLoadFailed = true; _paypalLoading = false; reject(new Error('PayPal SDK load failed — check your PAYPAL_CLIENT_ID')); };
     document.head.appendChild(s);
   });
 }

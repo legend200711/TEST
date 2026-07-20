@@ -9547,7 +9547,7 @@ body.arcade-fs-ios body::after { display:none !important; }
   window.handleLogout = async () => {
       if (currentUser) {
           try { await updateDoc(doc(db, "users", currentUser.uid), { status: "offline", lastSeen: Date.now() }); } catch(_) {}
-          try { await _rtdbSet(_rtdbRef(_presenceRtdb, 'users/' + currentUser.uid), { online: false, live: false, lastSeen: _rtdbServerTimestamp() }); } catch(_) {}
+          try { await _rtdbUpdate(_rtdbRef(_presenceRtdb, 'users/' + currentUser.uid), { online: false, live: false, lastSeen: _rtdbServerTimestamp() }); } catch(_) {}
       }
       signOut(auth);
   };
@@ -9726,7 +9726,11 @@ body.arcade-fs-ios body::after { display:none !important; }
           try {
               const _uStatusRef = _rtdbRef(_presenceRtdb, 'users/' + user.uid);
               await _rtdbUpdate(_uStatusRef, { online: true, lastSeen: _rtdbServerTimestamp() });
-              _rtdbOnDisconnect(_uStatusRef).update({ online: false, lastSeen: _rtdbServerTimestamp() });
+              // Do NOT register an onDisconnect here — live.js manages its own
+              // onDisconnect for the live session.  A navigation from index → live
+              // counts as a disconnect for this tab, which would fire { online: false }
+              // right as the user starts streaming.  The live page re-registers
+              // onDisconnect with { live: false } only (keeping online: true).
           } catch(_) {}
 
           // ── Heartbeat: keep RTDB presence alive every 30 s ──
