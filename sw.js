@@ -10,7 +10,7 @@
  * GitHub Pages (/ShadowNexusSocial/) and any local dev server (/).
  */
 
-const CACHE_VERSION = 'v12';
+const CACHE_VERSION = 'v13';
 const CACHE_NAME    = `shadow-nexus-${CACHE_VERSION}`;
 const MEDIA_CACHE   = `shadow-nexus-media-${CACHE_VERSION}`;
 
@@ -226,11 +226,19 @@ async function _trimMediaCache(cache) {
    ───────────────────────────────────────────── */
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
+    // Take over immediately — all clients will reload via controllerchange
     self.skipWaiting();
   }
   if (event.data?.type === 'CLEAR_CACHE') {
     caches.delete(CACHE_NAME).then(() => {
       event.source?.postMessage({ type: 'CACHE_CLEARED' });
+    });
+  }
+  if (event.data?.type === 'CHECK_UPDATE') {
+    // Client asked if there's a newer SW ready; respond immediately
+    event.source?.postMessage({
+      type:       'UPDATE_STATUS',
+      hasUpdate:  false,  // SW itself can't self-inspect; client handles via reg.waiting
     });
   }
 });

@@ -1174,3 +1174,89 @@ body.is-viewer #layoutSettingsPanel   { display: none !important; }
 .vgc-cell .vgc-status {
   z-index: 5;
 }
+
+/* ═══════════════════════════════════════════════════════
+   PERFORMANCE OPTIMIZATIONS
+   ─────────────────────────────────────────────────────
+   - Promote composited layers for animated/scrolling elements
+   - Prevent layout shifts on mobile
+   - Improve touch response
+   ═══════════════════════════════════════════════════════ */
+
+/* GPU-composited layers for frequently animated elements */
+#liveVideo {
+  will-change: transform;
+  transform: translateZ(0);
+}
+body.is-creator #liveVideo {
+  transform: scaleX(-1) translateZ(0);
+}
+
+/* Prevent layout reflow from chat scrolling */
+.live-chat-messages {
+  will-change: scroll-position;
+  contain: layout style;
+  overscroll-behavior: contain;
+  /* Smooth native momentum scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Each chat message: contain paint to prevent full repaint */
+.live-chat-msg {
+  contain: layout style;
+}
+
+/* Guest grid: isolate compositing layer */
+.guest-grid {
+  will-change: contents;
+  contain: layout;
+}
+
+/* Guest cells: hardware-accelerated transitions */
+.guest-cell {
+  will-change: transform, opacity;
+  contain: layout style paint;
+}
+
+/* Promote video elements in guest cells to own compositing layer */
+.guest-cell video {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Chat input: prevent iOS zoom on focus (font-size ≥ 16px stops zoom) */
+.live-chat-input {
+  font-size: max(16px, 13px);
+  touch-action: manipulation;
+}
+
+/* Prevent any tap-delay on all interactive elements */
+button, input, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* Prevent text selection on buttons during rapid taps */
+.live-ctrl-btn,
+.live-like-btn,
+.live-request-box-btn,
+.live-leave-box-btn,
+.live-chat-send,
+.live-close-btn {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Stable height for connection banner to prevent layout shift */
+.live-conn-banner {
+  contain: layout style;
+}
+
+/* Smooth removal transition for guest cells (guest leaves) */
+.guest-cell.removing {
+  animation: guestCellOut 0.25s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes guestCellOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.88); }
+}

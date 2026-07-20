@@ -92,6 +92,13 @@ let _camOn        = true;
 let _micOn        = true;
 let _facingMode   = 'user';
 
+/* ── Performance: send-lock prevents double-send on rapid taps ── */
+let _chatSending  = false;
+/* ── Performance: rAF handle for layout batching ── */
+let _layoutRafId  = null;
+/* ── Performance: track if update-check has already run this session ── */
+let _updateChecked = false;
+
 // WebRTC
 let _rtcPc           = null;   // RTCPeerConnection
 let _rtcSignalUnsub  = null;   // RTDB listener unsubscribe (off ref)
@@ -282,6 +289,8 @@ document.addEventListener('DOMContentLoaded', () => {
     _loadUserData().then(() => {
       if (D.goLiveBtn) { D.goLiveBtn.disabled = false; }
       _resolveMode();
+      // ── One-time update check per session ──
+      _checkForUpdate();
     });
   });
 });
@@ -932,20 +941,30 @@ async function _startViewer() {
   /* ── Subscribe to host layout changes so everyone sees the same layout ── */
   _startLayoutSync();
 
-  /* ── Increment viewer count in LIVE RTDB ── */
-  try {
-    const viewersRef = ref(_liveDB, `liveRooms/${_roomId}/viewers`);
-    const currentSnap = await get(viewersRef);
-    await set(viewersRef, (currentSnap.val() || 0) + 1);
-  } catch (_) {}
+  /* ── Increment viewer count in LIVE RTDB (fire-and-forget, non-blocking) ── */
+  (async () => {
+    try {
+      const viewersRef = ref(_liveDB, `liveRooms/${_roomId}/viewers`);
+      const currentSnap = await get(viewersRef);
+      await set(viewersRef, (currentSnap.val() || 0) + 1);
+    } catch (_) {}
+  })();
 
-  /* ── Watch for stream ending via LIVE RTDB (save ref for cleanup) ── */
+  /* ── Watch for stream ending + viewer/like counts via LIVE RTDB ──
+     _startLayoutSync() already subscribes to liveRooms/{roomId}; we
+     reuse that same path here to avoid a second concurrent listener. ── */
   let _roomWatchSeenFirst = false;
   _roomWatchRef = ref(_liveDB, `liveRooms/${_roomId}`);
   onValue(_roomWatchRef, snap => {
     const d = snap.val() || {};
-    if (D.viewerCount) D.viewerCount.textContent = '👁 ' + (d.viewers || 0);
-    if (D.likeCount)   D.likeCount.textContent   = '❤️ ' + (d.likes   || 0);
+    // Update counts (partial DOM update — only if value changed)
+    const vText = '👁 ' + (d.viewers || 0);
+    const lText = '❤️ ' + (d.likes   || 0);
+    if (D.viewerCount && D.viewerCount.textContent !== vText) D.viewerCount.textContent = vText;
+    if (D.likeCount   && D.likeCount.textContent   !== lText) D.likeCount.textContent   = lText;
+    // Sync layout changes from host
+    if (d.guestLayout  && d.guestLayout  !== _guestLayout)  { _guestLayout  = d.guestLayout;  _applyGuestLayout(); }
+    if (d.guestBoxSize && d.guestBoxSize !== _guestBoxSize)  { _guestBoxSize = d.guestBoxSize; _applyGuestLayout(); }
     if (!_roomWatchSeenFirst) {
       _roomWatchSeenFirst = true;
       return;
@@ -959,6 +978,20 @@ async function _startViewer() {
 
   window.addEventListener('beforeunload', _viewerLeave);
   window.addEventListener('pagehide',     _viewerLeave);
+
+  // ── Auto-reconnect on network restore ──
+  // If the device was offline briefly and comes back, try reconnecting immediately
+  // instead of waiting for the exponential back-off timer.
+  window.addEventListener('online', () => {
+    if (_viewerLeftFlag) return;
+    const state = _rtcPc?.connectionState;
+    if (state === 'disconnected' || state === 'failed' || !_rtcPc) {
+      // Reset attempt counter so we get a fresh fast reconnect
+      _viewerReconnectAttempt = 0;
+      if (_viewerReconnectTimer) { clearTimeout(_viewerReconnectTimer); _viewerReconnectTimer = null; }
+      _scheduleViewerReconnect(roomData);
+    }
+  }, { once: false });
 }
 
 async function _viewerLeave() {
@@ -981,7 +1014,7 @@ async function _viewerLeave() {
 
   // Tear down viewer guest grid listener
   if (_viewerGuestUnsub) {
-    try { off(ref(_liveDB, `liveGuests/${_roomId}`)); } catch(_) {}
+    try { _viewerGuestUnsub(); } catch(_) {}
     _viewerGuestUnsub = null;
   }
 
@@ -1320,13 +1353,13 @@ function _startAdaptiveQuality(pc) {
       });
 
       const deltaSent = totalSent - _prevPacketsSent;
-      const deltaLost = totalLost - _prevPacketsSent;   // NOTE: packetsSent delta
+      const deltaLost = totalLost - _prevPacketsLost;   // delta lost in this interval
       _prevPacketsSent = totalSent;
       _prevPacketsLost = totalLost;
 
       if (deltaSent < 10) return; // not enough data yet
 
-      const lossRate = Math.max(0, totalLost - (_prevPacketsLost - deltaLost)) / deltaSent;
+      const lossRate = deltaSent > 0 ? Math.max(0, deltaLost) / deltaSent : 0;
 
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
       if (!sender) return;
@@ -1414,20 +1447,42 @@ function _scheduleViewerReconnect(roomData) {
    ═══════════════════════════════════════════════════ */
 function _subscribeChat() {
   if (!_roomId) return;
+  // Unsubscribe any previous listener before creating a new one
+  if (_chatUnsub) { try { _chatUnsub(); } catch(_){} _chatUnsub = null; }
   const q = query(
     collection(_db, 'liveRooms', _roomId, 'liveMessages'),
     orderBy('createdAt', 'asc'),
-    limit(150)
+    limit(100)   // reduced: keeps DOM lean and memory lower
   );
   _chatUnsub = onSnapshot(q, snap => {
+    // Batch all 'added' changes into a single DocumentFragment
+    const frag = document.createDocumentFragment();
+    let hasNew = false;
     snap.docChanges().forEach(ch => {
-      if (ch.type === 'added') _appendChatMsg(ch.doc.data());
+      if (ch.type === 'added') {
+        const el = _buildChatMsgEl(ch.doc.data());
+        if (el) { frag.appendChild(el); hasNew = true; }
+      }
     });
+    if (!hasNew) return;
+    const cm = D.chatMessages;
+    if (!cm) return;
+
+    // Measure scroll position BEFORE appending (avoids forced reflow after paint)
+    const atBottom = cm.scrollHeight - cm.scrollTop - cm.clientHeight < 120;
+    cm.appendChild(frag);
+
+    // Trim old messages (keep max 70 visible) — do after append
+    while (cm.children.length > 70) {
+      cm.removeChild(cm.firstChild);
+    }
+
+    // Auto-scroll only if already near bottom
+    if (atBottom) cm.scrollTop = cm.scrollHeight;
   }, () => {});
 }
 
-function _appendChatMsg(data) {
-  if (!D.chatMessages) return;
+function _buildChatMsgEl(data) {
   const hostUid  = _roomId ? _roomId.split('_')[0] : null;
   const isHost   = !!(hostUid && data.userId === hostUid);
   const isSystem = data.type === 'system';
@@ -1435,24 +1490,32 @@ function _appendChatMsg(data) {
   const el = document.createElement('div');
   el.className = 'live-chat-msg' + (isSystem ? ' system' : '');
   if (!isSystem) {
-    el.innerHTML = `<span class="live-chat-author${isHost ? ' is-host' : ''}">${_esc(data.userName || 'Guest')}</span>
-                    <span class="live-chat-text">${_esc(data.text)}</span>`;
+    const author = document.createElement('span');
+    author.className = 'live-chat-author' + (isHost ? ' is-host' : '');
+    author.textContent = data.userName || 'Guest';
+    const text = document.createElement('span');
+    text.className = 'live-chat-text';
+    text.textContent = data.text || '';
+    el.appendChild(author);
+    el.appendChild(text);
   } else {
-    el.innerHTML = `<span class="live-chat-text">${_esc(data.text)}</span>`;
+    const text = document.createElement('span');
+    text.className = 'live-chat-text';
+    text.textContent = data.text || '';
+    el.appendChild(text);
   }
-  D.chatMessages.appendChild(el);
+  return el;
+}
 
-  // Trim old messages before measuring scroll height to avoid unnecessary reflow
-  while (D.chatMessages.children.length > 80) {
-    D.chatMessages.removeChild(D.chatMessages.firstChild);
-  }
-
-  // Only auto-scroll if the user is already near the bottom (within 120px)
-  // to avoid forcibly scrolling away when the user is reading older messages.
+function _appendChatMsg(data) {
+  if (!D.chatMessages) return;
+  const el = _buildChatMsgEl(data);
+  if (!el) return;
   const cm = D.chatMessages;
-  if (cm.scrollHeight - cm.scrollTop - cm.clientHeight < 120) {
-    cm.scrollTop = cm.scrollHeight;
-  }
+  const atBottom = cm.scrollHeight - cm.scrollTop - cm.clientHeight < 120;
+  cm.appendChild(el);
+  while (cm.children.length > 70) cm.removeChild(cm.firstChild);
+  if (atBottom) cm.scrollTop = cm.scrollHeight;
 }
 
 /* ── Live chat AI safety rules (mirrors index.html _RULES) ── */
@@ -1497,6 +1560,9 @@ function _liveScanText(text) {
 
 async function sendChat() {
   if (!_user || !_roomId) return;
+  // Guard against double-send (rapid taps / Enter+click combo)
+  if (_chatSending) return;
+
   const text = (D.chatInput?.value || '').trim();
   if (!text || text.length > 200) return;
 
@@ -1513,8 +1579,13 @@ async function sendChat() {
     toast(`⚠️ Warning · ${hit.category}: Please keep the community safe.`);
   }
 
-  if (D.chatInput) D.chatInput.value = '';
+  // Clear input immediately so typing feels instant
+  if (D.chatInput) {
+    D.chatInput.value = '';
+    D.chatInput.focus();
+  }
 
+  _chatSending = true;
   try {
     await addDoc(collection(_db, 'liveRooms', _roomId, 'liveMessages'), {
       userId:    _user.uid,
@@ -1525,6 +1596,8 @@ async function sendChat() {
     });
   } catch (e) {
     toast('Could not send message.');
+  } finally {
+    _chatSending = false;
   }
 }
 
@@ -1541,11 +1614,15 @@ async function sendLike() {
 
   _spawnHeartBurst();
 
-  try {
-    const likesRef = ref(_liveDB, `liveRooms/${_roomId}/likes`);
-    const snap = await get(likesRef);
-    await set(likesRef, (snap.val() || 0) + 1);
-  } catch (_) {}
+  // Use RTDB transactions-style increment via set with existing value
+  // For RTDB we still need a get, but fire-and-forget to keep UI instant
+  (async () => {
+    try {
+      const likesRef = ref(_liveDB, `liveRooms/${_roomId}/likes`);
+      const snap = await get(likesRef);
+      await set(likesRef, (snap.val() || 0) + 1);
+    } catch (_) {}
+  })();
 
   setTimeout(() => {
     _hasLiked = false;
@@ -1750,16 +1827,75 @@ function _closeShareModal() {
   if (m) m.remove();
 }
 
-function toast(msg) {
+function toast(msg, duration = 3200) {
   if (!D.toast) return;
   clearTimeout(_toastTimer);
   D.toast.textContent = msg;
   D.toast.classList.add('visible');
-  _toastTimer = setTimeout(() => D.toast.classList.remove('visible'), 3200);
+  _toastTimer = setTimeout(() => D.toast.classList.remove('visible'), duration);
 }
 
 function _esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ── One-time version/update check ──
+   Asks the SW if a newer version is waiting. If one is available, notify
+   once via toast with a manual refresh prompt. Never polls again in the
+   same session (guarded by _updateChecked). ── */
+function _checkForUpdate() {
+  if (_updateChecked) return;
+  _updateChecked = true;
+  if (!('serviceWorker' in navigator)) return;
+
+  // When a new SW takes over (after SKIP_WAITING), reload the page to apply updates
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
+
+  navigator.serviceWorker.ready.then(reg => {
+    // Trigger a background network check — does NOT block the page
+    reg.update().then(() => {
+      _showUpdateBarIfWaiting(reg);
+    }).catch(() => {});
+
+    // Also handle the case where a SW update event fires during this session
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          _showUpdateBarIfWaiting(reg);
+        }
+      });
+    });
+  }).catch(() => {});
+}
+
+function _showUpdateBarIfWaiting(reg) {
+  if (!reg.waiting) return;
+  // Already shown once? Don't show again
+  if (document.getElementById('_snxUpdateBar')) return;
+
+  const bar = document.createElement('div');
+  bar.id = '_snxUpdateBar';
+  bar.style.cssText = [
+    'position:fixed','bottom:72px','left:50%','transform:translateX(-50%)',
+    'z-index:9999','background:rgba(0,20,60,0.97)',
+    'border:1px solid rgba(0,174,239,0.7)','border-radius:10px',
+    'padding:10px 18px','font-size:13px','color:#00AEEF',
+    'cursor:pointer','white-space:nowrap',
+    'box-shadow:0 4px 18px rgba(0,0,0,0.5)',
+  ].join(';');
+  bar.textContent = '🔄 New version available — tap to refresh';
+  bar.addEventListener('click', () => {
+    bar.textContent = 'Updating…';
+    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    // Reload will be triggered by the controllerchange event above
+  });
+  document.body.appendChild(bar);
+  // Auto-dismiss after 15s — user can update later
+  setTimeout(() => bar.remove(), 15000);
 }
 
 /* ── Confirmation dialog — Promise-based modal ──
@@ -1815,14 +1951,26 @@ function _broadcastLayout() {
   } catch(_) {}
 }
 
-/* ── VIEWER / GUEST: Subscribe to layout changes broadcast by the host ── */
+/* ── VIEWER / GUEST: Subscribe to layout changes broadcast by the host ──
+   For pure viewers the _roomWatchRef onValue already handles layout sync
+   (see _startViewer).  For guests who joined a box mid-stream, the
+   _roomWatchRef is also already running, so we just mark the unsub as a
+   no-op to keep the cleanup code paths consistent. ── */
 function _startLayoutSync() {
   if (!_roomId) return;
-  // Detach any previous listener
+  // Detach any previous dedicated listener
   if (_layoutSyncUnsub) { try { _layoutSyncUnsub(); } catch(_) {} _layoutSyncUnsub = null; }
 
+  // If _roomWatchRef is already listening (viewer path), reuse it — no new listener needed.
+  if (_roomWatchRef) {
+    // Provide a no-op unsub so cleanup code paths work unchanged
+    _layoutSyncUnsub = () => {};
+    return;
+  }
+
+  // Guest-only path (joined as guest without _roomWatchRef running):
+  // subscribe to the room node for layout changes only.
   const roomRef = ref(_liveDB, `liveRooms/${_roomId}`);
-  // onValue returns an unsubscribe function in the modular SDK
   _layoutSyncUnsub = onValue(roomRef, snap => {
     if (!snap.exists()) return;
     const d = snap.val();
@@ -1850,9 +1998,13 @@ function _startViewerGuestGrid() {
       });
     }
 
-    // ── Remove cards for guests who left ──
+    // ── Remove cards for guests who left — animate out then remove ──
     grid.querySelectorAll('.vgc-cell').forEach(card => {
-      if (!incoming[card.dataset.guestKey]) card.remove();
+      if (!incoming[card.dataset.guestKey] && !card.classList.contains('removing')) {
+        // Animated exit in ≤260ms — never leaves empty ghost boxes
+        card.classList.add('removing');
+        setTimeout(() => card.remove(), 260);
+      }
     });
 
     // ── Add or update cards for current guests ──
@@ -2802,7 +2954,13 @@ function _hostDoRemoveGuest(uid) {
   const peer = _guestPeers[uid];
   if (peer) {
     if (peer.pc) { try { peer.pc.close(); } catch(_){} }
-    if (peer.cell) { try { peer.cell.remove(); } catch(_){} }
+    // Animate cell out (≤260ms) then remove — gives immediate visual feedback
+    if (peer.cell && !peer.cell.classList.contains('removing')) {
+      peer.cell.classList.add('removing');
+      setTimeout(() => { try { peer.cell.remove(); } catch(_){} }, 260);
+    } else if (peer.cell) {
+      try { peer.cell.remove(); } catch(_){}
+    }
     delete _guestPeers[uid];
   }
   // Allow this UID to send a new request in a future session
@@ -2873,6 +3031,15 @@ function _teardownAllGuestPeers() {
    ═══════════════════════════════════════════════════ */
 
 function _applyGuestLayout() {
+  // Coalesce rapid back-to-back calls into a single rAF paint
+  if (_layoutRafId) return;
+  _layoutRafId = requestAnimationFrame(() => {
+    _layoutRafId = null;
+    _doApplyGuestLayout();
+  });
+}
+
+function _doApplyGuestLayout() {
   const grid = D.guestGrid;
   if (!grid) return;
 
