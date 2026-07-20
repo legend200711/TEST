@@ -802,20 +802,12 @@ body.is-creator .live-viewer-actions { display: none !important; }
 }
 .guest-stage.active { display: grid; }    /* default to grid; layouts below override */
 
-/* On mobile creator view: shrink stage vertically so the bottom management panel
-   (max-height 42vh) doesn't cover any video tile */
+/* Mobile / desktop: guest stage uses full viewport — no panel offsets */
 @media (max-width: 767px) {
   body.is-creator.gs-active .guest-stage {
-    bottom: 42vh;
+    /* bottom edge stops above the bottom control bar (~80px) */
+    bottom: 80px;
     height: auto;
-  }
-}
-
-/* On desktop: inset stage right to leave room for the side management panel (220 px) */
-@media (min-width: 768px) {
-  body.gs-active .guest-stage {
-    right: 220px;
-    width: calc(100% - 220px);
   }
 }
 
@@ -1460,15 +1452,164 @@ body.gs-active .live-video-wrap { background: transparent; z-index: 0; }
 /* Keep bottom bar visible above guest stage */
 body.gs-active .live-bottom-bar { position: relative; z-index: 230; background: rgba(0,0,0,0.88); }
 
-/* On desktop: nudge chat panel left so it doesn't overlap the side panel */
-@media (min-width: 768px) {
-  body.gs-active .live-chat-panel {
-    right: 224px;   /* 220px panel + 4px gap */
-  }
-}
-
 /* floating layout: tiles can overflow the video wrap area */
 body.layout-floating .live-video-wrap { overflow: visible; }
 
-/* Show layout-switcher when guests are active */
-body.gs-active .layout-switcher { display: flex !important; }
+/* layout-switcher kept hidden — we use the new glp-panel instead */
+body.gs-active .layout-switcher { display: none !important; }
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT SETTINGS BUTTON — single ⚙ in the bottom bar
+   ══════════════════════════════════════════════════════════ */
+.layout-settings-btn {
+  position: relative;
+}
+/* notification dot (pending guest request) */
+.layout-settings-btn .glp-notif-dot {
+  display: none;
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #ff6600;
+  border: 1.5px solid #040c1a;
+}
+.layout-settings-btn .glp-notif-dot.visible { display: block; }
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT & GUEST SETTINGS PANEL — slides up from bottom
+   Creator-only overlay, z-index above guest stage
+   ══════════════════════════════════════════════════════════ */
+.glp-panel {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 320;
+  background: rgba(4, 10, 26, 0.97);
+  border-top: 1.5px solid rgba(0,174,239,0.38);
+  padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px)) 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.7);
+  max-height: 80vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.glp-panel::-webkit-scrollbar { display: none; }
+.glp-panel.glp-hidden {
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Header */
+.glp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.glp-title {
+  font-size: 13px; font-weight: 800;
+  color: #00AEEF; letter-spacing: 0.6px; text-transform: uppercase;
+}
+.glp-close-btn {
+  background: none; border: none; color: #6a90b8;
+  font-size: 16px; cursor: pointer; padding: 2px 6px;
+  border-radius: 6px; line-height: 1;
+}
+.glp-close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+/* Section label */
+.glp-section-label {
+  font-size: 11px; font-weight: 700; color: #6a90b8;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 0 0 8px 0;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* Layout buttons row */
+.glp-layout-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.glp-layout-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(0,174,239,0.25);
+  border-radius: 10px;
+  color: #6a90b8;
+  cursor: pointer;
+  padding: 10px 4px;
+  transition: all 0.15s;
+  touch-action: manipulation;
+}
+.glp-layout-btn:hover  { background: rgba(0,174,239,0.14); color: #00AEEF; }
+.glp-layout-btn:active { transform: scale(0.95); }
+.glp-layout-btn-active {
+  background: rgba(0,174,239,0.2);
+  border-color: rgba(0,174,239,0.75);
+  color: #00AEEF;
+}
+.glp-lbtn-icon  { font-size: 18px; line-height: 1; }
+.glp-lbtn-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+
+/* Queue badge inside section label */
+.glp-queue-badge {
+  font-size: 10px; font-weight: 700;
+  background: rgba(255,140,0,0.18);
+  border: 1px solid rgba(255,140,0,0.55);
+  color: #ffaa44; border-radius: 20px;
+  padding: 2px 8px;
+}
+
+/* Guest boxes list */
+.glp-guest-boxes {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 4px;
+}
+.glp-box {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1.5px solid rgba(0,174,239,0.15);
+  border-radius: 10px;
+  padding: 8px 10px;
+  transition: border-color 0.2s;
+}
+.glp-box.glp-available { border-color: rgba(0,174,239,0.18); }
+.glp-box.glp-pending   { border-color: rgba(255,140,0,0.65); }
+.glp-box.glp-occupied  { border-color: rgba(0,255,136,0.5);  }
+
+.glp-box-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(0,174,239,0.15);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; color: #6a90b8;
+  overflow: hidden;
+  background-size: cover; background-position: center;
+}
+.glp-box-info { flex: 1; min-width: 0; }
+.glp-box-name {
+  font-size: 13px; font-weight: 700; color: #d0e8ff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.glp-box-status {
+  font-size: 11px; color: #6a90b8; margin-top: 1px;
+}
+.glp-box.glp-available .glp-box-status { color: #6a90b8; }
+.glp-box.glp-pending   .glp-box-status { color: #ffaa44; }
+.glp-box.glp-occupied  .glp-box-status { color: #39FF14; }
+
+.glp-box-actions {
+  display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end;
+}
+.glp-box-actions .gb-action-btn {
+  font-size: 11px; padding: 4px 8px; border-radius: 6px; height: auto;
+  white-space: nowrap;
+}
+
+/* On very small screens: 2-col layout buttons */
+@media (max-width: 380px) {
+  .glp-layout-row { grid-template-columns: repeat(2, 1fr); }
+}

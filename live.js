@@ -158,12 +158,19 @@ document.addEventListener('DOMContentLoaded', () => {
     btnEnd:          document.getElementById('btnEndLive'),
     btnShareCreator: document.getElementById('btnShareLiveCreator'),
     btnGuestBoxes:   document.getElementById('btnGuestBoxes'),
+    btnLayoutSettings: document.getElementById('btnLayoutSettings'),
 
-    // Guest boxes panel
+    // Guest boxes panel (legacy — kept hidden; state mirrored to glp-panel)
     guestBoxPanel:      document.getElementById('guestBoxPanel'),
     guestQueueBadge:    document.getElementById('guestQueueBadge'),
     guestQueueCount:    document.getElementById('guestQueueCount'),
     btnCloseGuestPanel: document.getElementById('btnCloseGuestPanel'),
+
+    // New single settings panel
+    guestLayoutPanel:     document.getElementById('guestLayoutPanel'),
+    btnCloseLayoutPanel:  document.getElementById('btnCloseLayoutPanel'),
+    glpQueueBadge:        document.getElementById('glpQueueBadge'),
+    glpQueueCount:        document.getElementById('glpQueueCount'),
 
     // Guest stage (multi-participant video area)
     guestStage:      document.getElementById('guestStage'),
@@ -214,7 +221,21 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnGuestBoxes      && D.btnGuestBoxes.addEventListener('click', _gbTogglePanel);
   D.btnCloseGuestPanel && D.btnCloseGuestPanel.addEventListener('click', _gbTogglePanel);
 
-  // Layout switcher buttons
+  // Single layout settings button
+  D.btnLayoutSettings   && D.btnLayoutSettings.addEventListener('click',   _glpTogglePanel);
+  D.btnCloseLayoutPanel && D.btnCloseLayoutPanel.addEventListener('click', _glpClosePanel);
+
+  // Layout switcher buttons inside new glp-panel
+  if (D.guestLayoutPanel) {
+    D.guestLayoutPanel.querySelectorAll('.glp-layout-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _setLayout(btn.dataset.layout);
+        _glpSyncLayoutButtons();
+      });
+    });
+  }
+
+  // Legacy layout switcher (hidden) — still keep wired for _setLayout sync
   if (D.layoutSwitcher) {
     D.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
       btn.addEventListener('click', () => _setLayout(btn.dataset.layout));
@@ -1571,17 +1592,16 @@ async function _gbInitCreator() {
     await set(_gbRef('layoutMode'), _layoutMode);
   } catch (_) {}
 
-  /* show panel and subscribe */
-  _gbShowPanel();
+  /* subscribe — do NOT auto-open panel (guest stage auto-shows when guests join) */
   _gbSubscribeBoxes('creator');
   _gbSubscribeQueue();
 
-  /* add notification dot to the toggle button */
-  if (D.btnGuestBoxes) {
+  /* add notification dot to the layout settings button */
+  if (D.btnLayoutSettings) {
     const dot = document.createElement('span');
-    dot.className = 'gb-notif-dot';
-    dot.id = '_gbNotifDot';
-    D.btnGuestBoxes.appendChild(dot);
+    dot.className = 'glp-notif-dot';
+    dot.id = '_glpNotifDot';
+    D.btnLayoutSettings.appendChild(dot);
   }
 
   /* populate host tile in guest stage */
@@ -1609,8 +1629,7 @@ function _gbInitViewer(roomData) {
     _gbRequestBtn = btn;
   }
 
-  /* show the panel for viewers (read-only view of boxes + request btn) */
-  _gbShowPanel();
+  /* subscribe to boxes — panel stays hidden for viewers */
   _gbSubscribeBoxes('viewer');
 
   /* listen for layout mode changes from the host */
@@ -1647,6 +1666,97 @@ function _gbShowPanel() {
 }
 
 /* ════════════════════════════════════════════
+   LAYOUT & GUEST SETTINGS PANEL (new single ⚙ button)
+   ════════════════════════════════════════════ */
+let _glpPanelVisible = false;
+
+function _glpTogglePanel() {
+  _glpPanelVisible ? _glpClosePanel() : _glpOpenPanel();
+}
+
+function _glpOpenPanel() {
+  const panel = D.guestLayoutPanel;
+  if (!panel) return;
+  _glpPanelVisible = true;
+  panel.style.display = 'block';
+  panel.classList.remove('glp-hidden');
+  _glpSyncLayoutButtons();
+}
+
+function _glpClosePanel() {
+  const panel = D.guestLayoutPanel;
+  if (!panel) return;
+  _glpPanelVisible = false;
+  panel.classList.add('glp-hidden');
+  setTimeout(() => { if (!_glpPanelVisible) panel.style.display = 'none'; }, 300);
+}
+
+function _glpSyncLayoutButtons() {
+  if (!D.guestLayoutPanel) return;
+  D.guestLayoutPanel.querySelectorAll('.glp-layout-btn').forEach(btn => {
+    btn.classList.toggle('glp-layout-btn-active', btn.dataset.layout === _layoutMode);
+  });
+}
+
+/* Mirror box state into the new GLP panel row */
+function _glpRenderBox(boxNum, data, role) {
+  const boxEl     = document.getElementById(`glpBox${boxNum}`);
+  const nameEl    = document.getElementById(`glpBoxName${boxNum}`);
+  const statusEl  = document.getElementById(`glpBoxStatus${boxNum}`);
+  const actionsEl = document.getElementById(`glpBoxActions${boxNum}`);
+  const avatarEl  = document.getElementById(`glpBoxAvatar${boxNum}`);
+  if (!boxEl) return;
+
+  const status = data.status || 'available';
+  const prevStatus = boxEl.dataset.prevStatus || 'available';
+  boxEl.dataset.prevStatus = status;
+
+  boxEl.classList.remove('glp-available', 'glp-pending', 'glp-occupied');
+  boxEl.classList.add(`glp-${status}`);
+
+  if (nameEl) {
+    nameEl.textContent = status === 'occupied' && data.guestName
+      ? data.guestName
+      : `Box ${boxNum}`;
+  }
+  if (statusEl) {
+    statusEl.textContent =
+      status === 'available' ? 'Available' :
+      status === 'pending'   ? 'Request Pending…' :
+      'Live 🟢';
+  }
+  /* avatar */
+  if (avatarEl) {
+    const av = data.guestAvatar || '';
+    const nm = data.guestName   || '?';
+    if (av) {
+      avatarEl.style.backgroundImage = `url('${av}')`;
+      avatarEl.textContent = '';
+    } else {
+      avatarEl.style.backgroundImage = '';
+      avatarEl.textContent = (status !== 'available') ? nm[0].toUpperCase() : '';
+    }
+  }
+
+  /* action buttons */
+  if (actionsEl) {
+    actionsEl.innerHTML = '';
+    if (role === 'creator') {
+      if (status === 'pending') {
+        actionsEl.append(
+          _gbMakeBtn('✔', 'gb-btn-accept',  () => _gbCreatorAccept(boxNum, data)),
+          _gbMakeBtn('✘', 'gb-btn-decline', () => _gbCreatorDecline(boxNum, data))
+        );
+      } else if (status === 'occupied') {
+        actionsEl.append(
+          _gbMakeBtn('Remove', 'gb-btn-remove', () => _gbCreatorRemove(boxNum, data))
+        );
+      }
+    }
+  }
+}
+
+/* ════════════════════════════════════════════
    SUBSCRIBE — boxes (both creator + viewer)
    ════════════════════════════════════════════ */
 function _gbSubscribeBoxes(role) {
@@ -1654,7 +1764,10 @@ function _gbSubscribeBoxes(role) {
   _gbBoxesUnsub = onValue(boxesRef, snap => {
     const boxes = snap.val() || {};
     for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-      _gbRenderBox(i, boxes[i] || { status: 'available', guestId: null }, role);
+      const data = boxes[i] || { status: 'available', guestId: null };
+      _gbRenderBox(i, data, role);
+      /* mirror to glp panel (creator only — viewer has no glp panel) */
+      if (role === 'creator') _glpRenderBox(i, data, role);
     }
   });
 }
@@ -1668,13 +1781,18 @@ function _gbSubscribeQueue() {
     const queueList = Object.entries(queueData);
     const count = queueList.length;
 
-    /* update queue badge */
+    /* update queue badge (legacy panel + new glp panel) */
     if (D.guestQueueBadge) D.guestQueueBadge.style.display = count > 0 ? 'inline-block' : 'none';
     if (D.guestQueueCount)  D.guestQueueCount.textContent  = count;
+    if (D.glpQueueBadge)  D.glpQueueBadge.style.display  = count > 0 ? 'inline-flex' : 'none';
+    if (D.glpQueueCount)  D.glpQueueCount.textContent     = count;
 
-    /* notification dot on toggle button */
-    const dot = document.getElementById('_gbNotifDot');
+    /* notification dot on layout settings button */
+    const dot = document.getElementById('_glpNotifDot');
     if (dot) dot.classList.toggle('visible', count > 0);
+    /* legacy dot (noop if removed) */
+    const dotLegacy = document.getElementById('_gbNotifDot');
+    if (dotLegacy) dotLegacy.classList.toggle('visible', count > 0);
 
     /* render "Next in queue" accept button in the first available open box */
     if (count > 0) {
@@ -1819,15 +1937,22 @@ function _gbRenderBox(boxNum, data, role) {
 function _gbRenderQueueNext(queueKey, userData) {
   /* find first available box */
   for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-    const boxEl     = document.getElementById(`guestBox${i}`);
-    const actionsEl = document.getElementById(`guestBoxActions${i}`);
+    const boxEl      = document.getElementById(`guestBox${i}`);
+    const actionsEl  = document.getElementById(`guestBoxActions${i}`);
+    const glpActEl   = document.getElementById(`glpBoxActions${i}`);
     if (!boxEl) continue;
     if (boxEl.classList.contains('gb-available')) {
-      /* add "Accept Next" button if not already there */
-      if (!actionsEl.querySelector('.gb-btn-queue-accept')) {
+      /* add "Accept Next" button in legacy panel if not already there */
+      if (actionsEl && !actionsEl.querySelector('.gb-btn-queue-accept')) {
         const btn = _gbMakeBtn(`📥 ${userData.guestName || 'Next'}`, 'gb-btn-accept gb-btn-queue-accept',
           () => _gbCreatorAcceptFromQueue(i, queueKey, userData));
         actionsEl.appendChild(btn);
+      }
+      /* also add in GLP panel if not already there */
+      if (glpActEl && !glpActEl.querySelector('.gb-btn-queue-accept')) {
+        const glpBtn = _gbMakeBtn(`📥 ${userData.guestName || 'Next'}`, 'gb-btn-accept gb-btn-queue-accept',
+          () => _gbCreatorAcceptFromQueue(i, queueKey, userData));
+        glpActEl.appendChild(glpBtn);
       }
       break;
     }
@@ -2174,6 +2299,8 @@ function _gbCleanupCreator() {
   if (_roomId) {
     try { remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes`)).catch(() => {}); } catch (_) {}
   }
+  /* close GLP panel */
+  _glpClosePanel();
   _gsHideStage();
 }
 
@@ -2389,12 +2516,14 @@ function _setLayout(mode, persistToRTDB) {
   document.body.classList.remove('layout-side', 'layout-grid', 'layout-floating', 'layout-equal');
   document.body.classList.add('layout-' + mode);
 
-  /* update active button */
+  /* update active button — legacy switcher */
   if (D.layoutSwitcher) {
     D.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
       btn.classList.toggle('layout-btn-active', btn.dataset.layout === mode);
     });
   }
+  /* sync new GLP panel layout buttons */
+  _glpSyncLayoutButtons();
 
   /* persist to RTDB so viewers follow (creator only, default persistToRTDB = true) */
   if (persistToRTDB !== false && _mode === 'creator' && _roomId) {

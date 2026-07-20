@@ -196,7 +196,8 @@
     <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
     <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
     <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
-    <button id="btnGuestBoxes" class="live-ctrl-btn guest-boxes-btn" aria-label="Guest boxes" title="Guests">👥</button>
+    <button id="btnLayoutSettings" class="live-ctrl-btn layout-settings-btn" aria-label="Layout settings" title="Layout & Guests">⚙</button>
+    <button id="btnGuestBoxes" class="live-ctrl-btn guest-boxes-btn" aria-label="Guest boxes" title="Guests" style="display:none;">👥</button>
     <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
 
   </div>
@@ -229,14 +230,95 @@
 
 
 <!-- ══════════════════════════════════════════════
-     LAYOUT SWITCHER — host only, shown inside stage
+     LAYOUT SWITCHER — kept for JS compatibility (hidden, controlled via settings panel)
      ══════════════════════════════════════════════ -->
-<div id="layoutSwitcher" class="layout-switcher" style="display:none;" aria-label="Layout switcher">
+<div id="layoutSwitcher" class="layout-switcher" style="display:none;" aria-hidden="true">
   <button class="layout-btn"                   data-layout="side"     title="Host + Side Boxes">⬛▐</button>
   <button class="layout-btn layout-btn-active" data-layout="grid"     title="Auto Grid (TikTok)">⊞</button>
   <button class="layout-btn"                   data-layout="floating" title="Fullscreen + Floating">⧉</button>
   <button class="layout-btn"                   data-layout="equal"    title="Equal Boxes">⊟</button>
 </div>
+
+
+<!-- ══════════════════════════════════════════════
+     LAYOUT & GUEST SETTINGS PANEL
+     One button opens everything. Host only.
+     ══════════════════════════════════════════════ -->
+<div id="guestLayoutPanel" class="glp-panel" style="display:none;" aria-label="Layout and guest settings">
+
+  <!-- Header -->
+  <div class="glp-header">
+    <span class="glp-title">⚙ Layout &amp; Guests</span>
+    <button id="btnCloseLayoutPanel" class="glp-close-btn" aria-label="Close settings">✕</button>
+  </div>
+
+  <!-- Layout section -->
+  <div class="glp-section-label">Layout</div>
+  <div class="glp-layout-row">
+    <button class="glp-layout-btn glp-layout-btn-active" data-layout="grid"     title="Auto Grid">
+      <span class="glp-lbtn-icon">⊞</span>
+      <span class="glp-lbtn-label">Auto Grid</span>
+    </button>
+    <button class="glp-layout-btn" data-layout="side"     title="Big Host">
+      <span class="glp-lbtn-icon">⬛▐</span>
+      <span class="glp-lbtn-label">Big Host</span>
+    </button>
+    <button class="glp-layout-btn" data-layout="equal"    title="Equal Boxes">
+      <span class="glp-lbtn-icon">⊟</span>
+      <span class="glp-lbtn-label">Equal</span>
+    </button>
+    <button class="glp-layout-btn" data-layout="floating" title="Floating">
+      <span class="glp-lbtn-icon">⧉</span>
+      <span class="glp-lbtn-label">Floating</span>
+    </button>
+  </div>
+
+  <!-- Guest boxes section -->
+  <div class="glp-section-label">Guest Boxes <span id="glpQueueBadge" class="glp-queue-badge" style="display:none;">Queue: <span id="glpQueueCount">0</span></span></div>
+  <div class="glp-guest-boxes">
+
+    <!-- Box 1 (mini) -->
+    <div class="glp-box" id="glpBox1" data-box="1">
+      <div class="glp-box-avatar" id="glpBoxAvatar1"></div>
+      <div class="glp-box-info">
+        <div class="glp-box-name"   id="glpBoxName1">Box 1</div>
+        <div class="glp-box-status" id="glpBoxStatus1">Available</div>
+      </div>
+      <div class="glp-box-actions" id="glpBoxActions1"></div>
+    </div>
+
+    <!-- Box 2 (mini) -->
+    <div class="glp-box" id="glpBox2" data-box="2">
+      <div class="glp-box-avatar" id="glpBoxAvatar2"></div>
+      <div class="glp-box-info">
+        <div class="glp-box-name"   id="glpBoxName2">Box 2</div>
+        <div class="glp-box-status" id="glpBoxStatus2">Available</div>
+      </div>
+      <div class="glp-box-actions" id="glpBoxActions2"></div>
+    </div>
+
+    <!-- Box 3 (mini) -->
+    <div class="glp-box" id="glpBox3" data-box="3">
+      <div class="glp-box-avatar" id="glpBoxAvatar3"></div>
+      <div class="glp-box-info">
+        <div class="glp-box-name"   id="glpBoxName3">Box 3</div>
+        <div class="glp-box-status" id="glpBoxStatus3">Available</div>
+      </div>
+      <div class="glp-box-actions" id="glpBoxActions3"></div>
+    </div>
+
+    <!-- Box 4 (mini) -->
+    <div class="glp-box" id="glpBox4" data-box="4">
+      <div class="glp-box-avatar" id="glpBoxAvatar4"></div>
+      <div class="glp-box-info">
+        <div class="glp-box-name"   id="glpBoxName4">Box 4</div>
+        <div class="glp-box-status" id="glpBoxStatus4">Available</div>
+      </div>
+      <div class="glp-box-actions" id="glpBoxActions4"></div>
+    </div>
+
+  </div><!-- .glp-guest-boxes -->
+</div><!-- #guestLayoutPanel -->
 
 
 <!-- ══════════════════════════════════════════════
