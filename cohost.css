@@ -1,5 +1,5 @@
 /*
- * Shadow Nexus Live — cohost.css
+ * Shadow Nexus Live — cohost.css  (v2)
  * Styles for the Co-Host feature only.
  * This file is completely independent from live.css.
  * Disabling this file removes all co-host UI without affecting anything else.
@@ -36,9 +36,10 @@
 body.is-viewer #btnCoHost { display: none !important; }
 
 /* ══════════════════════════════════════════════════════
-   CO-HOST CENTER POPUP
+   CO-HOST SETTINGS PANEL
+   Hidden by default. Opened only when host taps the button.
    ══════════════════════════════════════════════════════ */
-#cohostPopup {
+#cohostPanel {
   display: none;
   position: fixed;
   bottom: 80px; left: 50%;
@@ -55,7 +56,26 @@ body.is-viewer #btnCoHost { display: none !important; }
   overflow-y: auto;
   scrollbar-width: none;
 }
-#cohostPopup::-webkit-scrollbar { display: none; }
+#cohostPanel::-webkit-scrollbar { display: none; }
+#cohostPanel.visible { display: block; }
+
+/* Keep legacy #cohostPopup name working if anything still references it */
+#cohostPopup {
+  display: none;
+  position: fixed;
+  bottom: 80px; left: 50%;
+  transform: translateX(-50%);
+  width: min(340px, calc(100vw - 24px));
+  background: rgba(4, 10, 28, 0.98);
+  backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(160, 80, 255, 0.5);
+  border-radius: 20px;
+  padding: 18px 16px 16px;
+  z-index: 9100;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
 #cohostPopup.visible { display: block; }
 
 @keyframes cohostPopIn {
@@ -74,7 +94,7 @@ body.is-viewer #btnCoHost { display: none !important; }
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 
-/* Close button inside popup */
+/* Close button inside panel */
 .cohost-popup-close {
   position: absolute; top: 10px; right: 12px;
   width: 26px; height: 26px; border-radius: 50%;
@@ -93,7 +113,7 @@ body.is-viewer #btnCoHost { display: none !important; }
   margin: 10px 0 6px;
 }
 
-/* ── Search row ── */
+/* ── Search row (legacy — kept for backwards compat) ── */
 .cohost-search-row {
   display: flex; gap: 8px; align-items: center;
   margin-bottom: 8px;
@@ -122,10 +142,10 @@ body.is-viewer #btnCoHost { display: none !important; }
 .cohost-search-btn:hover { background: rgba(140, 50, 255, 0.45); }
 .cohost-search-btn:active { transform: scale(0.96); }
 
-/* ── User result list ── */
+/* ── User list (friends + search results) ── */
 .cohost-user-list {
   display: flex; flex-direction: column; gap: 6px;
-  max-height: 180px; overflow-y: auto;
+  max-height: 200px; overflow-y: auto;
   scrollbar-width: none;
   margin-bottom: 4px;
 }
@@ -159,6 +179,28 @@ body.is-viewer #btnCoHost { display: none !important; }
 .cohost-user-handle {
   font-size: 10px; color: #7a5ab8; margin-top: 1px;
 }
+
+/* ── Status indicator row ── */
+.cohost-user-status {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: #7a6a9a;
+  margin-top: 2px;
+}
+.cohost-status-label {
+  font-size: 10px; font-weight: 600;
+}
+
+/* Status dots */
+.cohost-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  display: inline-block;
+}
+.cohost-status-available { background: #22d470; box-shadow: 0 0 4px rgba(34,212,112,0.7); }
+.cohost-status-online    { background: #00aeef; box-shadow: 0 0 4px rgba(0,174,239,0.6); }
+.cohost-status-busy      { background: #f59e0b; box-shadow: 0 0 4px rgba(245,158,11,0.6); }
+.cohost-status-offline   { background: #4a4a5a; }
+
+/* ── Invite button ── */
 .cohost-invite-btn {
   padding: 5px 12px; border-radius: 8px;
   background: rgba(120, 30, 240, 0.25);
@@ -175,6 +217,12 @@ body.is-viewer #btnCoHost { display: none !important; }
   color: #60e870; cursor: default;
 }
 .cohost-invite-btn.sent:hover { background: rgba(80, 180, 80, 0.2); }
+.cohost-invite-btn.disabled,
+.cohost-invite-btn:disabled {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.1);
+  color: #44355a; cursor: not-allowed;
+}
 
 /* Empty state */
 .cohost-empty {
@@ -198,7 +246,9 @@ body.is-viewer #btnCoHost { display: none !important; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cohost-active-status {
-  font-size: 10px; color: #60e870; margin-top: 1px;
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: #22d470;
+  margin-top: 2px;
 }
 .cohost-remove-btn {
   padding: 5px 10px; border-radius: 8px;
@@ -317,7 +367,6 @@ body.is-viewer #btnCoHost { display: none !important; }
 .cohost-select:focus { border-color: rgba(180, 100, 255, 0.7); }
 .cohost-select option { background: #0a0820; color: #d8d0ff; }
 
-/* Wrapper for the select so the label + select align with lsp-row */
 .cohost-select-wrap {
   display: flex; flex-direction: column; gap: 4px;
   width: 100%;
@@ -333,9 +382,9 @@ body.is-viewer #btnCoHost { display: none !important; }
    ══════════════════════════════════════════════════════ */
 @media (max-width: 380px) {
   #btnCoHost { width: 36px; height: 36px; font-size: 16px; }
-  #cohostPopup { padding: 14px 12px 12px; }
+  #cohostPanel { padding: 14px 12px 12px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #btnCoHost { width: 34px; height: 34px; font-size: 14px; }
-  #cohostPopup { bottom: 60px; max-height: calc(100vh - 80px); }
+  #cohostPanel { bottom: 60px; max-height: calc(100vh - 80px); }
 }

@@ -529,6 +529,48 @@ service cloud.firestore {
       }
     }
 
+    // ── Co-Host Requests ───────────────────────────────────────────────────────
+    //
+    //   /coHostRequests/{requestId}
+    //     liveId      — the host's RTDB room id
+    //     hostId      — host uid
+    //     guestId     — invitee uid
+    //     status      — 'pending' | 'accepted' | 'declined'
+    //     createdAt   — server timestamp
+    //
+    //   requestId = "{liveId}_{guestId}"
+    //
+    // Host creates; guest reads their own invite and updates status.
+    // Viewers can read accepted records so they see the active co-host list.
+
+    match /coHostRequests/{requestId} {
+      // Host can create an invite for a specific guest
+      allow create: if isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.resource.data.hostId == request.auth.uid;
+
+      // Host or guest can read; viewers can read accepted ones
+      allow read: if isSignedIn()
+        && (
+          request.auth.uid == resource.data.hostId
+          || request.auth.uid == resource.data.guestId
+          || resource.data.status == 'accepted'
+        );
+
+      // Only the guest can update status (accept / decline)
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.guestId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+      // Host or guest can delete (cleanup); Founder always can
+      allow delete: if isSignedIn()
+        && (
+          request.auth.uid == resource.data.hostId
+          || request.auth.uid == resource.data.guestId
+          || isFounder()
+        );
+    }
+
     // ── Wall Post Comments ─────────────────────────────────────────────────────
     //
     //   /wallPostComments/{wallDocId}/comments/{commentId}
