@@ -181,46 +181,49 @@
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════
-         CREATOR CONTROLS (bottom bar)
-         Hidden for viewers via CSS
-         ═══════════════════════════════════ -->
-    <div class="live-bottom-bar">
-
-      <button id="btnToggleCam" class="live-ctrl-btn" aria-label="Toggle camera" title="Camera">📷</button>
-      <button id="btnToggleMic" class="live-ctrl-btn" aria-label="Toggle microphone" title="Mic">🎤</button>
-      <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
-      <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
-      <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
-      <button id="btnGuestBoxes" class="live-ctrl-btn guest-boxes-btn" aria-label="Guest boxes" title="Guests">👥</button>
-      <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
-
-    </div>
-
-    <!-- ═══════════════════════════════════
-         VIEWER ACTIONS (bottom-right)
-         Hidden for creator via CSS
-         ═══════════════════════════════════ -->
-    <div class="live-viewer-actions">
-
-      <button id="btnCreatorProfile" class="live-profile-btn" aria-label="View creator profile">
-        <span class="live-profile-icon">👤</span>
-        Profile
-      </button>
-
-      <button id="btnShareLive" class="live-share-btn" aria-label="Share live stream">
-        <span class="live-share-icon">📤</span>
-        Share
-      </button>
-
-      <button id="btnLike" class="live-like-btn" aria-label="Like stream">
-        <span class="live-like-icon">❤️</span>
-        <span id="likeBtnCount">Like</span>
-      </button>
-
-    </div>
-
   </div><!-- .live-video-wrap -->
+
+  <!-- ═══════════════════════════════════
+       CREATOR CONTROLS (bottom bar)
+       Outside video-wrap so overflow:hidden never clips it.
+       Safe-area padding keeps buttons above the phone nav bar.
+       Hidden for viewers via CSS.
+       ═══════════════════════════════════ -->
+  <div class="live-bottom-bar">
+
+    <button id="btnToggleCam" class="live-ctrl-btn" aria-label="Toggle camera" title="Camera">📷</button>
+    <button id="btnToggleMic" class="live-ctrl-btn" aria-label="Toggle microphone" title="Mic">🎤</button>
+    <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
+    <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
+    <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
+    <button id="btnGuestBoxes" class="live-ctrl-btn guest-boxes-btn" aria-label="Guest boxes" title="Guests">👥</button>
+    <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
+
+  </div>
+
+  <!-- ═══════════════════════════════════
+       VIEWER ACTIONS (bottom-right)
+       Outside video-wrap, overlays bottom of stage.
+       Hidden for creator via CSS.
+       ═══════════════════════════════════ -->
+  <div class="live-viewer-actions">
+
+    <button id="btnCreatorProfile" class="live-profile-btn" aria-label="View creator profile">
+      <span class="live-profile-icon">👤</span>
+      Profile
+    </button>
+
+    <button id="btnShareLive" class="live-share-btn" aria-label="Share live stream">
+      <span class="live-share-icon">📤</span>
+      Share
+    </button>
+
+    <button id="btnLike" class="live-like-btn" aria-label="Like stream">
+      <span class="live-like-icon">❤️</span>
+      <span id="likeBtnCount">Like</span>
+    </button>
+
+  </div>
 
 </div><!-- #liveStage -->
 

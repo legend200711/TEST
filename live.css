@@ -195,15 +195,16 @@ html, body {
   position: fixed; inset: 0; z-index: 200;
   background: #000;
   flex-direction: column;
+  /* No overflow:hidden here — bottom bar must never be clipped */
 }
 #liveStage.active { display: flex; }
 
-/* Main video container */
+/* Main video container — fills all space above the bottom bar */
 .live-video-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: hidden;   /* only clips the video, not the bar outside it */
   background: #000;
 }
 #liveVideo {
@@ -304,22 +305,25 @@ body.is-creator #liveVideo {
 
 /* ══════════════════════════════════════════════════════════════
    BOTTOM CONTROL BAR — creator only
-   Scrolls horizontally on tiny phones so nothing is cut off.
-   Safe-area padding keeps buttons above iOS home indicator.
+   Lives as a direct flex child of #liveStage (NOT inside video-wrap).
+   This means overflow:hidden on the video can NEVER clip these buttons.
+   env(safe-area-inset-bottom) keeps buttons above the phone nav bar.
    ══════════════════════════════════════════════════════════════ */
 .live-bottom-bar {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  /* safe-area: iOS home bar + 10px breathing room */
+  /* Static in the flex column — video-wrap gets flex:1, bar gets its natural height */
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  /* safe-area: keeps buttons above iOS home indicator / Android nav bar */
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 12px;
-  background: linear-gradient(0deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.0) 100%);
+  background: linear-gradient(0deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.0) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;          /* wrap on very narrow phones */
+  flex-wrap: wrap;
   gap: 10px;
   z-index: 10;
-  /* Allow horizontal scroll as last-resort fallback on ultra-narrow phones */
+  /* Horizontal scroll as absolute last resort on extreme narrow phones */
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -380,11 +384,11 @@ body.is-creator #liveVideo {
   }
 }
 
-/* ── Chat panel ── */
+/* ── Chat panel — inside .live-video-wrap ── */
 .live-chat-panel {
   position: absolute;
   bottom: 0; right: 0;
-  /* left clears the 48px left panel + 10px margin + 8px gap = 66px */
+  /* left clears the left panel (48px) + margin (10px) + gap (8px) */
   left: 66px;
   width: auto;
   max-width: min(300px, calc(100vw - 66px));
@@ -394,10 +398,11 @@ body.is-creator #liveVideo {
   z-index: 9;
 }
 
-/* Creator mode — shift up above bottom controls (70px bar height is reliable) */
+/* Creator mode — bottom bar is now OUTSIDE video-wrap, so no offset needed here.
+   Chat sits at the very bottom of the video area, bar sits below it. */
 body.is-creator .live-chat-panel {
-  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
-  height: 48%;
+  bottom: 0;
+  height: 52%;
 }
 
 .live-chat-messages {
@@ -475,14 +480,15 @@ body.is-creator .live-chat-input-row {
 .live-chat-send:active { transform: scale(0.9); }
 
 /* ── Viewer action bar ── */
+/* Positioned absolute within #liveStage (fixed), not inside video-wrap.
+   This means it's never clipped and always above the phone nav bar. */
 .live-viewer-actions {
   position: absolute;
   bottom: 0;
-  /* Push right so it doesn't overlap the left panel */
-  left: 60px;
+  left: 60px;   /* clear the left panel */
   right: 0;
-  padding: 10px 16px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  /* bottom padding includes safe-area so buttons clear the nav bar */
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)) 16px;
   background: linear-gradient(0deg, rgba(0,0,0,0.55) 0%, transparent 100%);
   display: flex; align-items: flex-end; justify-content: flex-end;
   gap: 12px; z-index: 10;
@@ -684,9 +690,8 @@ body.is-creator .live-chat-input-row {
     left: auto;
     width: 280px;
     max-width: 280px;
-  }
-  body.is-creator .live-chat-panel {
-    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    /* bottom bar is outside video-wrap — no bottom offset needed */
+    bottom: 0;
   }
   /* Larger left-panel pills/buttons on tablet */
   .live-left-panel { width: 54px; left: 14px; gap: 10px; }
@@ -1448,9 +1453,12 @@ body.layout-equal .gs-tile { width: 100%; height: 100%; min-width: 0; min-height
 /* When guest stage is active, hide the single liveVideo */
 body.gs-active #liveVideo { display: none !important; }
 body.gs-active #liveCamOffOverlay { display: none !important; }
-/* liveStage UI controls (top bar, chat, bottom bar) float above guest stage */
+/* liveStage UI controls float above guest stage.
+   Bottom bar is a flex sibling of video-wrap inside #liveStage — stays on top. */
 body.gs-active #liveStage { background: transparent; z-index: 220; }
 body.gs-active .live-video-wrap { background: transparent; z-index: 0; }
+/* Keep bottom bar visible above guest stage */
+body.gs-active .live-bottom-bar { position: relative; z-index: 230; background: rgba(0,0,0,0.88); }
 
 /* On desktop: nudge chat panel left so it doesn't overlap the side panel */
 @media (min-width: 768px) {
