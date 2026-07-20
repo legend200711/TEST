@@ -92,7 +92,7 @@ let _camOn        = true;
 let _micOn        = true;
 let _facingMode   = 'user';
 
-// WebRTC (host↔viewer 1-to-1 stream)
+// WebRTC
 let _rtcPc           = null;   // RTCPeerConnection
 let _rtcSignalUnsub  = null;   // RTDB listener unsubscribe (off ref)
 let _rtcSignalRef    = null;   // RTDB ref being listened to
@@ -104,16 +104,13 @@ let _toastTimer       = null;
 let _viewerLeftFlag   = false;  // guard: prevent double-decrement on mobile
 let _creatorEndedFlag = false;  // guard: prevent beforeunload re-running endLive cleanup
 
-// Guest WebRTC — one RTCPeerConnection per box (both host and guest perspectives)
-// _guestPcs[boxNum] = { pc: RTCPeerConnection, statsInterval, guestId, localStream }
-const _guestPcs = {};
-// Layout mode
-let _layoutMode = 'grid';   // 'side' | 'grid' | 'floating' | 'equal'  (grid = TikTok auto)
-// Guest self-stream (the guest's own camera/mic when they are in a box)
-let _guestSelfStream   = null;
-let _guestSelfCamOn    = true;
-let _guestSelfMicOn    = true;
-let _guestSelfBoxNum   = null;  // which box number I (the guest) am in
+/* ── Guest Box State ── */
+let _guestLayout       = 'auto';   // current layout preference
+let _guestBoxSize      = 'sm';     // 'sm' | 'md' | 'lg'
+let _guestPeers        = {};       // uid → { pc, stream, cell, name }
+let _guestReqUnsub     = null;     // RTDB listener for incoming requests (host)
+let _guestStatusUnsub  = null;     // RTDB listener for request status (viewer)
+let _layoutPanelOpen   = false;
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -157,34 +154,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnFS:           document.getElementById('btnFullscreen'),
     btnEnd:          document.getElementById('btnEndLive'),
     btnShareCreator: document.getElementById('btnShareLiveCreator'),
-    btnLayoutSettings: document.getElementById('btnLayoutSettings'),
-
-    // Guest boxes panel (legacy — kept hidden; state mirrored to glp-panel)
-    guestBoxPanel:      document.getElementById('guestBoxPanel'),
-    guestQueueBadge:    document.getElementById('guestQueueBadge'),
-    guestQueueCount:    document.getElementById('guestQueueCount'),
-    btnCloseGuestPanel: document.getElementById('btnCloseGuestPanel'),
-
-    // New single settings panel
-    guestLayoutPanel:     document.getElementById('guestLayoutPanel'),
-    btnCloseLayoutPanel:  document.getElementById('btnCloseLayoutPanel'),
-    glpQueueBadge:        document.getElementById('glpQueueBadge'),
-    glpQueueCount:        document.getElementById('glpQueueCount'),
-
-    // Guest stage (multi-participant video area)
-    guestStage:      document.getElementById('guestStage'),
-    gsHostVideo:     document.getElementById('gsHostVideo'),
-    gsHostCamOff:    document.getElementById('gsHostCamOff'),
-    gsHostAvatar:    document.getElementById('gsHostAvatar'),
-    gsHostName:      document.getElementById('gsHostName'),
-    gsHostConnWarn:  document.getElementById('gsHostConnWarn'),
-    layoutSwitcher:  document.getElementById('layoutSwitcher'),
-
-    // Guest self-controls bar
-    guestSelfControls: document.getElementById('guestSelfControls'),
-    btnGuestCam:       document.getElementById('btnGuestCam'),
-    btnGuestMic:       document.getElementById('btnGuestMic'),
-    btnGuestLeave:     document.getElementById('btnGuestLeave'),
 
     // Viewer controls
     likeBtn:         document.getElementById('btnLike'),
@@ -201,6 +170,13 @@ document.addEventListener('DOMContentLoaded', () => {
     endedTitle:      document.getElementById('endedTitle'),
     endedSub:        document.getElementById('endedSub'),
     endedBackBtn:    document.getElementById('endedBackBtn'),
+
+    // Guest box system
+    guestGrid:           document.getElementById('guestGrid'),
+    guestRequestQueue:   document.getElementById('guestRequestQueue'),
+    btnRequestBox:       document.getElementById('btnRequestBox'),
+    btnLayoutSettings:   document.getElementById('btnLayoutSettings'),
+    layoutSettingsPanel: document.getElementById('layoutSettingsPanel'),
   };
 
   // Disable Go Live until Firebase auth resolves
@@ -217,40 +193,10 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnFlip && D.btnFlip.addEventListener('click',  () => flipLiveCamera());
   D.btnFS   && D.btnFS.addEventListener('click',    toggleFullscreen);
   D.btnEnd  && D.btnEnd.addEventListener('click',   endLive);
-  // Single layout settings button
-  D.btnLayoutSettings   && D.btnLayoutSettings.addEventListener('click',   _glpTogglePanel);
-  D.btnCloseLayoutPanel && D.btnCloseLayoutPanel.addEventListener('click', _glpClosePanel);
-
-  // Layout switcher buttons inside new glp-panel
-  if (D.guestLayoutPanel) {
-    D.guestLayoutPanel.querySelectorAll('.glp-layout-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        _setLayout(btn.dataset.layout);
-        _glpSyncLayoutButtons();
-      });
-    });
-  }
-
-  // Legacy layout switcher (hidden) — still keep wired for _setLayout sync
-  if (D.layoutSwitcher) {
-    D.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
-      btn.addEventListener('click', () => _setLayout(btn.dataset.layout));
-    });
-  }
-
-  // Guest self-controls (visible when viewer is accepted into a box)
-  D.btnGuestCam   && D.btnGuestCam.addEventListener('click',   _guestToggleCam);
-  D.btnGuestMic   && D.btnGuestMic.addEventListener('click',   _guestToggleMic);
-  D.btnGuestLeave && D.btnGuestLeave.addEventListener('click', () => {
-    if (_guestSelfBoxNum !== null) _gbViewerLeave(_guestSelfBoxNum);
-  });
 
   D.likeBtn          && D.likeBtn.addEventListener('click',          sendLike);
   D.btnShare         && D.btnShare.addEventListener('click',         shareLive);
   D.btnShareCreator  && D.btnShareCreator.addEventListener('click',  shareLive);
-  /* left-panel share button (both creator + viewer see this) */
-  document.getElementById('llpShareBtn') &&
-    document.getElementById('llpShareBtn').addEventListener('click', shareLive);
   D.chatSend  && D.chatSend.addEventListener('click',  sendChat);
   D.chatInput && D.chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
@@ -263,11 +209,38 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('liveCloseBtn') &&
     document.getElementById('liveCloseBtn').addEventListener('click', onCloseBtn);
 
+  // Guest box button wiring
+  D.btnRequestBox     && D.btnRequestBox.addEventListener('click', _viewerRequestBox);
+  D.btnLayoutSettings && D.btnLayoutSettings.addEventListener('click', _toggleLayoutPanel);
+
+  // Layout option buttons
+  document.querySelectorAll('.layout-option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.layout-option-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _guestLayout = btn.dataset.layout;
+      _applyGuestLayout();
+    });
+  });
+
+  // Box size buttons
+  document.querySelectorAll('.layout-size-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.layout-size-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _guestBoxSize = btn.dataset.size;
+      _applyGuestLayout();
+    });
+  });
+
   D.stage && D.stage.addEventListener('click', e => {
     if (_mode !== 'creator') return;
     const ignore = ['.live-ctrl-btn','#btnEndLive','.live-chat-input','.live-chat-send',
-                    '.live-close-btn','.live-creator-pill','.live-badge'];
+                    '.live-close-btn','.live-creator-pill','.live-badge',
+                    '.layout-settings-panel','.layout-option-btn','.layout-size-btn'];
     if (ignore.some(s => e.target.closest(s))) return;
+    // Close layout panel on tap-away
+    if (_layoutPanelOpen) { _closeLayoutPanel(); return; }
     D.stage.classList.toggle('live-controls-hidden');
   });
 
@@ -513,7 +486,9 @@ async function startLive() {
   _subscribeChat();
   _subscribeViewerCount();
   _showCreatorShareBar();
-  _gbInitCreator();
+
+  // ── Start listening for guest box requests ──
+  _hostListenForGuestRequests();
 
   toast('🔴 You are LIVE!');
 
@@ -657,11 +632,6 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
-    /* FIX: keep host tile in guest stage in sync when camera is flipped */
-    if (D.gsHostVideo) {
-      D.gsHostVideo.srcObject = newStream;
-      D.gsHostVideo.play().catch(() => {});
-    }
     if (_rtcPc && newStream.getVideoTracks()[0]) {
       const newVideoTrack = newStream.getVideoTracks()[0];
       const sender = _rtcPc.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -701,11 +671,14 @@ async function endLive() {
   window.removeEventListener('beforeunload', _creatorBeforeUnload);
   window.removeEventListener('pagehide',     _creatorBeforeUnload);
 
+  // Close all guest peer connections
+  _teardownAllGuestPeers();
+  if (_guestReqUnsub) { try { _guestReqUnsub(); } catch(_){} _guestReqUnsub = null; }
+
   if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
   if (_chatUnsub)        { _chatUnsub();         _chatUnsub        = null; }
   if (_viewerCountRef && _viewerCountUnsub) { off(_viewerCountRef); _viewerCountRef = null; _viewerCountUnsub = null; }
-  _gbCleanupCreator();
 
   /* ── Remove WebRTC signaling from LIVE RTDB ── */
   if (_roomId) {
@@ -904,7 +877,6 @@ async function _startViewer() {
   _populateCreatorInfo(roomData);
   _setupViewerControls(roomData);
   _subscribeChat();
-  _gbInitViewer(roomData);
 
   /* ── Increment viewer count in LIVE RTDB ── */
   try {
@@ -939,7 +911,12 @@ async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
 
-  _gbCleanupViewer();
+  // Clean up any pending box request
+  if (_user && _roomId) {
+    try { await remove(ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`)); } catch(_) {}
+  }
+  if (_guestStatusUnsub) { try { _guestStatusUnsub(); } catch(_){} _guestStatusUnsub = null; }
+
   if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
 
@@ -1539,1521 +1516,554 @@ function _esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   GUEST BOXES — TikTok-style multi-guest feature
-   ════════════════════════════════════════════════════════════════════
-
-   Firebase RTDB data layout (under liveRooms/{roomId}/guestBoxes):
-     guestBoxes/
-       boxes/
-         1: { status, guestId, guestName, guestAvatar, joinedAt }
-         2: { ... }
-         3: { ... }
-         4: { ... }
-       queue/
-         {pushKey}: { guestId, guestName, guestAvatar, requestedAt }
-       requests/
-         {guestId}: { guestId, guestName, guestAvatar, requestedAt, status }
-*/
-
-const _GB_MAX_BOXES = 4;
-let _gbPanelVisible  = false;
-let _gbBoxesUnsub    = null;   // RTDB onValue unsubscribe for boxes
-let _gbQueueUnsub    = null;   // RTDB onValue unsubscribe for queue
-let _gbMyBoxNum      = null;   // box number (1-4) the current viewer is in
-let _gbMyRequestKey  = null;   // push key for this viewer's queue entry
-let _gbRequestBtn    = null;   // DOM ref — "Request a Box" button
-
-/* ── RTDB helper paths ── */
-function _gbRef(path)  { return ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/${path}`); }
-function _gbBoxRef(n)  { return _gbRef(`boxes/${n}`); }
-function _gbQueueRef() { return _gbRef('queue'); }
-function _gbReqRef(uid){ return _gbRef(`requests/${uid.replace(/[.#$/\[\]]/g,'_')}`); }
-
-/* ════════════════════════════════════════════
-   CREATOR INIT
-   ════════════════════════════════════════════ */
-async function _gbInitCreator() {
-  if (!_roomId) return;
-
-  /* initialise all 4 boxes as available */
-  const initialBoxes = {};
-  for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-    initialBoxes[i] = { status: 'available', guestId: null };
-  }
-  try {
-    await set(_gbRef('boxes'), initialBoxes);
-    await set(_gbQueueRef(), null);          // clear any old queue
-    /* persist initial layout mode to RTDB */
-    await set(_gbRef('layoutMode'), _layoutMode);
-  } catch (_) {}
-
-  /* subscribe — do NOT auto-open panel (guest stage auto-shows when guests join) */
-  _gbSubscribeBoxes('creator');
-  _gbSubscribeQueue();
-
-  /* add notification dot to the layout settings button */
-  if (D.btnLayoutSettings) {
-    const dot = document.createElement('span');
-    dot.className = 'glp-notif-dot';
-    dot.id = '_glpNotifDot';
-    D.btnLayoutSettings.appendChild(dot);
-  }
-
-  /* populate host tile in guest stage */
-  _gsPopulateHostTile();
-  /* apply default layout */
-  _setLayout(_layoutMode);
-}
-
-/* ════════════════════════════════════════════
-   VIEWER INIT
-   ════════════════════════════════════════════ */
-function _gbInitViewer(roomData) {
-  if (!_roomId) return;
-
-  /* wire the static "Request a Box" button in the viewer actions bar */
-  const reqBtn = document.getElementById('_gbRequestBtn');
-  if (reqBtn) {
-    reqBtn.addEventListener('click', _gbViewerRequestBox);
-    _gbRequestBtn = reqBtn;
-  }
-
-  /* subscribe to boxes — panel stays hidden for viewers */
-  _gbSubscribeBoxes('viewer');
-
-  /* listen for layout mode changes from the host */
-  onValue(_gbRef('layoutMode'), snap => {
-    if (snap.exists()) _setLayout(snap.val(), false);
-  });
-
-  /* populate guest stage host tile for viewers too */
-  if (roomData) _gsPopulateHostTileViewer(roomData);
-}
-
-/* ════════════════════════════════════════════
-   PANEL TOGGLE
-   ════════════════════════════════════════════ */
-function _gbTogglePanel() {
-  _gbPanelVisible = !_gbPanelVisible;
-  const panel = D.guestBoxPanel;
-  if (!panel) return;
-  if (_gbPanelVisible) {
-    panel.style.display = 'block';
-    panel.classList.remove('hidden');
-  } else {
-    panel.classList.add('hidden');
-    setTimeout(() => { if (!_gbPanelVisible) panel.style.display = 'none'; }, 300);
-  }
-}
-
-function _gbShowPanel() {
-  _gbPanelVisible = true;
-  const panel = D.guestBoxPanel;
-  if (!panel) return;
-  panel.style.display = 'block';
-  panel.classList.remove('hidden');
-}
-
-/* ════════════════════════════════════════════
-   LAYOUT & GUEST SETTINGS PANEL (new single ⚙ button)
-   ════════════════════════════════════════════ */
-let _glpPanelVisible = false;
-
-function _glpTogglePanel() {
-  _glpPanelVisible ? _glpClosePanel() : _glpOpenPanel();
-}
-
-function _glpOpenPanel() {
-  const panel = D.guestLayoutPanel;
-  if (!panel) return;
-  _glpPanelVisible = true;
-  panel.style.display = 'block';
-  panel.classList.remove('glp-hidden');
-  _glpSyncLayoutButtons();
-}
-
-function _glpClosePanel() {
-  const panel = D.guestLayoutPanel;
-  if (!panel) return;
-  _glpPanelVisible = false;
-  panel.classList.add('glp-hidden');
-  setTimeout(() => { if (!_glpPanelVisible) panel.style.display = 'none'; }, 300);
-}
-
-function _glpSyncLayoutButtons() {
-  if (!D.guestLayoutPanel) return;
-  D.guestLayoutPanel.querySelectorAll('.glp-layout-btn').forEach(btn => {
-    btn.classList.toggle('glp-layout-btn-active', btn.dataset.layout === _layoutMode);
-  });
-}
-
-/* Mirror box state into the new GLP panel row */
-function _glpRenderBox(boxNum, data, role) {
-  const boxEl     = document.getElementById(`glpBox${boxNum}`);
-  const nameEl    = document.getElementById(`glpBoxName${boxNum}`);
-  const statusEl  = document.getElementById(`glpBoxStatus${boxNum}`);
-  const actionsEl = document.getElementById(`glpBoxActions${boxNum}`);
-  const avatarEl  = document.getElementById(`glpBoxAvatar${boxNum}`);
-  if (!boxEl) return;
-
-  const status = data.status || 'available';
-  const prevStatus = boxEl.dataset.prevStatus || 'available';
-  boxEl.dataset.prevStatus = status;
-
-  boxEl.classList.remove('glp-available', 'glp-pending', 'glp-occupied');
-  boxEl.classList.add(`glp-${status}`);
-
-  if (nameEl) {
-    nameEl.textContent = status === 'occupied' && data.guestName
-      ? data.guestName
-      : `Box ${boxNum}`;
-  }
-  if (statusEl) {
-    statusEl.textContent =
-      status === 'available' ? 'Available' :
-      status === 'pending'   ? 'Request Pending…' :
-      'Live 🟢';
-  }
-  /* avatar */
-  if (avatarEl) {
-    const av = data.guestAvatar || '';
-    const nm = data.guestName   || '?';
-    if (av) {
-      avatarEl.style.backgroundImage = `url('${av}')`;
-      avatarEl.textContent = '';
-    } else {
-      avatarEl.style.backgroundImage = '';
-      avatarEl.textContent = (status !== 'available') ? nm[0].toUpperCase() : '';
-    }
-  }
-
-  /* action buttons */
-  if (actionsEl) {
-    actionsEl.innerHTML = '';
-    if (role === 'creator') {
-      if (status === 'pending') {
-        actionsEl.append(
-          _gbMakeBtn('✔', 'gb-btn-accept',  () => _gbCreatorAccept(boxNum, data)),
-          _gbMakeBtn('✘', 'gb-btn-decline', () => _gbCreatorDecline(boxNum, data))
-        );
-      } else if (status === 'occupied') {
-        actionsEl.append(
-          _gbMakeBtn('Remove', 'gb-btn-remove', () => _gbCreatorRemove(boxNum, data))
-        );
-      }
-    }
-  }
-}
-
-/* ════════════════════════════════════════════
-   SUBSCRIBE — boxes (both creator + viewer)
-   ════════════════════════════════════════════ */
-function _gbSubscribeBoxes(role) {
-  const boxesRef = _gbRef('boxes');
-  _gbBoxesUnsub = onValue(boxesRef, snap => {
-    const boxes = snap.val() || {};
-    for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-      const data = boxes[i] || { status: 'available', guestId: null };
-      _gbRenderBox(i, data, role);
-      /* for creator: render new-style cards in glp panel */
-      if (role === 'creator') _glpRenderBox(i, data, role);
-    }
-    /* for creator: rebuild the live request cards + active guests in glp panel */
-    if (role === 'creator') _glpRebuildCards(boxes);
-  });
-}
-
-/* ════════════════════════════════════════════
-   GLP PANEL — rebuild request cards + active rows
-   Called every time box state changes.
-   ════════════════════════════════════════════ */
-function _glpRebuildCards(boxes) {
-  const reqContainer    = document.getElementById('glpRequestCards');
-  const activeContainer = document.getElementById('glpActiveGuests');
-  const reqLabel        = document.getElementById('glpGuestSectionLabel');
-  const activeLabel     = document.getElementById('glpActiveGuestLabel');
-  const dot             = document.getElementById('_glpNotifDot');
-  if (!reqContainer || !activeContainer) return;
-
-  reqContainer.innerHTML    = '';
-  activeContainer.innerHTML = '';
-
-  let hasPending  = false;
-  let hasOccupied = false;
-
-  for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-    const data   = boxes[i] || { status: 'available' };
-    const status = data.status || 'available';
-
-    if (status === 'pending') {
-      hasPending = true;
-      const card = _glpMakeRequestCard(i, data);
-      reqContainer.appendChild(card);
-    } else if (status === 'occupied') {
-      hasOccupied = true;
-      const row = _glpMakeActiveRow(i, data);
-      activeContainer.appendChild(row);
-    }
-  }
-
-  /* show/hide section headers */
-  if (reqLabel)    reqLabel.style.display    = hasPending  ? 'flex' : 'none';
-  if (activeLabel) activeLabel.style.display = hasOccupied ? 'flex' : 'none';
-
-  /* notification dot on ⚙ button */
-  if (dot) dot.classList.toggle('visible', hasPending);
-}
-
-/* Build a pending-request card (Accept / Decline) */
-function _glpMakeRequestCard(boxNum, data) {
-  const card = document.createElement('div');
-  card.className = 'glp-req-card';
-
-  const av   = data.guestAvatar || '';
-  const nm   = data.guestName   || 'Guest';
-  const init = nm[0].toUpperCase();
-
-  const avatarEl = document.createElement('div');
-  avatarEl.className = 'glp-req-avatar';
-  if (av) {
-    avatarEl.style.backgroundImage = `url('${av}')`;
-  } else {
-    avatarEl.textContent = init;
-  }
-
-  const infoEl   = document.createElement('div');
-  infoEl.className  = 'glp-req-info';
-  infoEl.innerHTML  = `
-    <div class="glp-req-name">${_esc(nm)}</div>
-    <div class="glp-req-label">Wants to join live</div>
-  `;
-
-  const actionsEl = document.createElement('div');
-  actionsEl.className = 'glp-req-actions';
-
-  const acceptBtn = document.createElement('button');
-  acceptBtn.className = 'glp-req-btn glp-req-btn-accept';
-  acceptBtn.textContent = '✔';
-  acceptBtn.title = 'Accept';
-  acceptBtn.addEventListener('click', () => _gbCreatorAccept(boxNum, data));
-
-  const declineBtn = document.createElement('button');
-  declineBtn.className = 'glp-req-btn glp-req-btn-decline';
-  declineBtn.textContent = '✘';
-  declineBtn.title = 'Decline';
-  declineBtn.addEventListener('click', () => _gbCreatorDecline(boxNum, data));
-
-  actionsEl.append(acceptBtn, declineBtn);
-  card.append(avatarEl, infoEl, actionsEl);
-  return card;
-}
-
-/* Build an active-guest row (Remove button) */
-function _glpMakeActiveRow(boxNum, data) {
-  const row = document.createElement('div');
-  row.className = 'glp-active-row';
-
-  const av   = data.guestAvatar || '';
-  const nm   = data.guestName   || 'Guest';
-  const init = nm[0].toUpperCase();
-
-  const avatarEl = document.createElement('div');
-  avatarEl.className = 'glp-active-avatar';
-  if (av) {
-    avatarEl.style.backgroundImage = `url('${av}')`;
-  } else {
-    avatarEl.textContent = init;
-  }
-
-  const infoEl = document.createElement('div');
-  infoEl.className = 'glp-active-info';
-  infoEl.innerHTML = `
-    <div class="glp-active-name">${_esc(nm)}</div>
-    <div class="glp-active-status">● Live in Box ${boxNum}</div>
-  `;
-
-  const removeBtn = document.createElement('button');
-  removeBtn.className = 'glp-active-remove';
-  removeBtn.textContent = 'Remove';
-  removeBtn.addEventListener('click', () => _gbCreatorRemove(boxNum, data));
-
-  row.append(avatarEl, infoEl, removeBtn);
-  return row;
-}
-
-/* ════════════════════════════════════════════
-   SUBSCRIBE — queue (creator only)
-   ════════════════════════════════════════════ */
-function _gbSubscribeQueue() {
-  _gbQueueUnsub = onValue(_gbQueueRef(), snap => {
-    const queueData = snap.val() || {};
-    const queueList = Object.entries(queueData);
-    const count = queueList.length;
-
-    /* update queue badge in glp panel */
-    if (D.glpQueueBadge)  D.glpQueueBadge.style.display  = count > 0 ? 'inline-flex' : 'none';
-    if (D.glpQueueCount)  D.glpQueueCount.textContent     = count;
-
-    /* render queued request cards in the glp panel */
-    if (count > 0) {
-      const [firstKey, firstUser] = queueList[0];
-      _gbRenderQueueNext(firstKey, firstUser);
-    }
-  });
-}
-
-/* ════════════════════════════════════════════
-   RENDER — single box
-   ════════════════════════════════════════════ */
-function _gbRenderBox(boxNum, data, role) {
-  const boxEl      = document.getElementById(`guestBox${boxNum}`);
-  const statusEl   = document.getElementById(`guestBoxStatus${boxNum}`);
-  const nameEl     = document.getElementById(`guestBoxName${boxNum}`);
-  const actionsEl  = document.getElementById(`guestBoxActions${boxNum}`);
-  if (!boxEl || !statusEl || !actionsEl) return;
-
-  const status = data.status || 'available';
-  const prevStatus = boxEl.dataset.prevStatus || 'available';
-  boxEl.dataset.prevStatus = status;
-
-  /* reset classes */
-  boxEl.classList.remove('gb-available', 'gb-pending', 'gb-occupied');
-  boxEl.classList.add(`gb-${status}`);
-
-  /* status label */
-  statusEl.className = `guest-box-status-label gb-status-${status}`;
-  statusEl.textContent =
-    status === 'available' ? 'Available' :
-    status === 'pending'   ? 'Request Pending' :
-    'Occupied';
-
-  /* name label */
-  if (nameEl) {
-    if (status === 'occupied' && data.guestName) {
-      nameEl.textContent = data.guestName;
-      nameEl.style.display = 'block';
-    } else {
-      nameEl.textContent   = '';
-      nameEl.style.display = 'none';
-    }
-  }
-
-  /* ── Profile picture ── */
-  const avatarWrap    = document.getElementById(`gbAvatar${boxNum}`);
-  const avatarImg     = document.getElementById(`gbAvatarImg${boxNum}`);
-  const avatarInitial = document.getElementById(`gbAvatarInitial${boxNum}`);
-  if (avatarWrap) {
-    if (status === 'occupied' || status === 'pending') {
-      avatarWrap.classList.add('visible');
-      const av = data.guestAvatar || '';
-      const nm = data.guestName   || '?';
-      if (av) {
-        if (avatarImg) { avatarImg.src = av; avatarImg.style.display = 'block'; }
-        if (avatarInitial) avatarInitial.style.display = 'none';
-      } else {
-        if (avatarImg) avatarImg.style.display = 'none';
-        if (avatarInitial) {
-          avatarInitial.textContent  = nm[0].toUpperCase();
-          avatarInitial.style.display = 'flex';
-        }
-      }
-    } else {
-      avatarWrap.classList.remove('visible');
-    }
-  }
-
-  /* ── Status icons (cam / mic / conn) — only when occupied ── */
-  const iconsEl = document.getElementById(`gbStatusIcons${boxNum}`);
-  if (iconsEl) {
-    if (status === 'occupied') {
-      iconsEl.style.display = 'flex';
-      const camIcon  = document.getElementById(`gbIconCam${boxNum}`);
-      const micIcon  = document.getElementById(`gbIconMic${boxNum}`);
-      const connIcon = document.getElementById(`gbIconConn${boxNum}`);
-      if (camIcon)  camIcon.classList.toggle('off',  data.cameraEnabled    === false);
-      if (micIcon)  micIcon.classList.toggle('off',  data.microphoneEnabled === false);
-      if (connIcon) {
-        const q = data.connectionQuality || 'good';
-        connIcon.className = 'gb-icon-conn conn-' + q;
-        connIcon.title = 'Connection: ' + q;
-      }
-    } else {
-      iconsEl.style.display = 'none';
-    }
-  }
-
-  /* ── Weak connection warning badge ── */
-  const warnEl = document.getElementById(`gbConnWarn${boxNum}`);
-  if (warnEl) {
-    const isWeak = status === 'occupied' &&
-      (data.connectionQuality === 'weak' || data.connectionQuality === 'bad');
-    warnEl.classList.toggle('visible', isWeak);
-  }
-
-  /* ── Guest stage tile: show/hide + populate ── */
-  _gsUpdateTile(boxNum, data, role);
-
-  /* action buttons */
-  actionsEl.innerHTML = '';
-
-  if (role === 'creator') {
-    if (status === 'pending') {
-      actionsEl.append(
-        _gbMakeBtn('✔ Accept',  'gb-btn-accept',  () => _gbCreatorAccept(boxNum, data)),
-        _gbMakeBtn('✘ Decline', 'gb-btn-decline', () => _gbCreatorDecline(boxNum, data))
-      );
-    } else if (status === 'occupied') {
-      /* Mute guest mic button */
-      const micLabel = data.microphoneEnabled === false ? '🔇 Unmute Mic' : '🔇 Mute Mic';
-      const camLabel = data.cameraEnabled     === false ? '📷 Enable Cam' : '📷 Disable Cam';
-      actionsEl.append(
-        _gbMakeBtn(micLabel,  'gb-btn-remove', () => _gbHostToggleGuestMic(boxNum, data)),
-        _gbMakeBtn(camLabel,  'gb-btn-close',  () => _gbHostToggleGuestCam(boxNum, data)),
-        _gbMakeBtn('Remove',  'gb-btn-remove', () => _gbCreatorRemove(boxNum, data)),
-        _gbMakeBtn('Close',   'gb-btn-close',  () => _gbCreatorClose(boxNum))
-      );
-    } else {
-      /* available — host can manually close/reopen (noop for clean state) */
-    }
-  } else if (role === 'viewer') {
-    /* viewer who is in this box sees a Leave button */
-    if (status === 'occupied' && data.guestId === _user?.uid) {
-      actionsEl.append(
-        _gbMakeBtn('Leave Box', 'gb-btn-leave', () => _gbViewerLeave(boxNum))
-      );
-    }
-    /* if I was just removed (prev = occupied, now = available and was mine) */
-    if (prevStatus === 'occupied' && status === 'available' && _guestSelfBoxNum === boxNum) {
-      _guestSelfBoxNum = null;
-      _gsHideSelfControls();
-      toast('You have been removed from the guest box.');
-    }
-  }
-}
-
-/* ════════════════════════════════════════════
-   RENDER — "next in queue" prompt (creator)
-   Injects a request card for the queued user into glpRequestCards.
-   ════════════════════════════════════════════ */
-function _gbRenderQueueNext(queueKey, userData) {
-  const reqContainer = document.getElementById('glpRequestCards');
-  if (!reqContainer) return;
-
-  /* avoid duplicating the same queue card */
-  if (reqContainer.querySelector(`[data-queue-key="${queueKey}"]`)) return;
-
-  /* find first available box to accept into */
-  let targetBox = null;
-  for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-    const boxEl = document.getElementById(`guestBox${i}`);
-    if (boxEl && boxEl.classList.contains('gb-available')) {
-      targetBox = i;
-      break;
-    }
-  }
-  if (targetBox === null) return;  /* no open box */
-
-  /* build a card via the shared builder, then override buttons for queue semantics */
-  const card = _glpMakeRequestCard(targetBox, userData);
-  card.dataset.queueKey = queueKey;
-
-  /* override accept to use queue-accept logic */
-  const oldAccept = card.querySelector('.glp-req-btn-accept');
-  if (oldAccept) {
-    const newAccept = document.createElement('button');
-    newAccept.className = 'glp-req-btn glp-req-btn-accept';
-    newAccept.textContent = '✔';
-    newAccept.title = 'Accept';
-    newAccept.addEventListener('click', () => _gbCreatorAcceptFromQueue(targetBox, queueKey, userData));
-    oldAccept.replaceWith(newAccept);
-  }
-
-  /* override decline to remove from queue */
-  const declineBtn = card.querySelector('.glp-req-btn-decline');
-  if (declineBtn) {
-    const newDecline = document.createElement('button');
-    newDecline.className = 'glp-req-btn glp-req-btn-decline';
-    newDecline.textContent = '✘';
-    newDecline.title = 'Decline';
-    newDecline.addEventListener('click', async () => {
-      try {
-        await remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${queueKey}`));
-        await set(_gbReqRef(userData.guestId), { ...userData, status: 'declined' });
-        await _gbNotifyGuest(userData.guestId, 'declined', null);
-        card.remove();
-      } catch (_) {}
-    });
-    declineBtn.replaceWith(newDecline);
-  }
-
-  const label = card.querySelector('.glp-req-label');
-  if (label) label.textContent = 'In queue — wants to join';
-
-  reqContainer.appendChild(card);
-
-  /* show the section label + notification dot */
-  const reqLabel = document.getElementById('glpGuestSectionLabel');
-  if (reqLabel) reqLabel.style.display = 'flex';
-  const dot = document.getElementById('_glpNotifDot');
-  if (dot) dot.classList.add('visible');
-}
-
-function _gbMakeBtn(text, classes, fn) {
-  const btn = document.createElement('button');
-  btn.className = `gb-action-btn ${classes}`;
-  btn.textContent = text;
-  btn.addEventListener('click', fn);
-  return btn;
-}
-
-/* ════════════════════════════════════════════
-   VIEWER — Request a box
-   ════════════════════════════════════════════ */
-async function _gbViewerRequestBox() {
+/* ═══════════════════════════════════════════════════════════════
+   GUEST BOX SYSTEM
+   ─────────────────────────────────────────────────────────────
+   RTDB paths used:
+     guestRequests/{roomId}/{viewerUid}  → { uid, name, avatar, status:'pending'|'accepted'|'declined' }
+     guestSignaling/{roomId}/{viewerUid} → { offer, answer, guestCandidates:{}, hostCandidates:{} }
+
+   Flow:
+     Viewer:  taps "Request a Box"
+              → writes guestRequests/{roomId}/{uid}  status:'pending'
+              → watches status node for 'accepted' / 'declined'
+
+     Host:    listens to guestRequests/{roomId}
+              → sees pending card → Accept / Decline
+              Accept → writes status:'accepted'  + initiates WebRTC offer
+              Decline → removes request node
+
+     WebRTC:  host is offerer, guest is answerer (like creator/viewer main flow)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── VIEWER: Request a Box ── */
+async function _viewerRequestBox() {
   if (!_user || !_roomId) return;
+  const btn = D.btnRequestBox;
+  if (btn && btn.classList.contains('pending')) return; // already requested
 
-  /* prevent duplicate request */
-  if (_gbMyBoxNum !== null) {
-    toast('You are already in a box.');
-    return;
-  }
-
-  /* check if user already has a pending request */
+  const reqRef = ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`);
   try {
-    const reqSnap = await get(_gbReqRef(_user.uid));
-    if (reqSnap.exists() && reqSnap.val().status === 'pending') {
-      toast('Your request is already pending.');
-      return;
-    }
-  } catch (_) {}
-
-  /* disable button to prevent spam */
-  if (_gbRequestBtn) {
-    _gbRequestBtn.disabled = true;
-    _gbRequestBtn.querySelector('span:last-child').textContent = 'Pending…';
-  }
-
-  const userName = _userData?.displayName || _user.email?.split('@')[0] || 'Guest';
-  const payload = {
-    guestId:     _user.uid,
-    guestName:   userName,
-    guestAvatar: _userData?.avatar || _userData?.profilePicture || '',
-    requestedAt: Date.now(),
-    status:      'pending',
-  };
-
-  /* find first available box */
-  let placed = false;
-  try {
-    const boxesSnap = await get(_gbRef('boxes'));
-    const boxes = boxesSnap.val() || {};
-    for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-      if (!boxes[i] || boxes[i].status === 'available') {
-        /* put the request directly on the box as 'pending' */
-        await set(_gbBoxRef(i), { ...payload, status: 'pending', boxNumber: i });
-        placed = true;
-
-        /* record in requests map for dedup */
-        await set(_gbReqRef(_user.uid), { ...payload, boxNumber: i });
-
-        /* notify host */
-        await _gbNotifyHost('request', userName, i);
-        toast('📩 Request sent! Waiting for host…');
-        break;
-      }
-    }
+    await set(reqRef, {
+      uid:    _user.uid,
+      name:   _userData.displayName || 'Guest',
+      avatar: _userData.avatar || _userData.profilePicture || '',
+      status: 'pending',
+      ts:     Date.now(),
+    });
   } catch (e) {
-    placed = false;
-  }
-
-  if (!placed) {
-    /* all boxes occupied/pending — add to queue */
-    try {
-      const qRef = push(_gbQueueRef());
-      _gbMyRequestKey = qRef.key;
-      await set(qRef, payload);
-      /* record in requests map for dedup */
-      await set(_gbReqRef(_user.uid), { ...payload, inQueue: true });
-      /* notify host */
-      await _gbNotifyHost('queue', userName, null);
-      toast('🕐 All boxes are full. You are in the queue!');
-    } catch (e) {
-      toast('Could not send request. Try again.');
-      if (_gbRequestBtn) {
-        _gbRequestBtn.disabled = false;
-        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request a Box';
-      }
-      return;
-    }
-  }
-
-  /* listen for own box acceptance/decline */
-  _gbWatchOwnRequest();
-}
-
-/* ════════════════════════════════════════════
-   VIEWER — watch own request for accept/decline
-   ════════════════════════════════════════════ */
-function _gbWatchOwnRequest() {
-  if (!_user) return;
-  const reqRef = _gbReqRef(_user.uid);
-  onValue(reqRef, snap => {
-    if (!snap.exists()) return;
-    const d = snap.val();
-    if (d.status === 'accepted') {
-      _gbMyBoxNum = d.boxNumber;
-      _guestSelfBoxNum = d.boxNumber;
-      toast('✅ You are in a guest box! Joining…');
-      if (_gbRequestBtn) {
-        _gbRequestBtn.disabled = true;
-        _gbRequestBtn.querySelector('span:last-child').textContent = '✅ In Box ' + _gbMyBoxNum;
-      }
-      off(reqRef);
-      /* start capturing local stream + WebRTC signaling to host */
-      _guestStartStream(d.boxNumber);
-    } else if (d.status === 'declined') {
-      toast('❌ Your request was declined.');
-      if (_gbRequestBtn) {
-        _gbRequestBtn.disabled = false;
-        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request a Box';
-      }
-      /* clear the request record */
-      remove(reqRef).catch(() => {});
-      off(reqRef);
-    }
-  });
-}
-
-/* ════════════════════════════════════════════
-   VIEWER — Leave a box
-   ════════════════════════════════════════════ */
-async function _gbViewerLeave(boxNum) {
-  if (!_user || !_roomId) return;
-  try {
-    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
-    await remove(_gbReqRef(_user.uid)).catch(() => {});
-    _gbMyBoxNum    = null;
-    _guestSelfBoxNum = null;
-    _guestStopStream(boxNum);
-    _gsHideSelfControls();
-    if (_gbRequestBtn) {
-      _gbRequestBtn.disabled = false;
-      _gbRequestBtn.querySelector('span:last-child').textContent = 'Request a Box';
-    }
-    toast('You left the guest box.');
-  } catch (_) {
-    toast('Could not leave box. Try again.');
-  }
-}
-
-/* ════════════════════════════════════════════
-   CREATOR — Accept pending box request
-   ════════════════════════════════════════════ */
-async function _gbCreatorAccept(boxNum, data) {
-  if (!_roomId) return;
-  try {
-    await set(_gbBoxRef(boxNum), {
-      status:      'occupied',
-      guestId:     data.guestId,
-      guestName:   data.guestName   || '',
-      guestAvatar: data.guestAvatar || '',
-      boxNumber:   boxNum,
-      joinedAt:    Date.now(),
-      liveRoomId:  _roomId,
-      hostId:      _user?.uid || '',
-    });
-    /* update request status so viewer knows they were accepted */
-    await set(_gbReqRef(data.guestId), { ...data, status: 'accepted', boxNumber: boxNum });
-    /* notify guest */
-    await _gbNotifyGuest(data.guestId, 'accepted', boxNum);
-    /* host begins watching for guest WebRTC offer */
-    _gbHostWatchGuestWebRTC(boxNum);
-    toast(`✅ ${data.guestName || 'Guest'} accepted into Box ${boxNum}`);
-  } catch (_) {
-    toast('Could not accept. Try again.');
-  }
-}
-
-/* ════════════════════════════════════════════
-   CREATOR — Accept next from queue into a box
-   ════════════════════════════════════════════ */
-async function _gbCreatorAcceptFromQueue(boxNum, queueKey, userData) {
-  if (!_roomId) return;
-  try {
-    await set(_gbBoxRef(boxNum), {
-      status:      'occupied',
-      guestId:     userData.guestId,
-      guestName:   userData.guestName   || '',
-      guestAvatar: userData.guestAvatar || '',
-      boxNumber:   boxNum,
-      joinedAt:    Date.now(),
-      liveRoomId:  _roomId,
-      hostId:      _user?.uid || '',
-    });
-    /* update request status */
-    await set(_gbReqRef(userData.guestId), { ...userData, status: 'accepted', boxNumber: boxNum, inQueue: false });
-    /* remove from queue */
-    await remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${queueKey}`)).catch(() => {});
-    /* notify guest */
-    await _gbNotifyGuest(userData.guestId, 'accepted', boxNum);
-    /* host begins watching for guest WebRTC offer */
-    _gbHostWatchGuestWebRTC(boxNum);
-    toast(`✅ ${userData.guestName || 'Guest'} accepted into Box ${boxNum}`);
-  } catch (_) {
-    toast('Could not accept. Try again.');
-  }
-}
-
-/* ════════════════════════════════════════════
-   CREATOR — Decline a pending request
-   ════════════════════════════════════════════ */
-async function _gbCreatorDecline(boxNum, data) {
-  if (!_roomId) return;
-  try {
-    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
-    await set(_gbReqRef(data.guestId), { ...data, status: 'declined' });
-    await _gbNotifyGuest(data.guestId, 'declined', boxNum);
-    toast(`Declined ${data.guestName || 'guest'}'s request.`);
-  } catch (_) {
-    toast('Could not decline. Try again.');
-  }
-}
-
-/* ════════════════════════════════════════════
-   CREATOR — Remove an active guest from a box
-   ════════════════════════════════════════════ */
-async function _gbCreatorRemove(boxNum, data) {
-  if (!_roomId) return;
-  try {
-    _guestStopStream(boxNum);   // close host-side WebRTC for this box
-    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
-    await remove(_gbReqRef(data.guestId)).catch(() => {});
-    await _gbNotifyGuest(data.guestId, 'removed', boxNum);
-    toast(`Removed ${data.guestName || 'guest'} from Box ${boxNum}`);
-  } catch (_) {
-    toast('Could not remove. Try again.');
-  }
-}
-
-/* ════════════════════════════════════════════
-   CREATOR — Close a box (make unavailable then re-open)
-   Re-opening simply resets it to available.
-   ════════════════════════════════════════════ */
-async function _gbCreatorClose(boxNum) {
-  if (!_roomId) return;
-  try {
-    await set(_gbBoxRef(boxNum), { status: 'available', guestId: null });
-    toast(`Box ${boxNum} cleared.`);
-  } catch (_) {
-    toast('Could not close box. Try again.');
-  }
-}
-
-/* ════════════════════════════════════════════
-   NOTIFICATIONS
-   ════════════════════════════════════════════ */
-
-/* notify the host when a viewer requests a box */
-async function _gbNotifyHost(type, guestName, boxNum) {
-  if (!_user || !_roomId) return;
-  const hostId = _roomId.split('_')[0].replace(/_/g, '');
-  if (!hostId) return;
-  try {
-    await addDoc(collection(_db, 'notifications', hostId, 'items'), {
-      id:        `gb_req_${_user.uid}_${Date.now()}`,
-      type:      'guestBox_request',
-      fromUid:   _user.uid,
-      fromName:  guestName,
-      roomId:    _roomId,
-      boxNumber: boxNum,
-      queueType: type,
-      title:     `🎥 ${guestName} wants a guest box`,
-      body:      type === 'queue'
-        ? `${guestName} is in the queue — open a box!`
-        : `${guestName} requests Box ${boxNum}`,
-      ts:        Date.now(),
-      read:      false,
-    });
-  } catch (_) {}
-}
-
-/* notify a guest about accept / decline / remove */
-async function _gbNotifyGuest(guestId, action, boxNum) {
-  if (!guestId || !_roomId) return;
-  const hostName = _userData?.displayName || 'Host';
-  const msgs = {
-    accepted: { title: `✅ You are in Box ${boxNum}!`, body: `${hostName} accepted you into guest box ${boxNum}. You are live!` },
-    declined: { title: `❌ Request declined`,           body: `${hostName} declined your guest box request.` },
-    removed:  { title: `You were removed from Box ${boxNum}`, body: `${hostName} removed you from the guest box.` },
-  };
-  const m = msgs[action];
-  if (!m) return;
-  try {
-    await addDoc(collection(_db, 'notifications', guestId, 'items'), {
-      id:        `gb_${action}_${Date.now()}`,
-      type:      `guestBox_${action}`,
-      fromUid:   _user?.uid || '',
-      fromName:  hostName,
-      roomId:    _roomId,
-      boxNumber: boxNum,
-      title:     m.title,
-      body:      m.body,
-      ts:        Date.now(),
-      read:      false,
-    });
-  } catch (_) {}
-}
-
-/* ════════════════════════════════════════════
-   HOST — Mute / unmute guest mic via RTDB flag
-   Guest client watches this flag and applies it to their local track
-   ════════════════════════════════════════════ */
-async function _gbHostToggleGuestMic(boxNum, data) {
-  if (!_roomId) return;
-  const nowEnabled = data.microphoneEnabled !== false;  // default true
-  try {
-    await update(_gbBoxRef(boxNum), { microphoneEnabled: !nowEnabled });
-    toast(`${data.guestName || 'Guest'} mic ${!nowEnabled ? 'unmuted' : 'muted'} by host`);
-  } catch (_) { toast('Could not mute. Try again.'); }
-}
-
-async function _gbHostToggleGuestCam(boxNum, data) {
-  if (!_roomId) return;
-  const nowEnabled = data.cameraEnabled !== false;  // default true
-  try {
-    await update(_gbBoxRef(boxNum), { cameraEnabled: !nowEnabled });
-    toast(`${data.guestName || 'Guest'} camera ${!nowEnabled ? 'enabled' : 'disabled'} by host`);
-  } catch (_) { toast('Could not change camera. Try again.'); }
-}
-
-/* ════════════════════════════════════════════
-   CLEANUP
-   ════════════════════════════════════════════ */
-function _gbCleanupCreator() {
-  if (_gbBoxesUnsub) { try { off(_gbRef('boxes')); } catch (_) {} _gbBoxesUnsub = null; }
-  if (_gbQueueUnsub) { try { off(_gbQueueRef());   } catch (_) {} _gbQueueUnsub = null; }
-  /* close all guest WebRTC connections */
-  for (let i = 1; i <= _GB_MAX_BOXES; i++) _guestStopStream(i);
-  /* clear all guestBoxes data from RTDB when host ends the live */
-  if (_roomId) {
-    try { remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes`)).catch(() => {}); } catch (_) {}
-  }
-  /* close GLP panel */
-  _glpClosePanel();
-  _gsHideStage();
-}
-
-function _gbCleanupViewer() {
-  if (_gbBoxesUnsub) { try { off(_gbRef('boxes')); } catch (_) {} _gbBoxesUnsub = null; }
-
-  /* if viewer is in a box, clear their slot */
-  if (_gbMyBoxNum !== null && _roomId) {
-    try { set(_gbBoxRef(_gbMyBoxNum), { status: 'available', guestId: null }).catch(() => {}); } catch (_) {}
-    _gbMyBoxNum = null;
-  }
-  /* stop self stream + cleanup WebRTC */
-  if (_guestSelfBoxNum !== null) { _guestStopStream(_guestSelfBoxNum); _guestSelfBoxNum = null; }
-  /* if viewer is in the queue, remove their entry */
-  if (_gbMyRequestKey && _roomId) {
-    try {
-      remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${_gbMyRequestKey}`)).catch(() => {});
-    } catch (_) {}
-    _gbMyRequestKey = null;
-  }
-  /* clear own request record */
-  if (_user && _roomId) {
-    try { remove(_gbReqRef(_user.uid)).catch(() => {}); } catch (_) {}
-  }
-  _gsHideStage();
-  _gsHideSelfControls();
-}
-
-
-/* ════════════════════════════════════════════════════════════════════
-   GUEST STAGE — multi-participant video area
-   Four layout modes: side | grid | floating | equal
-   ════════════════════════════════════════════════════════════════════ */
-
-/* ── Populate host tile (creator side) ── */
-function _gsPopulateHostTile() {
-  if (!_localStream) return;
-  const v = D.gsHostVideo;
-  if (v) { v.srcObject = _localStream; v.play().catch(() => {}); }
-  if (D.gsHostName && _userData) D.gsHostName.textContent = _userData.displayName || 'Host';
-  if (D.gsHostAvatar && _userData) {
-    const av = _userData.avatar || _userData.profilePicture || '';
-    if (av) {
-      D.gsHostAvatar.style.backgroundImage = `url('${av}')`;
-      D.gsHostAvatar.textContent = '';
-    } else {
-      D.gsHostAvatar.textContent = (_userData.displayName || 'H')[0].toUpperCase();
-    }
-  }
-}
-
-/* ── Populate host tile (viewer side — shows host name/avatar, no local stream) ── */
-function _gsPopulateHostTileViewer(roomData) {
-  if (D.gsHostName)   D.gsHostName.textContent = roomData.hostName || 'Host';
-  if (D.gsHostAvatar) {
-    if (roomData.hostAvatar) {
-      D.gsHostAvatar.style.backgroundImage = `url('${roomData.hostAvatar}')`;
-      D.gsHostAvatar.textContent = '';
-    } else {
-      D.gsHostAvatar.textContent = (roomData.hostName || 'H')[0].toUpperCase();
-    }
-  }
-  /* FIX: mirror liveVideo srcObject to gsHostVideo — also re-sync when track arrives */
-  const hv = D.gsHostVideo;
-  if (!hv) return;
-  const _syncHostVid = () => {
-    if (D.liveVideo && D.liveVideo.srcObject) {
-      hv.srcObject = D.liveVideo.srcObject;
-      hv.play().catch(() => {});
-    }
-  };
-  _syncHostVid();
-  /* If stream hasn't arrived yet, watch for it via the video element's srcObject */
-  if (!hv.srcObject && D.liveVideo) {
-    D.liveVideo.addEventListener('loadedmetadata', _syncHostVid, { once: true });
-  }
-}
-
-/* ── Update a single guest tile when box data changes ── */
-function _gsUpdateTile(boxNum, data, role) {
-  const tileEl = document.getElementById(`gsTile${boxNum}`);
-  if (!tileEl) return;
-
-  const status = data.status || 'available';
-
-  if (status !== 'occupied') {
-    tileEl.style.display = 'none';
-    tileEl.dataset.gsVisible = '0';
-    _gsRefreshActiveCount();
-    _gsActivateIfNeeded();
+    toast('Could not send request. Try again.');
     return;
   }
 
-  tileEl.style.display = '';
-  tileEl.dataset.gsVisible = '1';
+  if (btn) {
+    btn.classList.add('pending');
+    btn.querySelector('span:last-child') && (btn.querySelector('span:last-child').textContent = 'Waiting…');
+  }
+  toast('📺 Request sent to host!');
 
-  /* name + avatar */
-  const nameEl   = document.getElementById(`gsGuest${boxNum}Name`);
-  const avatarEl = document.getElementById(`gsGuest${boxNum}Avatar`);
-  if (nameEl)   nameEl.textContent = data.guestName || `Guest ${boxNum}`;
-  if (avatarEl) {
-    const av = data.guestAvatar || '';
-    if (av) {
-      avatarEl.style.backgroundImage = `url('${av}')`;
-      avatarEl.textContent = '';
-    } else {
-      avatarEl.style.backgroundImage = '';
-      avatarEl.textContent = (data.guestName || 'G')[0].toUpperCase();
+  // Watch for host's response
+  if (_guestStatusUnsub) { try { _guestStatusUnsub(); } catch(_){} }
+  const statusRef = ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}/status`);
+  _guestStatusUnsub = onValue(statusRef, async snap => {
+    const status = snap.val();
+    if (status === 'accepted') {
+      if (btn) {
+        btn.classList.remove('pending');
+        btn.style.display = 'none';
+      }
+      toast('✅ Accepted! Joining as guest…');
+      _guestStatusUnsub && _guestStatusUnsub();
+      _guestStatusUnsub = null;
+      await _guestJoinAsViewer();
+    } else if (status === 'declined') {
+      if (btn) {
+        btn.classList.remove('pending');
+        const label = btn.querySelector('span:last-child');
+        if (label) label.textContent = 'Request a Box';
+      }
+      toast('Request declined.');
+      _guestStatusUnsub && _guestStatusUnsub();
+      _guestStatusUnsub = null;
     }
-  }
-
-  /* cam/mic indicators */
-  const camInd  = document.getElementById(`gsGuest${boxNum}Cam`);
-  const micInd  = document.getElementById(`gsGuest${boxNum}Mic`);
-  const connInd = document.getElementById(`gsGuest${boxNum}Conn`);
-  if (camInd)  camInd.classList.toggle('off',  data.cameraEnabled    === false);
-  if (micInd)  micInd.classList.toggle('off',  data.microphoneEnabled === false);
-  if (connInd) {
-    const q = data.connectionQuality || 'good';
-    connInd.className = 'gs-ind gs-ind-conn conn-' + q;
-  }
-
-  /* cam off overlay in tile */
-  const camOffEl = document.getElementById(`gsGuest${boxNum}CamOff`);
-  if (camOffEl) {
-    camOffEl.style.display = data.cameraEnabled === false ? 'flex' : 'none';
-  }
-
-  /* weak conn warning */
-  const warnEl = document.getElementById(`gsGuest${boxNum}ConnWarn`);
-  if (warnEl) {
-    const isWeak = data.connectionQuality === 'weak' || data.connectionQuality === 'bad';
-    warnEl.style.display = isWeak ? 'block' : 'none';
-  }
-
-  /* if I (viewer/guest) am watching my own hosted stream, apply track state */
-  if (role === 'viewer' && data.guestId === _user?.uid && _guestSelfStream) {
-    _guestSelfStream.getAudioTracks().forEach(t => {
-      t.enabled = data.microphoneEnabled !== false;
-    });
-    _guestSelfStream.getVideoTracks().forEach(t => {
-      t.enabled = data.cameraEnabled !== false;
-    });
-  }
-
-  _gsRefreshActiveCount();
-  /* activate guest stage when at least one guest is live */
-  _gsActivateIfNeeded();
-}
-
-/* ── Count visible (occupied) tiles + update data-count attribute ── */
-function _gsRefreshActiveCount() {
-  const stageEl = D.guestStage;
-  if (!stageEl) return;
-  // Count guest tiles that are currently visible (have data-gs-visible set by _gsUpdateTile)
-  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile[data-gs-visible="1"]');
-  // data-count = total participants (1 host + N guests) — drives CSS grid layouts
-  stageEl.dataset.count = visibleGuests.length + 1;
-}
-
-/* ── Show guest stage (replaces the single liveVideo area) ── */
-function _gsActivateIfNeeded() {
-  const stageEl = D.guestStage;
-  if (!stageEl) return;
-  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile[data-gs-visible="1"]');
-  if (visibleGuests.length > 0 && !document.body.classList.contains('gs-active')) {
-    document.body.classList.add('gs-active');
-    stageEl.style.display = '';
-    stageEl.classList.add('active');
-
-    /* FIX: for viewer, re-sync host tile video when stage first activates */
-    if (_mode === 'viewer' && D.gsHostVideo && D.liveVideo && D.liveVideo.srcObject) {
-      D.gsHostVideo.srcObject = D.liveVideo.srcObject;
-      D.gsHostVideo.play().catch(() => {});
-    }
-    /* FIX: for creator, always keep host tile pointing at _localStream */
-    if (_mode === 'creator' && D.gsHostVideo && _localStream) {
-      D.gsHostVideo.srcObject = _localStream;
-      D.gsHostVideo.play().catch(() => {});
-    }
-  }
-  if (visibleGuests.length === 0 && document.body.classList.contains('gs-active')) {
-    _gsHideStage();
-  }
-  /* FIX: Auto-reflow grid only when layout-grid is the active body class.
-     Avoids calling _setLayout with a stale mode that triggers camera restarts. */
-  if (_layoutMode === 'grid' && document.body.classList.contains('layout-grid')) {
-    /* just refresh data-count — CSS grid responds automatically */
-  }
-}
-
-function _gsHideStage() {
-  document.body.classList.remove('gs-active');
-  if (D.guestStage) {
-    D.guestStage.classList.remove('active');
-    D.guestStage.style.display = 'none';
-  }
-}
-
-function _gsHideSelfControls() {
-  if (D.guestSelfControls) D.guestSelfControls.style.display = 'none';
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   LAYOUT — set layout mode (side | grid | floating | equal)
-   ════════════════════════════════════════════════════════════════════ */
-function _setLayout(mode, persistToRTDB) {
-  const validModes = ['side', 'grid', 'floating', 'equal'];
-  if (!validModes.includes(mode)) mode = 'side';
-  _layoutMode = mode;
-
-  /* remove all layout classes */
-  document.body.classList.remove('layout-side', 'layout-grid', 'layout-floating', 'layout-equal');
-  document.body.classList.add('layout-' + mode);
-
-  /* update active button — legacy switcher */
-  if (D.layoutSwitcher) {
-    D.layoutSwitcher.querySelectorAll('.layout-btn').forEach(btn => {
-      btn.classList.toggle('layout-btn-active', btn.dataset.layout === mode);
-    });
-  }
-  /* sync new GLP panel layout buttons */
-  _glpSyncLayoutButtons();
-
-  /* persist to RTDB so viewers follow (creator only, default persistToRTDB = true) */
-  if (persistToRTDB !== false && _mode === 'creator' && _roomId) {
-    set(_gbRef('layoutMode'), mode).catch(() => {});
-  }
-
-  /* enable drag for floating layout */
-  if (mode === 'floating') _gsEnableDrag();
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   DRAG — floating tiles can be repositioned (layout-floating only)
-   ════════════════════════════════════════════════════════════════════ */
-function _gsEnableDrag() {
-  const tiles = document.querySelectorAll('.gs-guest-tile');
-  tiles.forEach(tile => {
-    if (tile._dragEnabled) return;
-    tile._dragEnabled = true;
-    let startX, startY, origLeft, origBottom;
-
-    const onDown = (e) => {
-      if (!document.body.classList.contains('layout-floating')) return;
-      const evt = e.touches ? e.touches[0] : e;
-      startX = evt.clientX; startY = evt.clientY;
-      const rect = tile.getBoundingClientRect();
-      origLeft   = rect.left;
-      origBottom = window.innerHeight - rect.bottom;
-      tile.style.left    = origLeft   + 'px';
-      tile.style.bottom  = origBottom + 'px';
-      tile.style.right   = 'auto';
-      tile.style.top     = 'auto';
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup',   onUp);
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend',  onUp);
-    };
-    const onMove = (e) => {
-      if (e.cancelable) e.preventDefault();
-      const evt = e.touches ? e.touches[0] : e;
-      const dx = evt.clientX - startX;
-      const dy = evt.clientY - startY;
-      tile.style.left   = Math.max(0, origLeft   + dx) + 'px';
-      tile.style.bottom = Math.max(0, origBottom - dy) + 'px';
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup',   onUp);
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend',  onUp);
-    };
-    tile.addEventListener('mousedown',  onDown);
-    tile.addEventListener('touchstart', onDown, { passive: true });
   });
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   GUEST WebRTC — guest captures their stream and signals host
-   Architecture:
-     Guest → RTDB path: liveRooms/{roomId}/guestBoxes/webrtc/{boxNum}
-       guestOffer, guestCandidates
-     Host  → RTDB path: same node
-       hostAnswer, hostCandidates
-   ════════════════════════════════════════════════════════════════════ */
+/* ── VIEWER: Join as a guest box (answerer) ── */
+async function _guestJoinAsViewer() {
+  if (!_user || !_roomId) return;
 
-function _gbGuestSignalRef(boxNum) {
-  return ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}`);
-}
-
-/* ── Guest: start camera/mic stream + create WebRTC offer ── */
-async function _guestStartStream(boxNum) {
-  /* FIX: clean up any previous stream/PC for this box before starting fresh */
-  if (_guestPcs[boxNum]?.pc) {
-    try { _guestPcs[boxNum].pc.close(); } catch (_) {}
-    delete _guestPcs[boxNum];
-  }
-  if (_guestSelfStream) {
-    _guestSelfStream.getTracks().forEach(t => t.stop());
-    _guestSelfStream = null;
-  }
-
-  /* acquire camera + mic */
+  let guestStream;
   try {
-    _guestSelfStream = await navigator.mediaDevices.getUserMedia({
+    guestStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       audio: true,
     });
-  } catch (err) {
-    try {
-      _guestSelfStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-      _guestSelfCamOn = false;
-      toast('Camera not available — joining with audio only.');
-    } catch (e) {
-      toast('Camera & mic access denied. Cannot join box.');
-      return;
-    }
+  } catch (e) {
+    toast('Camera access denied. Cannot join box.');
+    return;
   }
 
-  /* show self-controls bar */
-  if (D.guestSelfControls) D.guestSelfControls.style.display = 'flex';
+  const sigRef = ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}`);
+  const MAX_WAIT = 10000;
+  const startedAt = Date.now();
 
-  /* update RTDB with initial cam/mic state */
-  try {
-    await update(_gbBoxRef(boxNum), {
-      cameraEnabled:    _guestSelfCamOn,
-      microphoneEnabled: _guestSelfMicOn,
+  // Wait for offer from host
+  const _waitForOffer = () => new Promise((resolve, reject) => {
+    const unsub = onValue(sigRef, snap => {
+      if (!snap.exists() || !snap.val().offer) return;
+      off(sigRef, unsub);
+      resolve(snap.val());
     });
-  } catch (_) {}
+    setTimeout(() => { off(sigRef, unsub); reject(new Error('offer timeout')); }, MAX_WAIT);
+  });
 
-  /* show own video in the guest stage tile (mirrored) */
-  const selfVid = document.getElementById(`gsGuestVideo${boxNum}`);
-  if (selfVid) {
-    selfVid.srcObject = _guestSelfStream;
-    selfVid.style.transform = 'scaleX(-1)';
-    selfVid.play().catch(() => {});
-    const tile = document.getElementById(`gsTile${boxNum}`);
-    if (tile) tile.style.display = '';
-    _gsActivateIfNeeded();
+  let sigData;
+  try { sigData = await _waitForOffer(); }
+  catch (e) { toast('Host did not respond in time.'); guestStream.getTracks().forEach(t=>t.stop()); return; }
+
+  const guestPc = new RTCPeerConnection(_ICE_SERVERS);
+
+  // Add local tracks
+  guestStream.getTracks().forEach(t => guestPc.addTrack(t, guestStream));
+
+  const _pendingCands = [];
+  let _answerWritten = false;
+
+  guestPc.onicecandidate = async (e) => {
+    if (!e.candidate) return;
+    if (!_answerWritten) { _pendingCands.push(e.candidate.toJSON()); return; }
+    try { await push(ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}/guestCandidates`), e.candidate.toJSON()); } catch(_) {}
+  };
+
+  try {
+    await guestPc.setRemoteDescription(new RTCSessionDescription(sigData.offer));
+  } catch(e) { toast('Connection error.'); guestPc.close(); guestStream.getTracks().forEach(t=>t.stop()); return; }
+
+  const answer = await guestPc.createAnswer();
+  await guestPc.setLocalDescription(answer);
+
+  try {
+    await update(sigRef, { answer: { type: answer.type, sdp: answer.sdp } });
+    _answerWritten = true;
+  } catch(e) { toast('Connection error.'); guestPc.close(); guestStream.getTracks().forEach(t=>t.stop()); return; }
+
+  // Flush pending candidates
+  for (const c of _pendingCands) {
+    try { await push(ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}/guestCandidates`), c); } catch(_) {}
+  }
+  _pendingCands.length = 0;
+
+  // Apply existing host candidates
+  const appliedHostCands = new Set();
+  const hc = sigData.hostCandidates || {};
+  for (const [k, c] of Object.entries(hc)) {
+    appliedHostCands.add(k);
+    try { await guestPc.addIceCandidate(new RTCIceCandidate(c)); } catch(_) {}
   }
 
-  /* create WebRTC peer connection — guest is the offerer */
-  const pc = new RTCPeerConnection(_ICE_SERVERS);
-  _guestPcs[boxNum] = { pc, guestId: _user?.uid };
+  // Listen for more host candidates
+  onValue(sigRef, async snap => {
+    if (!snap.exists()) return;
+    const d = snap.val();
+    if (d.hostCandidates) {
+      for (const [k, c] of Object.entries(d.hostCandidates)) {
+        if (appliedHostCands.has(k)) continue;
+        appliedHostCands.add(k);
+        try { await guestPc.addIceCandidate(new RTCIceCandidate(c)); } catch(_) {}
+      }
+    }
+  });
 
-  _guestSelfStream.getTracks().forEach(track => pc.addTrack(track, _guestSelfStream));
+  // Show own video locally (viewer sees their own box)
+  _guestAddViewerSelf(guestStream, guestPc);
+}
 
-  const signalRef = _gbGuestSignalRef(boxNum);
-  const pendingCandidates = [];
-  let offerWritten = false;
+/* ── Show viewer's own guest box on their screen ── */
+function _guestAddViewerSelf(stream, pc) {
+  const grid = D.guestGrid;
+  if (!grid) return;
 
-  pc.onicecandidate = async (e) => {
-    if (!e.candidate) return;
-    if (!offerWritten) { pendingCandidates.push(e.candidate.toJSON()); return; }
-    try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/guestCandidates`), e.candidate.toJSON()); }
-    catch (_) {}
-  };
+  grid.classList.add('has-guests');
+  grid.dataset.count = (parseInt(grid.dataset.count || '0') + 1).toString();
+
+  const cell = document.createElement('div');
+  cell.className = 'guest-cell';
+  cell.dataset.uid = _user.uid;
+
+  const vid = document.createElement('video');
+  vid.autoplay = true;
+  vid.muted = true;   // mute self-preview
+  vid.playsInline = true;
+  vid.srcObject = stream;
+  vid.play().catch(()=>{});
+  cell.appendChild(vid);
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'guest-cell-name';
+  nameEl.textContent = (_userData.displayName || 'You') + ' (You)';
+  cell.appendChild(nameEl);
+
+  grid.appendChild(cell);
+  _applyGuestLayout();
 
   pc.onconnectionstatechange = () => {
-    const state = pc.connectionState;
-    const quality = state === 'connected'     ? 'good' :
-                    state === 'disconnected'  ? 'weak' :
-                    state === 'failed'        ? 'bad'  : 'good';
-    if (_roomId) {
-      update(_gbBoxRef(boxNum), { connectionQuality: quality }).catch(() => {});
-    }
-    if (state === 'failed') {
-      toast('Connection lost. Trying to reconnect…');
-      _guestReconnect(boxNum);
+    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      cell.remove();
+      _applyGuestLayout();
     }
   };
+}
 
-  /* start stats polling for quality reporting */
-  _guestStartStatsPolling(boxNum, pc);
+/* ── HOST: Listen for incoming guest requests ── */
+function _hostListenForGuestRequests() {
+  if (!_roomId) return;
+  const reqsRef = ref(_liveDB, `guestRequests/${_roomId}`);
+  _guestReqUnsub = onValue(reqsRef, snap => {
+    if (!snap.exists()) return;
+    snap.forEach(child => {
+      const req = child.val();
+      if (req.status === 'pending') {
+        _hostShowRequestCard(req);
+      }
+    });
+  });
+}
 
-  let offer;
-  try { offer = await pc.createOffer(); } catch (e) { return; }
-  await pc.setLocalDescription(offer);
+/* ── HOST: Show a request card ── */
+function _hostShowRequestCard(req) {
+  const queue = D.guestRequestQueue;
+  if (!queue) return;
+
+  // Prevent duplicate cards
+  if (queue.querySelector(`[data-uid="${req.uid}"]`)) return;
+
+  const card = document.createElement('div');
+  card.className = 'guest-request-card';
+  card.dataset.uid = req.uid;
+
+  const avatarEl = document.createElement('div');
+  avatarEl.className = 'guest-req-avatar';
+  if (req.avatar) {
+    avatarEl.style.backgroundImage = `url('${req.avatar}')`;
+  } else {
+    avatarEl.textContent = (req.name || '?')[0].toUpperCase();
+  }
+
+  const nameWrap = document.createElement('div');
+  nameWrap.style.cssText = 'flex:1;min-width:0;';
+  nameWrap.innerHTML = `
+    <div class="guest-req-name">${_esc(req.name || 'Guest')}</div>
+    <div class="guest-req-sub">wants to join your box</div>
+  `;
+
+  const actions = document.createElement('div');
+  actions.className = 'guest-req-actions';
+
+  const acceptBtn = document.createElement('button');
+  acceptBtn.className = 'guest-req-accept';
+  acceptBtn.textContent = 'Accept';
+  acceptBtn.addEventListener('click', () => {
+    card.remove();
+    _hostAcceptGuest(req);
+  });
+
+  const declineBtn = document.createElement('button');
+  declineBtn.className = 'guest-req-decline';
+  declineBtn.textContent = 'Decline';
+  declineBtn.addEventListener('click', () => {
+    card.remove();
+    _hostDeclineGuest(req.uid);
+  });
+
+  actions.appendChild(acceptBtn);
+  actions.appendChild(declineBtn);
+  card.appendChild(avatarEl);
+  card.appendChild(nameWrap);
+  card.appendChild(actions);
+  queue.appendChild(card);
+
+  // Auto-dismiss after 30 seconds
+  setTimeout(() => { if (card.parentNode) { card.remove(); _hostDeclineGuest(req.uid); } }, 30000);
+}
+
+/* ── HOST: Accept guest ── */
+async function _hostAcceptGuest(req) {
+  if (!_roomId || !_localStream) return;
+
+  const guestUid = req.uid;
+  const sigRef = ref(_liveDB, `guestSignaling/${_roomId}/${guestUid}`);
+
+  // Update request status to accepted
+  try { await update(ref(_liveDB, `guestRequests/${_roomId}/${guestUid}`), { status: 'accepted' }); } catch(_) {}
+
+  // Create peer connection for this guest
+  const guestPc = new RTCPeerConnection(_ICE_SERVERS);
+
+  // Receive guest's video track
+  guestPc.ontrack = (e) => {
+    const stream = e.streams[0] || new MediaStream([e.track]);
+    _hostAddGuestCell(guestUid, req.name || 'Guest', req.avatar || '', stream, guestPc);
+  };
+
+  const _pendingHostCands = [];
+  let _offerWritten = false;
+
+  guestPc.onicecandidate = async (e) => {
+    if (!e.candidate) return;
+    if (!_offerWritten) { _pendingHostCands.push(e.candidate.toJSON()); return; }
+    try { await push(ref(_liveDB, `guestSignaling/${_roomId}/${guestUid}/hostCandidates`), e.candidate.toJSON()); } catch(_) {}
+  };
+
+  const offer = await guestPc.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: true });
+  await guestPc.setLocalDescription(offer);
 
   try {
-    await set(signalRef, {
-      guestOffer:       { type: offer.type, sdp: offer.sdp },
-      guestCandidates:  {},
-      hostAnswer:       null,
-      hostCandidates:   {},
-    });
-    offerWritten = true;
-  } catch (e) { return; }
+    await set(sigRef, { offer: { type: offer.type, sdp: offer.sdp }, guestCandidates: {}, hostCandidates: {} });
+    _offerWritten = true;
+  } catch(e) { toast('Could not connect guest.'); guestPc.close(); return; }
 
-  /* flush buffered candidates */
-  for (const cand of pendingCandidates) {
-    try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/guestCandidates`), cand); } catch (_) {}
+  // Flush pending host candidates
+  for (const c of _pendingHostCands) {
+    try { await push(ref(_liveDB, `guestSignaling/${_roomId}/${guestUid}/hostCandidates`), c); } catch(_) {}
   }
+  _pendingHostCands.length = 0;
 
-  /* watch for host answer */
-  let appliedHostCandKeys = new Set();
-  onValue(signalRef, async snap => {
+  // Watch for guest answer + ICE
+  const appliedGuestCands = new Set();
+  onValue(sigRef, async snap => {
     if (!snap.exists()) return;
     const d = snap.val();
-    if (d.hostAnswer && pc.remoteDescription === null) {
-      try { await pc.setRemoteDescription(new RTCSessionDescription(d.hostAnswer)); } catch (_) {}
+    if (d.answer && guestPc.remoteDescription === null) {
+      try { await guestPc.setRemoteDescription(new RTCSessionDescription(d.answer)); } catch(_) {}
     }
-    if (pc.remoteDescription && d.hostCandidates) {
-      for (const [key, cand] of Object.entries(d.hostCandidates)) {
-        if (appliedHostCandKeys.has(key)) continue;
-        appliedHostCandKeys.add(key);
-        try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+    if (guestPc.remoteDescription && d.guestCandidates) {
+      for (const [k, c] of Object.entries(d.guestCandidates)) {
+        if (appliedGuestCands.has(k)) continue;
+        appliedGuestCands.add(k);
+        try { await guestPc.addIceCandidate(new RTCIceCandidate(c)); } catch(_) {}
       }
     }
   });
+
+  // Store peer
+  _guestPeers[guestUid] = { pc: guestPc, name: req.name, avatar: req.avatar };
+
+  toast(`✅ ${req.name || 'Guest'} joined!`);
 }
 
-/* ── Host: watches each box for guest WebRTC offer and answers ── */
-function _gbHostWatchGuestWebRTC(boxNum) {
-  if (!_roomId) return;
-  const signalRef = _gbGuestSignalRef(boxNum);
+/* ── HOST: Decline guest ── */
+async function _hostDeclineGuest(guestUid) {
+  try { await update(ref(_liveDB, `guestRequests/${_roomId}/${guestUid}`), { status: 'declined' }); } catch(_) {}
+  setTimeout(async () => {
+    try { await remove(ref(_liveDB, `guestRequests/${_roomId}/${guestUid}`)); } catch(_) {}
+  }, 3000);
+}
 
-  /* FIX: track processed offer SDP so we don't re-create PC on every ICE candidate
-     addition (onValue fires on every child change in the signaling node) */
-  let _processedOfferSdp = null;
+/* ── HOST: Add a guest cell to the video grid ── */
+function _hostAddGuestCell(uid, name, avatar, stream, pc) {
+  const grid = D.guestGrid;
+  if (!grid) return;
 
-  onValue(signalRef, async snap => {
-    if (!snap.exists()) return;
-    const d = snap.val();
-    if (!d.guestOffer) return;
+  // If grid doesn't yet have host, add host cell first
+  if (!grid.querySelector('.host-cell')) {
+    _addHostCellToGrid();
+  }
 
-    /* FIX: skip if we already processed this exact offer */
-    if (d.guestOffer.sdp === _processedOfferSdp) return;
-    _processedOfferSdp = d.guestOffer.sdp;
+  // Prevent duplicate guest cells
+  if (grid.querySelector(`[data-uid="${uid}"]`)) return;
 
-    /* clean up old PC for this box if one exists */
-    if (_guestPcs[boxNum]?.pc) {
-      try { _guestPcs[boxNum].pc.close(); } catch (_) {}
-    }
+  grid.classList.add('has-guests');
+  grid.dataset.count = (Object.keys(_guestPeers).length).toString();
 
-    const pc = new RTCPeerConnection(_ICE_SERVERS);
-    _guestPcs[boxNum] = { pc };
+  const cell = document.createElement('div');
+  cell.className = 'guest-cell';
+  cell.dataset.uid = uid;
 
-    pc.ontrack = (e) => {
-      const stream = e.streams[0] || new MediaStream([e.track]);
-      const vid = document.getElementById(`gsGuestVideo${boxNum}`);
-      if (vid) {
-        vid.srcObject = stream;
-        vid.play().catch(() => {});
-      }
-      /* also populate the management panel video */
-      const panelVid = document.getElementById(`guestVideo${boxNum}`);
-      if (panelVid) { panelVid.srcObject = stream; panelVid.play().catch(() => {}); }
-    };
+  const vid = document.createElement('video');
+  vid.autoplay = true;
+  vid.muted = false;
+  vid.playsInline = true;
+  vid.srcObject = stream;
+  vid.play().catch(()=>{});
+  cell.appendChild(vid);
 
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      const quality = state === 'connected'    ? 'good' :
-                      state === 'disconnected' ? 'weak' :
-                      state === 'failed'       ? 'bad'  : 'good';
-      update(_gbBoxRef(boxNum), { connectionQuality: quality }).catch(() => {});
-    };
+  const nameEl = document.createElement('div');
+  nameEl.className = 'guest-cell-name';
+  nameEl.textContent = name || 'Guest';
+  cell.appendChild(nameEl);
 
-    await pc.setRemoteDescription(new RTCSessionDescription(d.guestOffer));
-
-    /* wire ICE before createAnswer */
-    const pendingCandidates = [];
-    let answerWritten = false;
-
-    pc.onicecandidate = async (e) => {
-      if (!e.candidate) return;
-      if (!answerWritten) { pendingCandidates.push(e.candidate.toJSON()); return; }
-      try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/hostCandidates`), e.candidate.toJSON()); }
-      catch (_) {}
-    };
-
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    try {
-      await update(signalRef, { hostAnswer: { type: answer.type, sdp: answer.sdp } });
-      answerWritten = true;
-    } catch (e) { return; }
-
-    for (const cand of pendingCandidates) {
-      try { await push(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/hostCandidates`), cand); } catch (_) {}
-    }
-
-    /* apply any existing guest ICE candidates */
-    const existingCands = d.guestCandidates || {};
-    const appliedKeys = new Set(Object.keys(existingCands));
-    for (const cand of Object.values(existingCands)) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
-    }
-
-    /* listen for new guest ICE candidates */
-    onValue(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}/guestCandidates`), async candSnap => {
-      if (!candSnap.exists()) return;
-      for (const [key, cand] of Object.entries(candSnap.val())) {
-        if (appliedKeys.has(key)) continue;
-        appliedKeys.add(key);
-        try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
-      }
-    });
+  // Host can remove a guest by tapping ✕
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'guest-cell-remove';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Remove guest';
+  removeBtn.addEventListener('click', () => {
+    _hostRemoveGuest(uid);
   });
+  cell.appendChild(removeBtn);
+
+  grid.appendChild(cell);
+
+  // Store stream ref
+  if (_guestPeers[uid]) _guestPeers[uid].stream = stream;
+  if (_guestPeers[uid]) _guestPeers[uid].cell   = cell;
+
+  _applyGuestLayout();
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      _hostRemoveGuest(uid);
+    }
+  };
 }
 
-/* ── Stop/cleanup a guest's WebRTC for a given box ── */
-function _guestStopStream(boxNum) {
-  if (_guestPcs[boxNum]) {
-    const { pc, statsInterval } = _guestPcs[boxNum];
-    if (statsInterval) clearInterval(statsInterval);
-    try { pc.close(); } catch (_) {}
-    delete _guestPcs[boxNum];
+/* ── HOST: Add own video as the host cell in the grid ── */
+function _addHostCellToGrid() {
+  const grid = D.guestGrid;
+  if (!grid || grid.querySelector('.host-cell')) return;
+
+  const cell = document.createElement('div');
+  cell.className = 'guest-cell host-cell';
+
+  const vid = document.createElement('video');
+  vid.autoplay = true;
+  vid.muted = true;   // mute self-preview
+  vid.playsInline = true;
+  if (_localStream) { vid.srcObject = _localStream; vid.play().catch(()=>{}); }
+  // Mirror host camera (same as main #liveVideo)
+  vid.style.transform = 'scaleX(-1)';
+  cell.appendChild(vid);
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'guest-cell-name';
+  nameEl.textContent = (_userData?.displayName || 'Host') + ' (You)';
+  cell.appendChild(nameEl);
+
+  grid.insertBefore(cell, grid.firstChild);
+}
+
+/* ── HOST: Remove a guest ── */
+function _hostRemoveGuest(uid) {
+  const peer = _guestPeers[uid];
+  if (peer) {
+    if (peer.pc) { try { peer.pc.close(); } catch(_){} }
+    if (peer.cell) { try { peer.cell.remove(); } catch(_){} }
+    delete _guestPeers[uid];
   }
-  /* stop self stream if this was the self box */
-  if (_guestSelfBoxNum === boxNum && _guestSelfStream) {
-    _guestSelfStream.getTracks().forEach(t => t.stop());
-    _guestSelfStream = null;
+  try { remove(ref(_liveDB, `guestRequests/${_roomId}/${uid}`)); } catch(_) {}
+  try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${uid}`)); } catch(_) {}
+
+  const grid = D.guestGrid;
+  if (!grid) return;
+  const guestCount = Object.keys(_guestPeers).length;
+  grid.dataset.count = guestCount.toString();
+
+  if (guestCount === 0) {
+    // Remove host cell too, show plain main video
+    grid.querySelector('.host-cell')?.remove();
+    grid.classList.remove('has-guests');
+    if (D.liveVideo) { D.liveVideo.style.opacity = ''; D.liveVideo.style.pointerEvents = ''; }
   }
-  /* clean up RTDB WebRTC signaling */
+  _applyGuestLayout();
+}
+
+/* ── Tear down all guest peers (called on endLive) ── */
+function _teardownAllGuestPeers() {
+  for (const uid of Object.keys(_guestPeers)) {
+    const p = _guestPeers[uid];
+    if (p.pc)   { try { p.pc.close(); }   catch(_){} }
+    if (p.cell) { try { p.cell.remove(); } catch(_){} }
+  }
+  _guestPeers = {};
+  if (D.guestGrid) {
+    D.guestGrid.innerHTML = '';
+    D.guestGrid.classList.remove('has-guests');
+    D.guestGrid.dataset.count = '0';
+  }
+  // Clean up all signaling + requests for this room
   if (_roomId) {
-    try { remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/webrtc/${boxNum}`)).catch(() => {}); } catch (_) {}
-  }
-  /* hide tile */
-  const tile = document.getElementById(`gsTile${boxNum}`);
-  if (tile) tile.style.display = 'none';
-  _gsRefreshActiveCount();
-  _gsActivateIfNeeded();
-}
-
-/* ── Guest: auto-reconnect on connection failure ── */
-async function _guestReconnect(boxNum) {
-  await new Promise(r => setTimeout(r, 3000));
-  /* FIX: bail if the viewer was removed from the box while waiting */
-  if (_guestSelfBoxNum !== boxNum) return;
-  /* FIX: only reconnect once — re-entry guard via flag on the state object */
-  if (_guestPcs[boxNum]?._reconnecting) return;
-  if (!_guestPcs[boxNum]) _guestPcs[boxNum] = {};
-  _guestPcs[boxNum]._reconnecting = true;
-  await _guestStartStream(boxNum);
-  if (_guestPcs[boxNum]) _guestPcs[boxNum]._reconnecting = false;
-}
-
-/* ── Quality stats polling: checks packet loss / bandwidth every 5s ── */
-function _guestStartStatsPolling(boxNum, pc) {
-  const interval = setInterval(async () => {
-    if (!pc || pc.connectionState === 'closed') { clearInterval(interval); return; }
-    try {
-      const stats = await pc.getStats();
-      let packetsLost = 0, packetsSent = 0;
-      stats.forEach(report => {
-        if (report.type === 'outbound-rtp' && report.kind === 'video') {
-          packetsLost  += report.packetsLost  || 0;
-          packetsSent  += report.packetsSent  || 1;
-        }
-      });
-      const lossRate = packetsLost / (packetsSent || 1);
-      const quality  = lossRate > 0.15 ? 'bad' : lossRate > 0.05 ? 'weak' : 'good';
-
-      /* lower quality if connection is bad */
-      if (quality !== 'good' && _guestSelfStream) {
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) {
-          const params = sender.getParameters();
-          if (params.encodings?.length) {
-            params.encodings[0].maxBitrate = quality === 'bad' ? 100000 : 300000;
-            sender.setParameters(params).catch(() => {});
-          }
-        }
-      }
-
-      /* update RTDB with quality */
-      if (_roomId) {
-        update(_gbBoxRef(boxNum), { connectionQuality: quality }).catch(() => {});
-      }
-    } catch (_) {}
-  }, 5000);
-
-  if (_guestPcs[boxNum]) _guestPcs[boxNum].statsInterval = interval;
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   GUEST SELF-CONTROLS (viewer in a box)
-   ════════════════════════════════════════════════════════════════════ */
-
-function _guestToggleCam() {
-  _guestSelfCamOn = !_guestSelfCamOn;
-  if (_guestSelfStream) {
-    _guestSelfStream.getVideoTracks().forEach(t => t.enabled = _guestSelfCamOn);
-  }
-  if (D.btnGuestCam) {
-    D.btnGuestCam.textContent = _guestSelfCamOn ? '📷 Cam' : '📷 Cam Off';
-    D.btnGuestCam.classList.toggle('off', !_guestSelfCamOn);
-  }
-  /* update RTDB so host can see */
-  if (_roomId && _guestSelfBoxNum !== null) {
-    update(_gbBoxRef(_guestSelfBoxNum), { cameraEnabled: _guestSelfCamOn }).catch(() => {});
-  }
-  /* cam-off overlay in tile */
-  if (_guestSelfBoxNum !== null) {
-    const camOff = document.getElementById(`gsGuest${_guestSelfBoxNum}CamOff`);
-    if (camOff) camOff.style.display = _guestSelfCamOn ? 'none' : 'flex';
+    try { remove(ref(_liveDB, `guestRequests/${_roomId}`)); }  catch(_) {}
+    try { remove(ref(_liveDB, `guestSignaling/${_roomId}`)); } catch(_) {}
   }
 }
 
-function _guestToggleMic() {
-  _guestSelfMicOn = !_guestSelfMicOn;
-  if (_guestSelfStream) {
-    _guestSelfStream.getAudioTracks().forEach(t => t.enabled = _guestSelfMicOn);
+/* ═══════════════════════════════════════════════════
+   LAYOUT ENGINE
+   ═══════════════════════════════════════════════════ */
+
+function _applyGuestLayout() {
+  const grid = D.guestGrid;
+  if (!grid) return;
+
+  const guestCount = Object.keys(_guestPeers).length;  // guests only (not host)
+  const totalCount = guestCount;                         // data-count = guest count
+
+  grid.dataset.count  = guestCount.toString();
+  grid.dataset.layout = _guestLayout;
+
+  // Box size class
+  grid.classList.remove('box-sm', 'box-md', 'box-lg');
+  grid.classList.add('box-' + _guestBoxSize);
+
+  if (guestCount === 0) {
+    grid.classList.remove('has-guests');
+    return;
   }
-  if (D.btnGuestMic) {
-    D.btnGuestMic.textContent = _guestSelfMicOn ? '🎤 Mic' : '🔇 Muted';
-    D.btnGuestMic.classList.toggle('off', !_guestSelfMicOn);
+  grid.classList.add('has-guests');
+
+  // For the 'grid' layout and 6+ guests in 'auto', set equal sizes via JS
+  if (_guestLayout === 'grid') {
+    _applyEqualGrid(grid, guestCount + 1); // +1 for host
+  } else if (_guestLayout === 'float') {
+    _applyFloatLayout(grid, guestCount);
+  } else if (_guestLayout === 'auto' && guestCount >= 5) {
+    _applyEqualGrid(grid, guestCount + 1);
   }
-  /* update RTDB so host can see */
-  if (_roomId && _guestSelfBoxNum !== null) {
-    update(_gbBoxRef(_guestSelfBoxNum), { microphoneEnabled: _guestSelfMicOn }).catch(() => {});
-  }
+}
+
+/* ── Equal grid: calculate rows/cols then set dimensions ── */
+function _applyEqualGrid(grid, totalCells) {
+  const cols  = Math.ceil(Math.sqrt(totalCells));
+  const rows  = Math.ceil(totalCells / cols);
+  const w     = (100 / cols).toFixed(2) + '%';
+  const h     = (100 / rows).toFixed(2) + '%';
+  grid.querySelectorAll('.guest-cell').forEach(cell => {
+    cell.style.width  = w;
+    cell.style.height = h;
+  });
+}
+
+/* ── Float layout: cascade guest boxes from top-right ── */
+function _applyFloatLayout(grid, guestCount) {
+  let guestIndex = 0;
+  grid.querySelectorAll('.guest-cell:not(.host-cell)').forEach(cell => {
+    const col = guestIndex % 3;
+    const row = Math.floor(guestIndex / 3);
+    cell.style.width  = '160px';
+    cell.style.height = '120px';
+    cell.style.right  = (12 + col * 176) + 'px';
+    cell.style.top    = (12 + row * 136) + 'px';
+    cell.style.bottom = 'auto';
+    cell.style.left   = 'auto';
+    guestIndex++;
+  });
+}
+
+/* ── Toggle layout panel ── */
+function _toggleLayoutPanel() {
+  _layoutPanelOpen ? _closeLayoutPanel() : _openLayoutPanel();
+}
+
+function _openLayoutPanel() {
+  if (!D.layoutSettingsPanel) return;
+  D.layoutSettingsPanel.style.display = 'block';
+  _layoutPanelOpen = true;
+  if (D.btnLayoutSettings) D.btnLayoutSettings.classList.add('has-guests');
+}
+
+function _closeLayoutPanel() {
+  if (!D.layoutSettingsPanel) return;
+  D.layoutSettingsPanel.style.display = 'none';
+  _layoutPanelOpen = false;
 }

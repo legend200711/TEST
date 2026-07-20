@@ -195,16 +195,15 @@ html, body {
   position: fixed; inset: 0; z-index: 200;
   background: #000;
   flex-direction: column;
-  /* No overflow:hidden here — bottom bar must never be clipped */
 }
 #liveStage.active { display: flex; }
 
-/* Main video container — fills all space above the bottom bar */
+/* Main video container */
 .live-video-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: hidden;   /* only clips the video, not the bar outside it */
+  overflow: hidden;
   background: #000;
 }
 #liveVideo {
@@ -303,106 +302,56 @@ body.is-creator #liveVideo {
 .live-close-btn:hover { background: rgba(255,40,60,0.35); }
 .live-close-btn:active { transform: scale(0.93); }
 
-/* ══════════════════════════════════════════════════════════════
-   BOTTOM CONTROL BAR — creator only
-   Lives as a direct flex child of #liveStage (NOT inside video-wrap).
-   This means overflow:hidden on the video can NEVER clip these buttons.
-   env(safe-area-inset-bottom) keeps buttons above the phone nav bar.
-   ══════════════════════════════════════════════════════════════ */
+/* ── Bottom controls (creator only) ── */
 .live-bottom-bar {
-  /* Static in the flex column — video-wrap gets flex:1, bar gets its natural height */
-  position: relative;
-  flex-shrink: 0;
-  width: 100%;
-  /* safe-area: keeps buttons above iOS home indicator / Android nav bar */
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 12px;
-  background: linear-gradient(0deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.0) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  z-index: 10;
-  /* Horizontal scroll as absolute last resort on extreme narrow phones */
-  overflow-x: auto;
-  scrollbar-width: none;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
+  background: linear-gradient(0deg, rgba(0,0,0,0.72) 0%, transparent 100%);
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; z-index: 10;
 }
-.live-bottom-bar::-webkit-scrollbar { display: none; }
-
-/* ── Individual round control button ── */
 .live-ctrl-btn {
-  width: 50px; height: 50px; border-radius: 50%;
-  background: rgba(4, 12, 32, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1.5px solid rgba(255,255,255,0.22);
-  color: #fff; font-size: 21px;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+  border: 2px solid rgba(255,255,255,0.22);
+  color: #fff; font-size: 22px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; flex-shrink: 0;
   transition: background 0.18s, border-color 0.18s, transform 0.1s;
   touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
 }
-.live-ctrl-btn:hover { background: rgba(0,80,200,0.32); border-color: rgba(0,174,239,0.65); }
-.live-ctrl-btn:active { transform: scale(0.90); }
-.live-ctrl-btn.off {
-  background: rgba(255,30,50,0.28);
-  border-color: rgba(255,50,70,0.72);
-}
-.live-ctrl-btn.off:hover { background: rgba(255,30,50,0.42); }
+.live-ctrl-btn:hover { background: rgba(0,80,200,0.3); border-color: rgba(0,174,239,0.6); }
+.live-ctrl-btn:active { transform: scale(0.92); }
+.live-ctrl-btn.off { background: rgba(255,30,50,0.25); border-color: rgba(255,50,70,0.65); }
+.live-ctrl-btn.off:hover { background: rgba(255,30,50,0.4); }
 
-/* ── End Live: pill shape, stands out ── */
+/* End Live button */
 #btnEndLive {
-  padding: 0 18px;
-  border-radius: 26px;
-  height: 50px;
-  width: auto;
-  font-size: 12px; font-weight: 800;
-  background: rgba(160,0,28,0.68);
-  border-color: rgba(255,50,70,0.78);
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
+  padding: 10px 22px; border-radius: 28px; height: auto;
+  width: auto; font-size: 13px; font-weight: 800;
+  background: rgba(180,0,30,0.6); border-color: rgba(255,50,70,0.7);
+  letter-spacing: 0.5px; text-transform: uppercase;
   color: #ffb0b8;
-  white-space: nowrap;
 }
-#btnEndLive:hover { background: rgba(220,0,40,0.88); color: #fff; }
+#btnEndLive:hover { background: rgba(220,0,40,0.8); color: #fff; }
 
-/* ── Micro-phone safety: shrink buttons on very small screens ── */
-@media (max-width: 360px) {
-  .live-ctrl-btn  { width: 42px; height: 42px; font-size: 18px; }
-  .live-bottom-bar { gap: 7px; padding-left: 8px; padding-right: 8px; }
-  #btnEndLive { padding: 0 12px; font-size: 11px; }
-}
-
-/* ── Landscape phone: compress bar height, reduce padding ── */
-@media (max-height: 500px) and (orientation: landscape) {
-  .live-ctrl-btn  { width: 44px; height: 44px; font-size: 19px; }
-  .live-bottom-bar {
-    padding-top: 6px;
-    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-    gap: 8px;
-  }
-}
-
-/* ── Chat panel — inside .live-video-wrap ── */
+/* ── Chat panel ── */
 .live-chat-panel {
   position: absolute;
   bottom: 0; right: 0;
-  /* left clears the left panel (48px) + margin (10px) + gap (8px) */
-  left: 66px;
-  width: auto;
-  max-width: min(300px, calc(100vw - 66px));
+  width: min(300px, 80vw);
   height: 55%;
   display: flex; flex-direction: column;
   pointer-events: none;
   z-index: 9;
 }
 
-/* Creator mode — bottom bar is now OUTSIDE video-wrap, so no offset needed here.
-   Chat sits at the very bottom of the video area, bar sits below it. */
+/* Creator mode — shift up above bottom controls */
 body.is-creator .live-chat-panel {
-  bottom: 0;
-  height: 52%;
+  bottom: 80px;
+  height: 48%;
 }
 
 .live-chat-messages {
@@ -480,16 +429,12 @@ body.is-creator .live-chat-input-row {
 .live-chat-send:active { transform: scale(0.9); }
 
 /* ── Viewer action bar ── */
-/* Positioned absolute within #liveStage (fixed), not inside video-wrap.
-   This means it's never clipped and always above the phone nav bar. */
 .live-viewer-actions {
   position: absolute;
-  bottom: 0;
-  left: 60px;   /* clear the left panel */
-  right: 0;
-  /* bottom padding includes safe-area so buttons clear the nav bar */
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)) 16px;
-  background: linear-gradient(0deg, rgba(0,0,0,0.55) 0%, transparent 100%);
+  bottom: 0; left: 0; right: 0;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
+  background: linear-gradient(0deg, rgba(0,0,0,0.5) 0%, transparent 100%);
   display: flex; align-items: flex-end; justify-content: flex-end;
   gap: 12px; z-index: 10;
   pointer-events: none;
@@ -536,78 +481,12 @@ body.is-creator .live-chat-input-row {
 .live-share-btn:active { transform: scale(0.92); }
 .live-share-icon { font-size: 22px; line-height: 1; }
 
-/* ══════════════════════════════════════════════════════════════
-   LEFT SIDE PANEL — floating follower / stat controls
-   Floats over the video on the left edge, below the top bar.
-   Does not block faces (narrow column, ~52px wide).
-   ══════════════════════════════════════════════════════════════ */
-.live-left-panel {
-  position: absolute;
-  /* Sit below the top bar; top bar is ~52px tall with safe-area */
-  top: calc(env(safe-area-inset-top, 0px) + 58px);
-  left: 10px;
-  /* Stop above the bottom bar (70px covers safe-area + bar height) */
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
-  z-index: 11;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;  /* container transparent; children re-enable */
-  width: 48px;
-}
-
-/* Round glass pill — used for viewer count & like count */
-.llp-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  background: rgba(4,12,32,0.68);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 24px;
-  padding: 7px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #d0e8ff;
-  white-space: nowrap;
-  pointer-events: none;
-  min-width: 44px;
-  text-align: center;
-  line-height: 1.3;
-}
-.llp-likes {
-  border-color: rgba(255,80,100,0.38);
-  color: #ffaabb;
-}
-
-/* Round glass button — used for share */
-.llp-btn {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  background: rgba(4,12,32,0.68);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1.5px solid rgba(0,174,239,0.38);
-  color: #fff;
-  font-size: 20px;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  pointer-events: auto;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.18s, border-color 0.18s, transform 0.1s;
-  flex-shrink: 0;
-}
-.llp-btn:hover  { background: rgba(0,80,200,0.30); border-color: rgba(0,174,239,0.7); }
-.llp-btn:active { transform: scale(0.91); }
-
-/* ── Old stat-pill kept for any dynamic JS insertions ── */
+/* ── Viewer count ribbon for chat ── */
 .live-stats-ribbon {
-  display: none;   /* replaced by .live-left-panel */
+  position: absolute;
+  top: 56px; left: 14px;
+  display: flex; gap: 8px; z-index: 10;
+  pointer-events: none;
 }
 .live-stat-pill {
   display: flex; align-items: center; gap: 4px;
@@ -677,44 +556,17 @@ body.is-creator .live-chat-input-row {
 
 /* ── Responsive tweaks ── */
 @media (max-width: 400px) {
-  /* buttons already handled in .live-ctrl-btn @360px block above */
-  .live-chat-panel {
-    left: 60px;
-    max-width: calc(100vw - 60px);
-  }
+  .live-ctrl-btn { width: 46px; height: 46px; font-size: 20px; }
+  .live-chat-panel { width: 100%; }
 }
-
 @media (min-width: 768px) {
-  /* On tablet/desktop chat gets a fixed width since there's more space */
-  .live-chat-panel {
-    left: auto;
-    width: 280px;
-    max-width: 280px;
-    /* bottom bar is outside video-wrap — no bottom offset needed */
-    bottom: 0;
-  }
-  /* Larger left-panel pills/buttons on tablet */
-  .live-left-panel { width: 54px; left: 14px; gap: 10px; }
-  .llp-pill { font-size: 11px; padding: 9px 8px; min-width: 50px; }
-  .llp-btn  { width: 48px; height: 48px; font-size: 22px; }
-}
-
-/* ── Landscape phone: hide left panel to reclaim horizontal space ── */
-@media (max-height: 500px) and (orientation: landscape) {
-  .live-left-panel { display: none; }
-  .live-chat-panel { left: 0; max-width: min(260px, 50vw); }
-  .live-viewer-actions { left: 0; }
+  .live-chat-panel { width: 280px; }
+  body.is-creator .live-chat-panel { bottom: 90px; }
 }
 
 /* ── Viewer-only: no bottom bar, use viewer-actions ── */
 body.is-viewer .live-bottom-bar { display: none !important; }
 body.is-creator .live-viewer-actions { display: none !important; }
-
-/* ── Request a Box button — viewer only; hide for creator ── */
-body.is-creator #_gbRequestBtn { display: none !important; }
-/* Default hidden until viewer mode activates (JS sets .visible) */
-#_gbRequestBtn { display: none; }
-body.is-viewer #_gbRequestBtn { display: flex; }
 
 /* ── Tap to show/hide controls on mobile (creator) ── */
 .live-controls-hidden .live-bottom-bar { opacity: 0; transition: opacity 0.3s; pointer-events: none; }
@@ -753,1005 +605,327 @@ body.is-viewer #_gbRequestBtn { display: flex; }
   transform: translateX(-50%) translateY(0);
 }
 
-/* ════════════════════════════════════════════════════
-   LAYOUT SWITCHER — host only
-   ════════════════════════════════════════════════════ */
-.layout-switcher {
-  position: fixed;
-  top: 60px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 260;
-  display: flex; gap: 6px;
-  background: rgba(4,12,28,0.92);
-  border: 1px solid rgba(0,174,239,0.4);
-  border-radius: 12px;
-  padding: 5px 8px;
-  backdrop-filter: blur(8px);
+/* ═══════════════════════════════════════════════
+   GUEST BOX SYSTEM
+   ═══════════════════════════════════════════════ */
+
+/* ── Request a Box button (viewer only) ── */
+.live-request-box-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: rgba(0,80,200,0.55); backdrop-filter: blur(4px);
+  border: 1.5px solid rgba(0,174,239,0.7);
+  border-radius: 14px; padding: 8px 12px;
+  color: #fff; font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
+  white-space: nowrap;
+  box-shadow: 0 0 14px rgba(0,174,239,0.35);
 }
-.layout-btn {
-  background: none;
-  border: 1px solid rgba(0,174,239,0.3);
-  border-radius: 8px;
-  color: #6a90b8;
-  font-size: 16px;
-  width: 36px; height: 36px;
-  cursor: pointer;
-  transition: all 0.15s;
+.live-request-box-btn:hover  { background: rgba(0,100,255,0.65); box-shadow: 0 0 20px rgba(0,174,239,0.55); }
+.live-request-box-btn:active { transform: scale(0.93); }
+.live-request-box-btn.pending {
+  background: rgba(180,120,0,0.45);
+  border-color: rgba(255,200,0,0.6);
+  color: #ffe066;
+  cursor: default;
+}
+
+/* ── Incoming request queue (host side) ── */
+.guest-request-queue {
+  position: absolute;
+  top: 64px; left: 14px;
+  z-index: 40;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+  max-width: min(320px, calc(100vw - 28px));
+}
+.guest-request-card {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0,10,30,0.92); backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(0,174,239,0.55);
+  border-radius: 14px; padding: 10px 12px;
+  pointer-events: auto;
+  animation: grcSlideIn 0.25s ease-out both;
+}
+@keyframes grcSlideIn {
+  from { opacity:0; transform: translateX(-18px); }
+  to   { opacity:1; transform: translateX(0); }
+}
+.guest-req-avatar {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: #0B1F3A center/cover no-repeat;
+  border: 1.5px solid rgba(0,174,239,0.5);
   display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: bold; color: #00AEEF;
+  overflow: hidden;
 }
-.layout-btn:hover { background: rgba(0,174,239,0.18); color: #00AEEF; }
-.layout-btn-active {
-  background: rgba(0,174,239,0.22);
+.guest-req-name {
+  flex: 1; min-width: 0;
+  font-size: 12px; font-weight: 700; color: #e8f4ff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.guest-req-sub {
+  font-size: 10px; color: #6a90b8; margin-top: 1px;
+}
+.guest-req-actions {
+  display: flex; gap: 6px; flex-shrink: 0;
+}
+.guest-req-accept {
+  padding: 5px 12px; border-radius: 8px;
+  background: rgba(0,180,80,0.25); border: 1px solid rgba(0,220,100,0.55);
+  color: #00dd66; font-size: 11px; font-weight: 800;
+  cursor: pointer; transition: background 0.15s;
+  touch-action: manipulation;
+}
+.guest-req-accept:hover  { background: rgba(0,200,80,0.45); }
+.guest-req-decline {
+  padding: 5px 12px; border-radius: 8px;
+  background: rgba(180,0,30,0.18); border: 1px solid rgba(255,50,70,0.4);
+  color: #ff5566; font-size: 11px; font-weight: 800;
+  cursor: pointer; transition: background 0.15s;
+  touch-action: manipulation;
+}
+.guest-req-decline:hover  { background: rgba(220,0,40,0.32); }
+
+/* ── Layout button indicator ── */
+.guest-layout-btn { font-size: 20px !important; }
+.guest-layout-btn.has-guests {
+  border-color: rgba(0,174,239,0.8) !important;
+  box-shadow: 0 0 14px rgba(0,174,239,0.45);
+}
+
+/* ── Layout settings panel ── */
+.layout-settings-panel {
+  position: absolute;
+  bottom: 80px; left: 50%; transform: translateX(-50%);
+  width: min(340px, calc(100vw - 24px));
+  background: rgba(0,10,30,0.95); backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(0,174,239,0.45);
+  border-radius: 18px; padding: 16px;
+  z-index: 50;
+  animation: layoutPanelIn 0.2s ease-out both;
+}
+@keyframes layoutPanelIn {
+  from { opacity:0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity:1; transform: translateX(-50%) translateY(0); }
+}
+.layout-panel-title {
+  font-size: 13px; font-weight: 800; color: #e8f4ff;
+  text-align: center; margin-bottom: 12px; letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.layout-panel-section {
+  font-size: 10px; font-weight: 700; color: #6a90b8;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  margin: 12px 0 8px;
+}
+.layout-panel-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.layout-option-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: rgba(0,20,55,0.8);
+  border: 1.5px solid rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 8px 4px;
+  color: #6a90b8; font-size: 10px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s; touch-action: manipulation;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.layout-option-btn .layout-icon { font-size: 18px; line-height: 1; }
+.layout-option-btn:hover { background: rgba(0,60,180,0.3); border-color: rgba(0,174,239,0.4); color: #a8d4f0; }
+.layout-option-btn.active {
+  background: rgba(0,80,200,0.35);
+  border-color: rgba(0,174,239,0.75);
+  color: #00AEEF;
+  box-shadow: 0 0 10px rgba(0,174,239,0.25);
+}
+.layout-size-row {
+  display: flex; gap: 8px;
+}
+.layout-size-btn {
+  flex: 1;
+  padding: 7px;
+  border-radius: 8px;
+  background: rgba(0,20,55,0.8);
+  border: 1.5px solid rgba(255,255,255,0.1);
+  color: #6a90b8; font-size: 12px; font-weight: 800;
+  cursor: pointer; transition: all 0.15s; touch-action: manipulation;
+}
+.layout-size-btn:hover  { border-color: rgba(0,174,239,0.4); color: #a8d4f0; }
+.layout-size-btn.active {
+  background: rgba(0,80,200,0.35);
   border-color: rgba(0,174,239,0.75);
   color: #00AEEF;
 }
 
-/* ════════════════════════════════════════════════════
-   GUEST STAGE — multi-participant video area
-   ════════════════════════════════════════════════════ */
-/* ════════════════════════════════════════════════════
-   SHADOW NEXUS LIVE — GUEST STAGE LAYOUT ENGINE v2
-   Full-screen, no-scroll, responsive video grid.
-   All layout is driven by body class + data-count attr.
-   ════════════════════════════════════════════════════ */
-
-/* ── Stage container: fixed fullscreen, never scrolls ── */
-.guest-stage {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 210;
-  background: #000;
-  display: none;
-  overflow: hidden;
-}
-.guest-stage.active { display: grid; }    /* default to grid; layouts below override */
-
-/* Mobile / desktop: guest stage uses full viewport — no panel offsets */
-@media (max-width: 767px) {
-  body.is-creator.gs-active .guest-stage {
-    /* bottom edge stops above the bottom control bar (~80px) */
-    bottom: 80px;
-    height: auto;
-  }
-}
-
-/* ── Tile base ── */
-.gs-tile {
-  position: relative;
-  overflow: hidden;
-  background: #040d1a;
-  border-radius: 10px;          /* rounded corners on every tile */
-  min-width: 0;
-  min-height: 0;
-}
-.gs-video {
-  width: 100%; height: 100%;
-  object-fit: cover;            /* fill cell, keep faces centered, no black bars */
-  object-position: center;
-  display: block;
-  border-radius: inherit;
-}
-.gs-cam-off {
+/* ── Guest video grid container ── */
+.guest-grid {
   position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 36px;
-  background: #040d1a;
-  border-radius: inherit;
-}
-.gs-name-bar {
-  position: absolute;
-  bottom: 6px; left: 6px; right: 6px;
-  display: flex; align-items: center; gap: 5px;
   pointer-events: none;
+  z-index: 5;
+  display: none; /* shown only when guests present */
+  transition: all 0.3s ease;
 }
-.gs-avatar {
-  width: 26px; height: 26px; border-radius: 50%;
-  background: #1a3a5c;
-  background-size: cover; background-position: center;
-  flex-shrink: 0;
-  border: 1.5px solid rgba(0,174,239,0.5);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #00AEEF;
-  overflow: hidden;
-}
-.gs-name {
-  font-size: 11px; font-weight: 700;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  flex: 1;
-}
-.gs-badge {
-  font-size: 9px; font-weight: 800;
-  border-radius: 4px; padding: 1px 5px;
-  text-transform: uppercase; letter-spacing: 0.4px;
-  flex-shrink: 0;
-}
-.gs-badge-host {
-  background: rgba(255,30,60,0.22);
-  border: 1px solid rgba(255,30,60,0.55);
-  color: #ff5566;
-}
-.gs-indicators {
-  position: absolute;
-  top: 6px; right: 6px;
-  display: flex; gap: 3px;
-}
-.gs-ind {
-  font-size: 12px;
-  background: rgba(0,0,0,0.6);
-  border-radius: 4px;
-  padding: 1px 3px;
-}
-.gs-ind.off { opacity: 0.35; }
-.gs-conn-warn {
-  position: absolute;
-  top: 6px; left: 6px;
-  font-size: 9px; font-weight: 800;
-  background: rgba(255,140,0,0.85);
-  color: #000; border-radius: 5px;
-  padding: 2px 6px; letter-spacing: 0.3px;
-  pointer-events: none;
-}
+.guest-grid.has-guests { display: flex; }
 
-/* ════════════════════════════════════════════════════
-   LAYOUT 1: HOST BIG + SIDE BOXES  (body.layout-side)
-   ════════════════════════════════════════════════════ */
-body.layout-side .guest-stage {
-  display: grid;
-  grid-template-columns: 1fr 120px;
-  grid-template-rows: repeat(4, 25%);
-  gap: 2px;
-}
-body.layout-side .gs-host-tile {
-  grid-column: 1; grid-row: 1 / span 4;
-}
-body.layout-side .gs-guest-tile:nth-of-type(2) { grid-column: 2; grid-row: 1; }
-body.layout-side .gs-guest-tile:nth-of-type(3) { grid-column: 2; grid-row: 2; }
-body.layout-side .gs-guest-tile:nth-of-type(4) { grid-column: 2; grid-row: 3; }
-body.layout-side .gs-guest-tile:nth-of-type(5) { grid-column: 2; grid-row: 4; }
-
-@media (max-width: 480px) {
-  body.layout-side .guest-stage {
-    grid-template-columns: 1fr 80px;
-  }
-}
-@media (min-width: 768px) {
-  body.layout-side .guest-stage {
-    grid-template-columns: 1fr 160px;
-  }
-}
-
-/* ════════════════════════════════════════════════════
-   LAYOUT 2: AUTO GRID  (body.layout-grid / body.layout-auto)
-   TikTok-style: count-driven, no scrolling, fits screen
-   Every tile gets width:100% height:100% of its grid cell.
-   ════════════════════════════════════════════════════ */
-
-/* Base — all grid layouts share this */
-body.layout-grid .guest-stage,
-body.layout-auto .guest-stage {
-  display: grid;
-  gap: 3px;
-}
-
-/* All tiles fill their grid cell, no stretching */
-body.layout-grid .gs-tile,
-body.layout-auto .gs-tile {
-  width: 100%; height: 100%;
-  min-width: 0; min-height: 0;
-}
-
-/* ── 1 person (host only): full screen ── */
-body.layout-grid .guest-stage[data-count="1"],
-body.layout-auto .guest-stage[data-count="1"] {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-}
-
-/* ── 2 people: side-by-side equal boxes (TikTok-style) ── */
-body.layout-grid .guest-stage[data-count="2"],
-body.layout-auto .guest-stage[data-count="2"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr;
-}
-/* Portrait phone: stack vertically */
-@media (max-width: 480px) and (orientation: portrait) {
-  body.layout-grid .guest-stage[data-count="2"],
-  body.layout-auto .guest-stage[data-count="2"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-  }
-}
-
-/* ── 3 people: host takes 2/3 height, 2 guests split the remaining third ── */
-body.layout-grid .guest-stage[data-count="3"],
-body.layout-auto .guest-stage[data-count="3"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 2fr 1fr;
-}
-body.layout-grid .guest-stage[data-count="3"] .gs-host-tile,
-body.layout-auto .guest-stage[data-count="3"] .gs-host-tile {
-  grid-column: 1 / -1;
-  grid-row: 1;
-}
-body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile,
-body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile {
-  grid-row: 2;
-}
-/* Portrait phone: stack all 3 vertically with host bigger */
-@media (max-width: 480px) and (orientation: portrait) {
-  body.layout-grid .guest-stage[data-count="3"],
-  body.layout-auto .guest-stage[data-count="3"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 2fr 1fr 1fr;
-  }
-  body.layout-grid .guest-stage[data-count="3"] .gs-host-tile,
-  body.layout-auto .guest-stage[data-count="3"] .gs-host-tile {
-    grid-column: 1; grid-row: 1;
-  }
-  body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile:nth-child(2),
-  body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile:nth-child(2) { grid-row: 2; }
-  body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile:nth-child(3),
-  body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile:nth-child(3) { grid-row: 3; }
-}
-
-/* ── 4 people: perfect 2×2 grid ── */
-body.layout-grid .guest-stage[data-count="4"],
-body.layout-auto .guest-stage[data-count="4"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-}
-
-/* ── 5 people: host larger on left, 2×2 guests on right ── */
-body.layout-grid .guest-stage[data-count="5"],
-body.layout-auto .guest-stage[data-count="5"] {
-  grid-template-columns: 3fr 2fr;
-  grid-template-rows: 1fr 1fr;
-}
-body.layout-grid .guest-stage[data-count="5"] .gs-host-tile,
-body.layout-auto .guest-stage[data-count="5"] .gs-host-tile {
-  grid-column: 1; grid-row: 1 / span 2;
-}
-body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile,
-body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile {
-  grid-column: 2;
-}
-body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2),
-body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2) { grid-row: 1; }
-body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
-body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3) { grid-row: 2; }
-body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4),
-body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4) { grid-row: 1; grid-column: 2; }
-body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5),
-body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5) { grid-row: 2; grid-column: 2; }
-/* Portrait phone: host full width top, 4 guests in 2×2 below */
-@media (max-width: 480px) and (orientation: portrait) {
-  body.layout-grid .guest-stage[data-count="5"],
-  body.layout-auto .guest-stage[data-count="5"] {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 2fr 1fr 1fr;
-  }
-  body.layout-grid .guest-stage[data-count="5"] .gs-host-tile,
-  body.layout-auto .guest-stage[data-count="5"] .gs-host-tile {
-    grid-column: 1 / -1; grid-row: 1;
-  }
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile,
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile {
-    grid-column: auto; grid-row: auto;
-  }
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2),
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2) { grid-column: 1; grid-row: 2; }
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3) { grid-column: 2; grid-row: 2; }
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4),
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4) { grid-column: 1; grid-row: 3; }
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5),
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5) { grid-column: 2; grid-row: 3; }
-}
-
-/* ── 6+ people: balanced auto-grid, host highlighted ── */
-body.layout-grid .guest-stage[data-count="6"],
-body.layout-auto .guest-stage[data-count="6"],
-body.layout-grid .guest-stage[data-count="7"],
-body.layout-auto .guest-stage[data-count="7"] {
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-}
-body.layout-grid .guest-stage[data-count="6"] .gs-host-tile,
-body.layout-auto .guest-stage[data-count="6"] .gs-host-tile,
-body.layout-grid .guest-stage[data-count="7"] .gs-host-tile,
-body.layout-auto .guest-stage[data-count="7"] .gs-host-tile {
-  grid-column: 1 / span 2;
-  grid-row: 1;
-}
-
-/* ════════════════════════════════════════════════════
-   LAYOUT 3: FULLSCREEN HOST + FLOATING BOXES  (body.layout-floating)
-   ════════════════════════════════════════════════════ */
-body.layout-floating .guest-stage {
-  display: block;
-  position: fixed;
-  inset: 0;
-}
-body.layout-floating .gs-host-tile {
-  position: absolute;
-  inset: 0;
-  border-radius: 0;   /* host is fullscreen — no corner radius */
-}
-/* Floating guest tiles — draggable PiP overlays */
-body.layout-floating .gs-guest-tile {
-  position: absolute;
-  width: 110px; height: 165px;
-  border-radius: 12px;
-  border: 2px solid rgba(0,174,239,0.55);
-  overflow: hidden;
-  cursor: move;
-  z-index: 220;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-}
-body.layout-floating #gsTile1 { bottom: 100px; left: 12px; }
-body.layout-floating #gsTile2 { bottom: 100px; left: 134px; }
-body.layout-floating #gsTile3 { bottom: 100px; left: 256px; }
-body.layout-floating #gsTile4 { bottom: 100px; left: 378px; }
-
-@media (max-width: 600px) {
-  body.layout-floating .gs-guest-tile { width: 80px; height: 120px; }
-  body.layout-floating #gsTile1 { bottom: 90px; left: 8px; }
-  body.layout-floating #gsTile2 { bottom: 90px; left: 98px; }
-  body.layout-floating #gsTile3 { bottom: 90px; left: 188px; }
-  body.layout-floating #gsTile4 { bottom: 90px; left: 278px; }
-}
-@media (min-width: 768px) {
-  body.layout-floating .gs-guest-tile { width: 140px; height: 210px; }
-  body.layout-floating #gsTile1 { bottom: 90px; left: 16px; }
-  body.layout-floating #gsTile2 { bottom: 90px; left: 168px; }
-  body.layout-floating #gsTile3 { bottom: 90px; left: 320px; }
-  body.layout-floating #gsTile4 { bottom: 90px; left: 472px; }
-}
-
-/* ════════════════════════════════════════════════════
-   LAYOUT 4: EQUAL BOXES  (body.layout-equal)
-   ════════════════════════════════════════════════════ */
-body.layout-equal .guest-stage {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 3px;
-}
-body.layout-equal .gs-tile { width: 100%; height: 100%; min-width: 0; min-height: 0; }
-
-/* ════════════════════════════════════════════════════
-   GUEST SELF-CONTROLS BAR (viewer in a box)
-   ════════════════════════════════════════════════════ */
-.guest-self-controls {
-  position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 270;
-  display: flex; gap: 10px;
-  background: rgba(4,12,28,0.93);
-  border: 1px solid rgba(0,174,239,0.4);
-  border-radius: 14px;
-  padding: 8px 14px;
-  backdrop-filter: blur(8px);
-}
-.guest-ctrl-btn {
-  background: rgba(0,20,55,0.85);
-  border: 1px solid rgba(0,150,255,0.4);
-  border-radius: 10px;
-  color: #00AEEF;
-  font-size: 12px; font-weight: 700;
-  padding: 8px 14px;
-  cursor: pointer;
-  transition: all 0.15s;
-  touch-action: manipulation;
-  white-space: nowrap;
-}
-.guest-ctrl-btn:hover { background: rgba(0,70,180,0.3); }
-.guest-ctrl-btn:active { transform: scale(0.93); }
-.guest-ctrl-btn.off {
-  border-color: rgba(255,60,80,0.55);
-  color: #ff5566;
-  background: rgba(255,30,50,0.18);
-}
-.guest-ctrl-leave {
-  border-color: rgba(255,60,80,0.45);
-  color: #ff5566;
-}
-.guest-ctrl-leave:hover { background: rgba(255,30,50,0.28); }
-
-/* ════════════════════════════════════════════════════
-   GUEST BOXES — TikTok-style multi-guest panel
-   ════════════════════════════════════════════════════ */
-
-/* ── Guest boxes toggle button badge ── */
-.guest-boxes-btn { position: relative; }
-.guest-boxes-btn .gb-notif-dot {
-  position: absolute; top: 4px; right: 4px;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #ff2244; border: 2px solid #000;
-  display: none;
-}
-.guest-boxes-btn .gb-notif-dot.visible { display: block; }
-
-/* ── Panel — sits below the stage on all screen sizes ── */
-.guest-box-panel {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 250;
-  background: rgba(4, 12, 28, 0.97);
-  border-top: 1.5px solid rgba(0,174,239,0.35);
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0)) 12px;
-  backdrop-filter: blur(10px);
-  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-}
-.guest-box-panel.hidden {
-  transform: translateY(100%);
-}
-
-/* ── Header row ── */
-.guest-box-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 8px;
-}
-.guest-box-title {
-  font-size: 13px; font-weight: 800; color: #00AEEF;
-  letter-spacing: 0.5px; text-transform: uppercase;
-}
-.guest-queue-badge {
-  font-size: 11px; font-weight: 700;
-  background: rgba(255,140,0,0.2);
-  border: 1px solid rgba(255,140,0,0.55);
-  color: #ffaa44; border-radius: 20px;
-  padding: 2px 10px;
-}
-
-/* ── 4-box grid ── */
-.guest-box-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-/* Individual guest box */
-.guest-box {
-  display: flex; flex-direction: column;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1.5px solid rgba(0,174,239,0.22);
-  background: #07111f;
-  transition: border-color 0.2s;
-}
-.guest-box.gb-available { border-color: rgba(0,174,239,0.22); }
-.guest-box.gb-pending   { border-color: rgba(255,140,0,0.65);  }
-.guest-box.gb-occupied  { border-color: rgba(0,255,136,0.55);  }
-
-/* Video area */
-.guest-box-video-wrap {
+/* ── Individual guest cell ── */
+.guest-cell {
   position: relative;
-  width: 100%;
-  aspect-ratio: 9/16;
-  background: #040d1a;
   overflow: hidden;
+  background: #070d1a;
+  pointer-events: auto;
+  flex-shrink: 0;
 }
-.guest-box-video {
+.guest-cell video {
   width: 100%; height: 100%;
   object-fit: cover; display: block;
 }
-
-/* Profile picture overlay (shown when no cam feed) */
-.gb-avatar-wrap {
-  position: absolute; inset: 0;
-  display: none;
-  align-items: center; justify-content: center;
-  flex-direction: column; gap: 6px;
-  background: #040d1a;
-}
-.gb-avatar-wrap.visible { display: flex; }
-.gb-avatar-img {
-  width: 52px; height: 52px; border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(0,174,239,0.5);
-}
-.gb-avatar-initial {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: #0d2444;
-  border: 2px solid rgba(0,174,239,0.5);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 800; color: #00AEEF;
-}
-
-/* Status icons (cam / mic / connection) */
-.gb-status-icons {
-  position: absolute;
-  top: 5px; right: 5px;
-  display: flex; gap: 2px;
-}
-.gb-icon-cam,
-.gb-icon-mic,
-.gb-icon-conn {
-  font-size: 10px;
-  background: rgba(0,0,0,0.65);
-  border-radius: 4px;
-  padding: 1px 3px;
-  line-height: 1.4;
-}
-.gb-icon-cam.off,
-.gb-icon-mic.off { opacity: 0.28; }
-.gb-icon-conn.conn-good  { color: #39FF14; }
-.gb-icon-conn.conn-weak  { color: #ffaa44; }
-.gb-icon-conn.conn-bad   { color: #ff5566; }
-
-/* Weak connection warning badge */
-.gb-conn-warn {
-  position: absolute;
-  top: 5px; left: 5px;
-  font-size: 9px; font-weight: 800;
-  background: rgba(255,140,0,0.88);
-  color: #000; border-radius: 5px;
-  padding: 2px 6px;
+.guest-cell-name {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(0deg, rgba(0,0,0,0.72) 0%, transparent 100%);
+  padding: 6px 8px 4px;
+  font-size: 10px; font-weight: 700; color: #e8f4ff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
-  display: none;
 }
-.gb-conn-warn.visible { display: block; }
-
-/* Status label (Available / Pending / Occupied) */
-.guest-box-status-label {
-  position: absolute;
-  bottom: 4px; left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px; font-weight: 800;
-  text-transform: uppercase; letter-spacing: 0.6px;
-  background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
-  border-radius: 6px; padding: 2px 7px;
-  color: #6a90b8; white-space: nowrap;
-}
-.gb-status-available { color: #6a90b8; }
-.gb-status-pending   { color: #ffaa44; }
-.gb-status-occupied  { color: #39FF14; }
-
-/* Guest name overlay */
-.guest-box-name-label {
-  position: absolute;
-  top: 4px; left: 4px; right: 4px;
-  font-size: 9px; font-weight: 700;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  display: none;
-}
-
-/* ── Per-box action buttons ── */
-.guest-box-actions {
-  display: flex; gap: 4px; padding: 4px;
-  justify-content: center; flex-wrap: wrap;
-}
-.gb-action-btn {
-  font-size: 10px; font-weight: 700;
-  border-radius: 6px; padding: 3px 7px;
-  cursor: pointer; border: 1px solid;
-  transition: opacity 0.15s, transform 0.1s;
+.guest-cell-remove {
+  position: absolute; top: 5px; right: 5px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 2;
+  transition: background 0.15s;
   touch-action: manipulation;
-  white-space: nowrap;
-  text-transform: uppercase; letter-spacing: 0.3px;
 }
-.gb-action-btn:active { transform: scale(0.93); }
+.guest-cell-remove:hover { background: rgba(200,0,30,0.6); }
 
-/* Accept */
-.gb-btn-accept {
-  background: rgba(0,200,80,0.18);
-  border-color: rgba(0,200,80,0.65);
-  color: #39FF14;
-}
-.gb-btn-accept:hover { background: rgba(0,200,80,0.32); }
+/* ════════════════════════════════════
+   LAYOUT MODES
+   ════════════════════════════════════ */
 
-/* Decline */
-.gb-btn-decline {
-  background: rgba(255,30,60,0.15);
-  border-color: rgba(255,50,80,0.55);
-  color: #ff5566;
-}
-.gb-btn-decline:hover { background: rgba(255,30,60,0.3); }
+/* ── 1 person: host full (default — grid hidden, main video shows) ── */
+.guest-grid[data-count="0"] { display: none !important; }
 
-/* Remove */
-.gb-btn-remove {
-  background: rgba(255,100,0,0.15);
-  border-color: rgba(255,100,0,0.55);
-  color: #ff8844;
+/* ── 2 people: side-by-side split ── */
+.guest-grid[data-layout="split"][data-count="1"],
+.guest-grid[data-layout="auto"][data-count="1"] {
+  flex-direction: row;
 }
-.gb-btn-remove:hover { background: rgba(255,100,0,0.3); }
-
-/* Close box */
-.gb-btn-close {
-  background: rgba(80,80,80,0.18);
-  border-color: rgba(180,180,180,0.3);
-  color: #aaa;
-}
-.gb-btn-close:hover { background: rgba(80,80,80,0.35); }
-
-/* Leave (viewer) */
-.gb-btn-leave {
-  background: rgba(255,30,60,0.15);
-  border-color: rgba(255,50,80,0.55);
-  color: #ff5566; width: 100%;
-}
-.gb-btn-leave:hover { background: rgba(255,30,60,0.3); }
-
-/* ── Request-a-Box button (viewer action bar) ── */
-.live-request-box-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  background: linear-gradient(135deg, rgba(0,40,120,0.75), rgba(0,80,200,0.55));
-  backdrop-filter: blur(4px);
-  border: 1.5px solid rgba(0,174,239,0.65);
-  border-radius: 14px; padding: 8px 14px;
-  color: #00AEEF; font-size: 11px; font-weight: 800;
-  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
-  box-shadow: 0 0 14px rgba(0,174,239,0.2);
-  letter-spacing: 0.3px;
-}
-.live-request-box-btn:hover {
-  border-color: rgba(0,174,239,0.95);
-  background: linear-gradient(135deg, rgba(0,60,160,0.85), rgba(0,100,240,0.65));
-  box-shadow: 0 0 22px rgba(0,174,239,0.4);
-}
-.live-request-box-btn:active { transform: scale(0.92); }
-.live-request-box-btn:disabled {
-  opacity: 0.5; cursor: default;
-  border-color: rgba(0,174,239,0.25);
-  box-shadow: none;
-}
-.live-request-box-icon { font-size: 22px; line-height: 1; }
-
-/* ════════════════════════════════════════════════════
-   GLP PANEL — request cards & active guest rows
-   ════════════════════════════════════════════════════ */
-
-/* Section header shown only when there are pending requests */
-#glpGuestSectionLabel, #glpActiveGuestLabel {
-  margin-top: 4px;
+.guest-grid[data-layout="auto"][data-count="1"] .guest-cell,
+.guest-grid[data-layout="split"][data-count="1"] .guest-cell {
+  width: 50%; height: 100%;
 }
 
-/* Request cards container */
-.glp-request-cards {
-  display: flex;
+/* ── Host in grid: host cell always first at 50% width for 2 people ── */
+.guest-grid[data-layout="auto"][data-count="1"] .guest-cell.host-cell,
+.guest-grid[data-layout="split"][data-count="1"] .guest-cell.host-cell {
+  width: 50%; height: 100%;
+}
+
+/* ── 3 people: large host + 2 stacked guests ── */
+.guest-grid[data-layout="auto"][data-count="2"] {
+  flex-direction: row;
+}
+.guest-grid[data-layout="auto"][data-count="2"] .guest-cell.host-cell {
+  width: 65%; height: 100%;
+}
+.guest-grid[data-layout="auto"][data-count="2"] .guest-cell:not(.host-cell) {
+  width: 35%; height: 50%;
+}
+.guest-grid[data-layout="auto"][data-count="2"] {
+  flex-wrap: wrap; align-content: stretch;
+}
+
+/* ── 4 people: equal grid 2×2 ── */
+.guest-grid[data-layout="auto"][data-count="3"] {
+  flex-direction: row; flex-wrap: wrap;
+}
+.guest-grid[data-layout="auto"][data-count="3"] .guest-cell {
+  width: 50%; height: 50%;
+}
+
+/* ── 5 people: host highlighted top + 4 grid below ── */
+.guest-grid[data-layout="auto"][data-count="4"] {
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
+}
+.guest-grid[data-layout="auto"][data-count="4"] .guest-cell.host-cell {
+  width: 100%; height: 60%;
+}
+.guest-grid[data-layout="auto"][data-count="4"] .guest-cell:not(.host-cell) {
+  width: 25%; height: 40%;
+}
+.guest-grid[data-layout="auto"][data-count="4"] {
+  flex-wrap: wrap; align-content: flex-start;
 }
 
-/* Single request card */
-.glp-req-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255,140,0,0.08);
-  border: 1.5px solid rgba(255,140,0,0.6);
-  border-radius: 12px;
-  padding: 10px 12px;
-  animation: glpCardIn 0.22s ease-out both;
-}
-@keyframes glpCardIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.glp-req-avatar {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  background: rgba(0,174,239,0.18);
-  border: 1.5px solid rgba(0,174,239,0.4);
-  flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 800; color: #00AEEF;
-  overflow: hidden;
-  background-size: cover; background-position: center;
-}
-.glp-req-info {
-  flex: 1; min-width: 0;
-}
-.glp-req-name {
-  font-size: 13px; font-weight: 700; color: #fff;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.glp-req-label {
-  font-size: 10px; color: #ffaa44; margin-top: 1px;
-  font-weight: 600; letter-spacing: 0.3px;
-}
-.glp-req-actions {
-  display: flex; gap: 6px; flex-shrink: 0;
-}
-.glp-req-btn {
-  font-size: 11px; font-weight: 800;
-  border-radius: 8px;
-  padding: 5px 12px;
-  cursor: pointer; border: 1px solid;
-  transition: opacity 0.15s, transform 0.1s;
-  touch-action: manipulation;
-  white-space: nowrap;
-  text-transform: uppercase; letter-spacing: 0.4px;
-}
-.glp-req-btn:active { transform: scale(0.93); }
-.glp-req-btn-accept {
-  background: rgba(0,200,80,0.18);
-  border-color: rgba(0,200,80,0.65);
-  color: #39FF14;
-}
-.glp-req-btn-accept:hover { background: rgba(0,200,80,0.32); }
-.glp-req-btn-decline {
-  background: rgba(255,30,60,0.15);
-  border-color: rgba(255,50,80,0.55);
-  color: #ff5566;
-}
-.glp-req-btn-decline:hover { background: rgba(255,30,60,0.3); }
-
-/* Active guest rows (occupied boxes) */
-.glp-active-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(0,255,136,0.06);
-  border: 1.5px solid rgba(0,255,136,0.35);
-  border-radius: 12px;
-  padding: 9px 12px;
-}
-.glp-active-avatar {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: rgba(0,174,239,0.18);
-  border: 1.5px solid rgba(0,174,239,0.4);
-  flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 800; color: #00AEEF;
-  overflow: hidden;
-  background-size: cover; background-position: center;
-}
-.glp-active-info {
-  flex: 1; min-width: 0;
-}
-.glp-active-name {
-  font-size: 13px; font-weight: 700; color: #fff;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.glp-active-status {
-  font-size: 10px; color: #39FF14; margin-top: 1px;
-  font-weight: 600;
-}
-.glp-active-remove {
-  font-size: 11px; font-weight: 800;
-  border-radius: 8px;
-  padding: 5px 10px;
-  cursor: pointer;
-  background: rgba(255,60,0,0.15);
-  border: 1px solid rgba(255,80,0,0.5);
-  color: #ff7744;
-  transition: opacity 0.15s, transform 0.1s;
-  touch-action: manipulation;
-  white-space: nowrap;
-  text-transform: uppercase; letter-spacing: 0.4px;
-  flex-shrink: 0;
-}
-.glp-active-remove:hover  { background: rgba(255,60,0,0.3); }
-.glp-active-remove:active { transform: scale(0.93); }
-
-/* ── Responsive — stack 2×2 on narrow screens ── */
-@media (max-width: 480px) {
-  .guest-box-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .guest-box-video-wrap {
-    aspect-ratio: 3/4;
-  }
+/* ── 6+ people: balanced grid ── */
+.guest-grid[data-layout="auto"] .guest-cell {
+  /* Fallback for 5+ guests — handled dynamically by JS */
 }
 
-/* ── On desktop, boxes float as a right-side strip ── */
-@media (min-width: 768px) {
-  .guest-box-panel {
-    position: fixed;
-    top: 0; right: 0; bottom: 0;
-    left: auto;
-    width: 220px;
-    border-top: none;
-    border-left: 1.5px solid rgba(0,174,239,0.35);
-    padding: 16px 10px calc(16px + env(safe-area-inset-bottom, 0));
-    overflow-y: auto;
-  }
-  .guest-box-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .guest-box-video-wrap {
-    aspect-ratio: 9/16;
-  }
+/* ── Host Full: host video only (guests shown as floating mini boxes) ── */
+.guest-grid[data-layout="host-full"] .guest-cell.host-cell {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
 }
-
-/* When guest box panel is shown on mobile (viewer mode), nudge the chat panel up */
-@media (max-width: 767px) {
-  body.is-viewer .guest-box-panel ~ * { /* no-op — panel overlays */ }
-  /* keep stage fully visible by reducing panel height on mobile viewer */
-  body.is-viewer .guest-box-panel {
-    max-height: 38vh;
-    overflow-y: auto;
-  }
-  body.is-creator .guest-box-panel {
-    max-height: 42vh;
-    overflow-y: auto;
-  }
-}
-
-/* ════════════════════════════════════════════════════
-   GUEST STAGE — overlay UI integration
-   ════════════════════════════════════════════════════ */
-/* When guest stage is active, hide the single liveVideo */
-body.gs-active #liveVideo { display: none !important; }
-body.gs-active #liveCamOffOverlay { display: none !important; }
-/* liveStage UI controls float above guest stage.
-   Bottom bar is a flex sibling of video-wrap inside #liveStage — stays on top. */
-body.gs-active #liveStage { background: transparent; z-index: 220; }
-body.gs-active .live-video-wrap { background: transparent; z-index: 0; }
-/* Keep bottom bar visible above guest stage */
-body.gs-active .live-bottom-bar { position: relative; z-index: 230; background: rgba(0,0,0,0.88); }
-
-/* floating layout: tiles can overflow the video wrap area */
-body.layout-floating .live-video-wrap { overflow: visible; }
-
-/* layout-switcher kept hidden — we use the new glp-panel instead */
-body.gs-active .layout-switcher { display: none !important; }
-
-/* ══════════════════════════════════════════════════════════
-   LAYOUT SETTINGS BUTTON — single ⚙ in the bottom bar
-   ══════════════════════════════════════════════════════════ */
-.layout-settings-btn {
-  position: relative;
-}
-/* notification dot (pending guest request) */
-.layout-settings-btn .glp-notif-dot {
-  display: none;
+.guest-grid[data-layout="host-full"] .guest-cell:not(.host-cell) {
   position: absolute;
-  top: 4px; right: 4px;
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  background: #ff6600;
-  border: 1.5px solid #040c1a;
-}
-.layout-settings-btn .glp-notif-dot.visible { display: block; }
-
-/* ══════════════════════════════════════════════════════════
-   LAYOUT & GUEST SETTINGS PANEL — slides up from bottom
-   Creator-only overlay, z-index above guest stage
-   ══════════════════════════════════════════════════════════ */
-.glp-panel {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 320;
-  background: rgba(4, 10, 26, 0.97);
-  border-top: 1.5px solid rgba(0,174,239,0.38);
-  padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px)) 14px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -4px 32px rgba(0,0,0,0.7);
-  max-height: 80vh;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-.glp-panel::-webkit-scrollbar { display: none; }
-.glp-panel.glp-hidden {
-  transform: translateY(100%);
-  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+  width: 120px !important; height: 90px !important;
+  border-radius: 10px; overflow: hidden;
+  border: 1.5px solid rgba(0,174,239,0.4);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+  z-index: 6;
 }
 
-/* Header */
-.glp-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px;
+/* ── Host Big: large host + small guest strip ── */
+.guest-grid[data-layout="host-big"] {
+  flex-direction: row;
 }
-.glp-title {
-  font-size: 13px; font-weight: 800;
-  color: #00AEEF; letter-spacing: 0.6px; text-transform: uppercase;
+.guest-grid[data-layout="host-big"] .guest-cell.host-cell {
+  flex: 1; height: 100%;
 }
-.glp-close-btn {
-  background: none; border: none; color: #6a90b8;
-  font-size: 16px; cursor: pointer; padding: 2px 6px;
-  border-radius: 6px; line-height: 1;
-}
-.glp-close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
-
-/* Section label */
-.glp-section-label {
-  font-size: 11px; font-weight: 700; color: #6a90b8;
-  text-transform: uppercase; letter-spacing: 0.5px;
-  margin: 0 0 8px 0;
-  display: flex; align-items: center; gap: 8px;
+.guest-grid[data-layout="host-big"] .guest-cell:not(.host-cell) {
+  width: 22%; height: 100%;
 }
 
-/* Layout buttons row */
-.glp-layout-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-bottom: 16px;
+/* ── Grid: equal grid for all ── */
+.guest-grid[data-layout="grid"] {
+  flex-direction: row; flex-wrap: wrap;
 }
-.glp-layout-btn {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px;
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid rgba(0,174,239,0.25);
-  border-radius: 10px;
-  color: #6a90b8;
-  cursor: pointer;
-  padding: 10px 4px;
-  transition: all 0.15s;
-  touch-action: manipulation;
-}
-.glp-layout-btn:hover  { background: rgba(0,174,239,0.14); color: #00AEEF; }
-.glp-layout-btn:active { transform: scale(0.95); }
-.glp-layout-btn-active {
-  background: rgba(0,174,239,0.2);
-  border-color: rgba(0,174,239,0.75);
-  color: #00AEEF;
-}
-.glp-lbtn-icon  { font-size: 18px; line-height: 1; }
-.glp-lbtn-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
-
-/* Queue badge inside section label */
-.glp-queue-badge {
-  font-size: 10px; font-weight: 700;
-  background: rgba(255,140,0,0.18);
-  border: 1px solid rgba(255,140,0,0.55);
-  color: #ffaa44; border-radius: 20px;
-  padding: 2px 8px;
+.guest-grid[data-layout="grid"] .guest-cell {
+  /* JS sets width/height based on count */
+  box-sizing: border-box;
+  border: 1px solid rgba(0,0,0,0.3);
 }
 
-/* Guest boxes list */
-.glp-guest-boxes {
-  display: flex; flex-direction: column; gap: 6px;
-  margin-bottom: 4px;
+/* ── Float: all guests float over host ── */
+.guest-grid[data-layout="float"] .guest-cell.host-cell {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
 }
-.glp-box {
-  display: flex; align-items: center; gap: 10px;
-  background: rgba(255,255,255,0.03);
-  border: 1.5px solid rgba(0,174,239,0.15);
-  border-radius: 10px;
-  padding: 8px 10px;
-  transition: border-color 0.2s;
-}
-.glp-box.glp-available { border-color: rgba(0,174,239,0.18); }
-.glp-box.glp-pending   { border-color: rgba(255,140,0,0.65); }
-.glp-box.glp-occupied  { border-color: rgba(0,255,136,0.5);  }
-
-.glp-box-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
-  background: rgba(0,174,239,0.15);
-  flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 800; color: #6a90b8;
-  overflow: hidden;
-  background-size: cover; background-position: center;
-}
-.glp-box-info { flex: 1; min-width: 0; }
-.glp-box-name {
-  font-size: 13px; font-weight: 700; color: #d0e8ff;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.glp-box-status {
-  font-size: 11px; color: #6a90b8; margin-top: 1px;
-}
-.glp-box.glp-available .glp-box-status { color: #6a90b8; }
-.glp-box.glp-pending   .glp-box-status { color: #ffaa44; }
-.glp-box.glp-occupied  .glp-box-status { color: #39FF14; }
-
-.glp-box-actions {
-  display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end;
-}
-.glp-box-actions .gb-action-btn {
-  font-size: 11px; padding: 4px 8px; border-radius: 6px; height: auto;
-  white-space: nowrap;
+.guest-grid[data-layout="float"] .guest-cell:not(.host-cell) {
+  position: absolute;
+  border-radius: 10px; overflow: hidden;
+  border: 1.5px solid rgba(0,174,239,0.4);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+  z-index: 6;
+  cursor: move;
 }
 
-/* On very small screens: 2-col layout buttons */
-@media (max-width: 380px) {
-  .glp-layout-row { grid-template-columns: repeat(2, 1fr); }
+/* ── Box size modifiers ── */
+.guest-grid.box-sm .guest-cell:not(.host-cell) { --gbox-scale: 0.85; }
+.guest-grid.box-md .guest-cell:not(.host-cell) { --gbox-scale: 1.0;  }
+.guest-grid.box-lg .guest-cell:not(.host-cell) { --gbox-scale: 1.15; }
+
+/* Hide main #liveVideo when grid is showing (grid renders its own host cell) */
+.guest-grid.has-guests ~ * #liveVideo,
+.live-video-wrap:has(.guest-grid.has-guests) > #liveVideo {
+  opacity: 0; pointer-events: none;
 }
+
+/* ── viewer: hide layout btn and request queue ── */
+body.is-viewer .guest-layout-btn      { display: none !important; }
+body.is-viewer .guest-request-queue   { display: none !important; }
+body.is-viewer #layoutSettingsPanel   { display: none !important; }
+body.is-creator .live-request-box-btn { display: none !important; }

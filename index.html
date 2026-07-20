@@ -8861,23 +8861,10 @@ body.arcade-fs-ios body::after { display:none !important; }
     if (Notification.permission === 'denied') return;
 
     try {
-      // Derive the correct scope from the current page location so this works
-      // on GitHub Pages (/TEST/) and on any other host path automatically.
-      const _swBase = location.pathname.replace(/\/[^/]*$/, '/');   // e.g. '/TEST/'
-      const _fcmSW  = _swBase + 'firebase-messaging-sw.js';
-
-      // Reuse any already-registered FCM SW, or register fresh.
-      // Using { updateViaCache: 'none' } ensures the browser always checks
-      // for a new SW version instead of serving a stale cached copy.
-      let swReg = null;
-      const _existing = await navigator.serviceWorker.getRegistrations();
-      swReg = _existing.find(r => r.active && r.active.scriptURL.includes('firebase-messaging-sw'));
-      if (!swReg) {
-        swReg = await navigator.serviceWorker.register(_fcmSW, {
-          scope: _swBase,
-          updateViaCache: 'none'
-        });
-      }
+      // Register the FCM service worker explicitly so FCM knows where to deliver
+      const swReg = await navigator.serviceWorker.register('firebase-messaging-sw.js', {
+        scope: '/'
+      });
 
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return;

@@ -153,14 +153,9 @@
 
     </div>
 
-    <!-- ── Left-side floating panel: follower/stat controls ── -->
-    <div class="live-left-panel" aria-label="Stream stats">
-      <!-- Viewer count (compact pill — always visible) -->
-      <div class="llp-pill" id="llpViewers">👁 <span id="llpViewerVal">0</span></div>
-      <!-- Like count -->
-      <div class="llp-pill llp-likes" id="liveLikeCount">❤️ 0</div>
-      <!-- Share (creator only — viewers have their own share btn) -->
-      <button class="llp-btn" id="llpShareBtn" aria-label="Share stream" title="Share">📤</button>
+    <!-- ── Stats ribbon (likes) ── -->
+    <div class="live-stats-ribbon">
+      <div class="live-stat-pill" id="liveLikeCount">❤️ 0</div>
     </div>
 
     <!-- ── Chat panel (both creator and viewer) ── -->
@@ -181,295 +176,107 @@
       </div>
     </div>
 
+    <!-- ═══════════════════════════════════
+         GUEST VIDEO GRID — host video + guest boxes
+         Shown on top of (or replacing) the main video
+         ═══════════════════════════════════ -->
+    <div id="guestGrid" class="guest-grid"></div>
+
+    <!-- ═══════════════════════════════════
+         HOST: incoming request notifications
+         ═══════════════════════════════════ -->
+    <div id="guestRequestQueue" class="guest-request-queue"></div>
+
+    <!-- ═══════════════════════════════════
+         CREATOR CONTROLS (bottom bar)
+         Hidden for viewers via CSS
+         ═══════════════════════════════════ -->
+    <div class="live-bottom-bar">
+
+      <button id="btnToggleCam" class="live-ctrl-btn" aria-label="Toggle camera" title="Camera">📷</button>
+      <button id="btnToggleMic" class="live-ctrl-btn" aria-label="Toggle microphone" title="Mic">🎤</button>
+      <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
+      <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
+      <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
+
+      <!-- Layout button (host only) — one button that opens all layout settings -->
+      <button id="btnLayoutSettings" class="live-ctrl-btn guest-layout-btn" aria-label="Layout settings" title="Layout">⊞</button>
+
+      <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
+
+    </div>
+
+    <!-- ═══════════════════════════════════
+         LAYOUT SETTINGS PANEL (host only)
+         ═══════════════════════════════════ -->
+    <div id="layoutSettingsPanel" class="layout-settings-panel" style="display:none;">
+      <div class="layout-panel-title">Layout Settings</div>
+      <div class="layout-panel-grid">
+        <button class="layout-option-btn active" data-layout="auto" title="Auto">
+          <span class="layout-icon">✦</span>
+          <span>Auto</span>
+        </button>
+        <button class="layout-option-btn" data-layout="host-full" title="Host Full">
+          <span class="layout-icon">⬛</span>
+          <span>Host Full</span>
+        </button>
+        <button class="layout-option-btn" data-layout="split" title="Split">
+          <span class="layout-icon">⬜⬜</span>
+          <span>Split</span>
+        </button>
+        <button class="layout-option-btn" data-layout="host-big" title="Host Big">
+          <span class="layout-icon">▬▪</span>
+          <span>Host Big</span>
+        </button>
+        <button class="layout-option-btn" data-layout="grid" title="Grid">
+          <span class="layout-icon">▦</span>
+          <span>Grid</span>
+        </button>
+        <button class="layout-option-btn" data-layout="float" title="Floating">
+          <span class="layout-icon">◈</span>
+          <span>Float</span>
+        </button>
+      </div>
+      <div class="layout-panel-section">Box Size</div>
+      <div class="layout-size-row">
+        <button class="layout-size-btn active" data-size="sm">S</button>
+        <button class="layout-size-btn" data-size="md">M</button>
+        <button class="layout-size-btn" data-size="lg">L</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         VIEWER ACTIONS (bottom-right)
+         Hidden for creator via CSS
+         ═══════════════════════════════════ -->
+    <div class="live-viewer-actions">
+
+      <button id="btnCreatorProfile" class="live-profile-btn" aria-label="View creator profile">
+        <span class="live-profile-icon">👤</span>
+        Profile
+      </button>
+
+      <button id="btnShareLive" class="live-share-btn" aria-label="Share live stream">
+        <span class="live-share-icon">📤</span>
+        Share
+      </button>
+
+      <button id="btnLike" class="live-like-btn" aria-label="Like stream">
+        <span class="live-like-icon">❤️</span>
+        <span id="likeBtnCount">Like</span>
+      </button>
+
+      <!-- Request a Box button (viewer only) -->
+      <button id="btnRequestBox" class="live-request-box-btn" aria-label="Request a guest box">
+        <span style="font-size:18px;line-height:1;">📺</span>
+        Request a Box
+      </button>
+
+    </div>
+
   </div><!-- .live-video-wrap -->
 
-  <!-- ═══════════════════════════════════
-       CREATOR CONTROLS (bottom bar)
-       Outside video-wrap so overflow:hidden never clips it.
-       Safe-area padding keeps buttons above the phone nav bar.
-       Hidden for viewers via CSS.
-       ═══════════════════════════════════ -->
-  <div class="live-bottom-bar">
-
-    <button id="btnToggleCam" class="live-ctrl-btn" aria-label="Toggle camera" title="Camera">📷</button>
-    <button id="btnToggleMic" class="live-ctrl-btn" aria-label="Toggle microphone" title="Mic">🎤</button>
-    <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
-    <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
-    <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
-    <button id="btnLayoutSettings" class="live-ctrl-btn layout-settings-btn" aria-label="Layout settings" title="Layout &amp; Guests">⚙</button>
-    <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
-
-  </div>
-
-  <!-- ═══════════════════════════════════
-       VIEWER ACTIONS (bottom-right)
-       Outside video-wrap, overlays bottom of stage.
-       Hidden for creator via CSS.
-       ═══════════════════════════════════ -->
-  <div class="live-viewer-actions">
-
-    <button id="btnCreatorProfile" class="live-profile-btn" aria-label="View creator profile">
-      <span class="live-profile-icon">👤</span>
-      Profile
-    </button>
-
-    <button id="btnShareLive" class="live-share-btn" aria-label="Share live stream">
-      <span class="live-share-icon">📤</span>
-      Share
-    </button>
-
-    <button id="btnLike" class="live-like-btn" aria-label="Like stream">
-      <span class="live-like-icon">❤️</span>
-      <span id="likeBtnCount">Like</span>
-    </button>
-
-    <!-- Request a Box — viewer only, shown when not already in a box -->
-    <button id="_gbRequestBtn" class="live-request-box-btn" aria-label="Request a guest box">
-      <span class="live-request-box-icon">🎥</span>
-      <span>Request a Box</span>
-    </button>
-
-  </div>
-
 </div><!-- #liveStage -->
-
-
-<!-- ══════════════════════════════════════════════
-     LAYOUT SWITCHER — kept for JS compatibility (hidden, controlled via settings panel)
-     ══════════════════════════════════════════════ -->
-<div id="layoutSwitcher" class="layout-switcher" style="display:none;" aria-hidden="true">
-  <button class="layout-btn"                   data-layout="side"     title="Host + Side Boxes">⬛▐</button>
-  <button class="layout-btn layout-btn-active" data-layout="grid"     title="Auto Grid (TikTok)">⊞</button>
-  <button class="layout-btn"                   data-layout="floating" title="Fullscreen + Floating">⧉</button>
-  <button class="layout-btn"                   data-layout="equal"    title="Equal Boxes">⊟</button>
-</div>
-
-
-<!-- ══════════════════════════════════════════════
-     LAYOUT & GUEST SETTINGS PANEL
-     One button opens everything. Host only.
-     ══════════════════════════════════════════════ -->
-<div id="guestLayoutPanel" class="glp-panel" style="display:none;" aria-label="Layout and guest settings">
-
-  <!-- Header -->
-  <div class="glp-header">
-    <span class="glp-title">⚙ Layout &amp; Guests</span>
-    <button id="btnCloseLayoutPanel" class="glp-close-btn" aria-label="Close settings">✕</button>
-  </div>
-
-  <!-- Layout section -->
-  <div class="glp-section-label">Layout</div>
-  <div class="glp-layout-row">
-    <button class="glp-layout-btn glp-layout-btn-active" data-layout="grid"     title="Auto Grid">
-      <span class="glp-lbtn-icon">⊞</span>
-      <span class="glp-lbtn-label">Auto Grid</span>
-    </button>
-    <button class="glp-layout-btn" data-layout="side"     title="Big Host">
-      <span class="glp-lbtn-icon">⬛▐</span>
-      <span class="glp-lbtn-label">Big Host</span>
-    </button>
-    <button class="glp-layout-btn" data-layout="equal"    title="Equal Boxes">
-      <span class="glp-lbtn-icon">⊟</span>
-      <span class="glp-lbtn-label">Equal</span>
-    </button>
-    <button class="glp-layout-btn" data-layout="floating" title="Floating">
-      <span class="glp-lbtn-icon">⧉</span>
-      <span class="glp-lbtn-label">Floating</span>
-    </button>
-  </div>
-
-  <!-- Guest requests section — populated by JS when requests arrive -->
-  <div class="glp-section-label" id="glpGuestSectionLabel" style="display:none;">
-    Guest Requests
-    <span id="glpQueueBadge" class="glp-queue-badge" style="display:none;"><span id="glpQueueCount">0</span> pending</span>
-  </div>
-  <!-- Request cards injected here by JS -->
-  <div id="glpRequestCards" class="glp-request-cards"></div>
-
-  <!-- Active guests section -->
-  <div class="glp-section-label" id="glpActiveGuestLabel" style="display:none;">Active Guests</div>
-  <div id="glpActiveGuests" class="glp-guest-boxes">
-    <!-- Active guest rows injected by JS when guests are live -->
-  </div>
-
-  <!-- Hidden anchor elements kept so JS DOM refs don't break -->
-  <span id="glpBoxAvatar1" style="display:none;"></span>
-  <span id="glpBoxName1"   style="display:none;"></span>
-  <span id="glpBoxStatus1" style="display:none;"></span>
-  <span id="glpBoxActions1" style="display:none;"></span>
-  <span id="glpBox1"       style="display:none;" data-box="1"></span>
-  <span id="glpBoxAvatar2" style="display:none;"></span>
-  <span id="glpBoxName2"   style="display:none;"></span>
-  <span id="glpBoxStatus2" style="display:none;"></span>
-  <span id="glpBoxActions2" style="display:none;"></span>
-  <span id="glpBox2"       style="display:none;" data-box="2"></span>
-  <span id="glpBoxAvatar3" style="display:none;"></span>
-  <span id="glpBoxName3"   style="display:none;"></span>
-  <span id="glpBoxStatus3" style="display:none;"></span>
-  <span id="glpBoxActions3" style="display:none;"></span>
-  <span id="glpBox3"       style="display:none;" data-box="3"></span>
-  <span id="glpBoxAvatar4" style="display:none;"></span>
-  <span id="glpBoxName4"   style="display:none;"></span>
-  <span id="glpBoxStatus4" style="display:none;"></span>
-  <span id="glpBoxActions4" style="display:none;"></span>
-  <span id="glpBox4"       style="display:none;" data-box="4"></span>
-
-</div><!-- #guestLayoutPanel -->
-
-
-<!-- ══════════════════════════════════════════════
-     GUEST STAGE — multi-participant video area
-     Replaces single liveVideo when guests are active
-     Layout controlled by body class: layout-side / layout-grid / layout-floating / layout-equal
-     ══════════════════════════════════════════════ -->
-<div id="guestStage" class="guest-stage" style="display:none;" aria-label="Guest stage">
-
-  <!-- Host tile (always present) -->
-  <div class="gs-tile gs-host-tile" id="gsTileHost">
-    <video class="gs-video" id="gsHostVideo" autoplay playsinline muted aria-label="Host video"></video>
-    <div class="gs-cam-off" id="gsHostCamOff">📷</div>
-    <div class="gs-name-bar">
-      <span class="gs-avatar" id="gsHostAvatar"></span>
-      <span class="gs-name"   id="gsHostName">Host</span>
-      <span class="gs-badge gs-badge-host">HOST</span>
-    </div>
-    <div class="gs-conn-warn" id="gsHostConnWarn" style="display:none;">⚠ Weak</div>
-  </div>
-
-  <!-- Guest tile 1 -->
-  <div class="gs-tile gs-guest-tile" id="gsTile1" data-box="1" style="display:none;">
-    <video class="gs-video" id="gsGuestVideo1" autoplay playsinline aria-label="Guest 1 video"></video>
-    <div class="gs-cam-off" id="gsGuest1CamOff" style="display:none;">📷</div>
-    <div class="gs-indicators">
-      <span class="gs-ind gs-ind-cam"  id="gsGuest1Cam"  title="Camera">🎥</span>
-      <span class="gs-ind gs-ind-mic"  id="gsGuest1Mic"  title="Microphone">🎤</span>
-      <span class="gs-ind gs-ind-conn" id="gsGuest1Conn" title="Connection">●</span>
-    </div>
-    <div class="gs-name-bar">
-      <span class="gs-avatar" id="gsGuest1Avatar"></span>
-      <span class="gs-name"   id="gsGuest1Name">Guest 1</span>
-    </div>
-    <div class="gs-conn-warn" id="gsGuest1ConnWarn" style="display:none;">⚠ Weak</div>
-  </div>
-
-  <!-- Guest tile 2 -->
-  <div class="gs-tile gs-guest-tile" id="gsTile2" data-box="2" style="display:none;">
-    <video class="gs-video" id="gsGuestVideo2" autoplay playsinline aria-label="Guest 2 video"></video>
-    <div class="gs-cam-off" id="gsGuest2CamOff" style="display:none;">📷</div>
-    <div class="gs-indicators">
-      <span class="gs-ind gs-ind-cam"  id="gsGuest2Cam"  title="Camera">🎥</span>
-      <span class="gs-ind gs-ind-mic"  id="gsGuest2Mic"  title="Microphone">🎤</span>
-      <span class="gs-ind gs-ind-conn" id="gsGuest2Conn" title="Connection">●</span>
-    </div>
-    <div class="gs-name-bar">
-      <span class="gs-avatar" id="gsGuest2Avatar"></span>
-      <span class="gs-name"   id="gsGuest2Name">Guest 2</span>
-    </div>
-    <div class="gs-conn-warn" id="gsGuest2ConnWarn" style="display:none;">⚠ Weak</div>
-  </div>
-
-  <!-- Guest tile 3 -->
-  <div class="gs-tile gs-guest-tile" id="gsTile3" data-box="3" style="display:none;">
-    <video class="gs-video" id="gsGuestVideo3" autoplay playsinline aria-label="Guest 3 video"></video>
-    <div class="gs-cam-off" id="gsGuest3CamOff" style="display:none;">📷</div>
-    <div class="gs-indicators">
-      <span class="gs-ind gs-ind-cam"  id="gsGuest3Cam"  title="Camera">🎥</span>
-      <span class="gs-ind gs-ind-mic"  id="gsGuest3Mic"  title="Microphone">🎤</span>
-      <span class="gs-ind gs-ind-conn" id="gsGuest3Conn" title="Connection">●</span>
-    </div>
-    <div class="gs-name-bar">
-      <span class="gs-avatar" id="gsGuest3Avatar"></span>
-      <span class="gs-name"   id="gsGuest3Name">Guest 3</span>
-    </div>
-    <div class="gs-conn-warn" id="gsGuest3ConnWarn" style="display:none;">⚠ Weak</div>
-  </div>
-
-  <!-- Guest tile 4 -->
-  <div class="gs-tile gs-guest-tile" id="gsTile4" data-box="4" style="display:none;">
-    <video class="gs-video" id="gsGuestVideo4" autoplay playsinline aria-label="Guest 4 video"></video>
-    <div class="gs-cam-off" id="gsGuest4CamOff" style="display:none;">📷</div>
-    <div class="gs-indicators">
-      <span class="gs-ind gs-ind-cam"  id="gsGuest4Cam"  title="Camera">🎥</span>
-      <span class="gs-ind gs-ind-mic"  id="gsGuest4Mic"  title="Microphone">🎤</span>
-      <span class="gs-ind gs-ind-conn" id="gsGuest4Conn" title="Connection">●</span>
-    </div>
-    <div class="gs-name-bar">
-      <span class="gs-avatar" id="gsGuest4Avatar"></span>
-      <span class="gs-name"   id="gsGuest4Name">Guest 4</span>
-    </div>
-    <div class="gs-conn-warn" id="gsGuest4ConnWarn" style="display:none;">⚠ Weak</div>
-  </div>
-
-</div><!-- #guestStage -->
-
-
-<!-- Legacy guest box panel — kept for JS DOM refs (never shown) -->
-<div id="guestBoxPanel" style="display:none!important;" aria-hidden="true">
-  <!-- Hidden anchor elements so JS refs don't break -->
-  <span id="guestQueueBadge" style="display:none;"></span>
-  <span id="guestQueueCount" style="display:none;"></span>
-  <span id="btnCloseGuestPanel" style="display:none;"></span>
-  <span id="guestBox1" data-box="1" style="display:none;"></span>
-  <span id="guestBoxStatus1" style="display:none;"></span>
-  <span id="guestBoxName1"   style="display:none;"></span>
-  <span id="guestBoxActions1" style="display:none;"></span>
-  <span id="gbAvatar1" style="display:none;"></span>
-  <span id="gbAvatarImg1"     style="display:none;"></span>
-  <span id="gbAvatarInitial1" style="display:none;"></span>
-  <span id="gbStatusIcons1"   style="display:none;"></span>
-  <span id="gbIconCam1"  style="display:none;"></span>
-  <span id="gbIconMic1"  style="display:none;"></span>
-  <span id="gbIconConn1" style="display:none;"></span>
-  <span id="gbConnWarn1" style="display:none;"></span>
-  <video id="guestVideo1" style="display:none;" playsinline muted></video>
-  <span id="guestBox2" data-box="2" style="display:none;"></span>
-  <span id="guestBoxStatus2" style="display:none;"></span>
-  <span id="guestBoxName2"   style="display:none;"></span>
-  <span id="guestBoxActions2" style="display:none;"></span>
-  <span id="gbAvatar2" style="display:none;"></span>
-  <span id="gbAvatarImg2"     style="display:none;"></span>
-  <span id="gbAvatarInitial2" style="display:none;"></span>
-  <span id="gbStatusIcons2"   style="display:none;"></span>
-  <span id="gbIconCam2"  style="display:none;"></span>
-  <span id="gbIconMic2"  style="display:none;"></span>
-  <span id="gbIconConn2" style="display:none;"></span>
-  <span id="gbConnWarn2" style="display:none;"></span>
-  <video id="guestVideo2" style="display:none;" playsinline muted></video>
-  <span id="guestBox3" data-box="3" style="display:none;"></span>
-  <span id="guestBoxStatus3" style="display:none;"></span>
-  <span id="guestBoxName3"   style="display:none;"></span>
-  <span id="guestBoxActions3" style="display:none;"></span>
-  <span id="gbAvatar3" style="display:none;"></span>
-  <span id="gbAvatarImg3"     style="display:none;"></span>
-  <span id="gbAvatarInitial3" style="display:none;"></span>
-  <span id="gbStatusIcons3"   style="display:none;"></span>
-  <span id="gbIconCam3"  style="display:none;"></span>
-  <span id="gbIconMic3"  style="display:none;"></span>
-  <span id="gbIconConn3" style="display:none;"></span>
-  <span id="gbConnWarn3" style="display:none;"></span>
-  <video id="guestVideo3" style="display:none;" playsinline muted></video>
-  <span id="guestBox4" data-box="4" style="display:none;"></span>
-  <span id="guestBoxStatus4" style="display:none;"></span>
-  <span id="guestBoxName4"   style="display:none;"></span>
-  <span id="guestBoxActions4" style="display:none;"></span>
-  <span id="gbAvatar4" style="display:none;"></span>
-  <span id="gbAvatarImg4"     style="display:none;"></span>
-  <span id="gbAvatarInitial4" style="display:none;"></span>
-  <span id="gbStatusIcons4"   style="display:none;"></span>
-  <span id="gbIconCam4"  style="display:none;"></span>
-  <span id="gbIconMic4"  style="display:none;"></span>
-  <span id="gbIconConn4" style="display:none;"></span>
-  <span id="gbConnWarn4" style="display:none;"></span>
-  <video id="guestVideo4" style="display:none;" playsinline muted></video>
-</div><!-- #guestBoxPanel (hidden) -->
-
-
-<!-- ── Guest self-controls bar (shown when viewer is accepted into a box) ── -->
-<div id="guestSelfControls" class="guest-self-controls" style="display:none;" aria-label="Guest controls">
-  <button id="btnGuestCam" class="guest-ctrl-btn" title="Toggle Camera">📷 Cam</button>
-  <button id="btnGuestMic" class="guest-ctrl-btn" title="Toggle Microphone">🎤 Mic</button>
-  <button id="btnGuestLeave" class="guest-ctrl-btn guest-ctrl-leave" title="Leave Box">↩ Leave</button>
-</div>
 
 
 <!-- ══════════════════════════════════════════════

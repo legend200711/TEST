@@ -12,6 +12,18 @@
         ".write": "auth != null"
       }
     },
+    "guestRequests": {
+      "$roomId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "guestSignaling": {
+      "$roomId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
     "stormRooms": {
       "$roomId": {
         ".read":  "auth != null",
