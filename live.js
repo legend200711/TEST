@@ -157,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnFS:           document.getElementById('btnFullscreen'),
     btnEnd:          document.getElementById('btnEndLive'),
     btnShareCreator: document.getElementById('btnShareLiveCreator'),
-    btnGuestBoxes:   document.getElementById('btnGuestBoxes'),
     btnLayoutSettings: document.getElementById('btnLayoutSettings'),
 
     // Guest boxes panel (legacy — kept hidden; state mirrored to glp-panel)
@@ -218,9 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnFlip && D.btnFlip.addEventListener('click',  () => flipLiveCamera());
   D.btnFS   && D.btnFS.addEventListener('click',    toggleFullscreen);
   D.btnEnd  && D.btnEnd.addEventListener('click',   endLive);
-  D.btnGuestBoxes      && D.btnGuestBoxes.addEventListener('click', _gbTogglePanel);
-  D.btnCloseGuestPanel && D.btnCloseGuestPanel.addEventListener('click', _gbTogglePanel);
-
   // Single layout settings button
   D.btnLayoutSettings   && D.btnLayoutSettings.addEventListener('click',   _glpTogglePanel);
   D.btnCloseLayoutPanel && D.btnCloseLayoutPanel.addEventListener('click', _glpClosePanel);
@@ -1616,17 +1612,11 @@ async function _gbInitCreator() {
 function _gbInitViewer(roomData) {
   if (!_roomId) return;
 
-  /* inject "Request a Box" button into the viewer actions bar */
-  const actionsBar = document.querySelector('.live-viewer-actions');
-  if (actionsBar && !document.getElementById('_gbRequestBtn')) {
-    const btn = document.createElement('button');
-    btn.id        = '_gbRequestBtn';
-    btn.className = 'live-request-box-btn';
-    btn.setAttribute('aria-label', 'Request a guest box');
-    btn.innerHTML = `<span class="live-request-box-icon">🎥</span><span>Request Box</span>`;
-    btn.addEventListener('click', _gbViewerRequestBox);
-    actionsBar.prepend(btn);
-    _gbRequestBtn = btn;
+  /* wire the static "Request a Box" button in the viewer actions bar */
+  const reqBtn = document.getElementById('_gbRequestBtn');
+  if (reqBtn) {
+    reqBtn.addEventListener('click', _gbViewerRequestBox);
+    _gbRequestBtn = reqBtn;
   }
 
   /* subscribe to boxes — panel stays hidden for viewers */
@@ -1766,10 +1756,130 @@ function _gbSubscribeBoxes(role) {
     for (let i = 1; i <= _GB_MAX_BOXES; i++) {
       const data = boxes[i] || { status: 'available', guestId: null };
       _gbRenderBox(i, data, role);
-      /* mirror to glp panel (creator only — viewer has no glp panel) */
+      /* for creator: render new-style cards in glp panel */
       if (role === 'creator') _glpRenderBox(i, data, role);
     }
+    /* for creator: rebuild the live request cards + active guests in glp panel */
+    if (role === 'creator') _glpRebuildCards(boxes);
   });
+}
+
+/* ════════════════════════════════════════════
+   GLP PANEL — rebuild request cards + active rows
+   Called every time box state changes.
+   ════════════════════════════════════════════ */
+function _glpRebuildCards(boxes) {
+  const reqContainer    = document.getElementById('glpRequestCards');
+  const activeContainer = document.getElementById('glpActiveGuests');
+  const reqLabel        = document.getElementById('glpGuestSectionLabel');
+  const activeLabel     = document.getElementById('glpActiveGuestLabel');
+  const dot             = document.getElementById('_glpNotifDot');
+  if (!reqContainer || !activeContainer) return;
+
+  reqContainer.innerHTML    = '';
+  activeContainer.innerHTML = '';
+
+  let hasPending  = false;
+  let hasOccupied = false;
+
+  for (let i = 1; i <= _GB_MAX_BOXES; i++) {
+    const data   = boxes[i] || { status: 'available' };
+    const status = data.status || 'available';
+
+    if (status === 'pending') {
+      hasPending = true;
+      const card = _glpMakeRequestCard(i, data);
+      reqContainer.appendChild(card);
+    } else if (status === 'occupied') {
+      hasOccupied = true;
+      const row = _glpMakeActiveRow(i, data);
+      activeContainer.appendChild(row);
+    }
+  }
+
+  /* show/hide section headers */
+  if (reqLabel)    reqLabel.style.display    = hasPending  ? 'flex' : 'none';
+  if (activeLabel) activeLabel.style.display = hasOccupied ? 'flex' : 'none';
+
+  /* notification dot on ⚙ button */
+  if (dot) dot.classList.toggle('visible', hasPending);
+}
+
+/* Build a pending-request card (Accept / Decline) */
+function _glpMakeRequestCard(boxNum, data) {
+  const card = document.createElement('div');
+  card.className = 'glp-req-card';
+
+  const av   = data.guestAvatar || '';
+  const nm   = data.guestName   || 'Guest';
+  const init = nm[0].toUpperCase();
+
+  const avatarEl = document.createElement('div');
+  avatarEl.className = 'glp-req-avatar';
+  if (av) {
+    avatarEl.style.backgroundImage = `url('${av}')`;
+  } else {
+    avatarEl.textContent = init;
+  }
+
+  const infoEl   = document.createElement('div');
+  infoEl.className  = 'glp-req-info';
+  infoEl.innerHTML  = `
+    <div class="glp-req-name">${_esc(nm)}</div>
+    <div class="glp-req-label">Wants to join live</div>
+  `;
+
+  const actionsEl = document.createElement('div');
+  actionsEl.className = 'glp-req-actions';
+
+  const acceptBtn = document.createElement('button');
+  acceptBtn.className = 'glp-req-btn glp-req-btn-accept';
+  acceptBtn.textContent = '✔';
+  acceptBtn.title = 'Accept';
+  acceptBtn.addEventListener('click', () => _gbCreatorAccept(boxNum, data));
+
+  const declineBtn = document.createElement('button');
+  declineBtn.className = 'glp-req-btn glp-req-btn-decline';
+  declineBtn.textContent = '✘';
+  declineBtn.title = 'Decline';
+  declineBtn.addEventListener('click', () => _gbCreatorDecline(boxNum, data));
+
+  actionsEl.append(acceptBtn, declineBtn);
+  card.append(avatarEl, infoEl, actionsEl);
+  return card;
+}
+
+/* Build an active-guest row (Remove button) */
+function _glpMakeActiveRow(boxNum, data) {
+  const row = document.createElement('div');
+  row.className = 'glp-active-row';
+
+  const av   = data.guestAvatar || '';
+  const nm   = data.guestName   || 'Guest';
+  const init = nm[0].toUpperCase();
+
+  const avatarEl = document.createElement('div');
+  avatarEl.className = 'glp-active-avatar';
+  if (av) {
+    avatarEl.style.backgroundImage = `url('${av}')`;
+  } else {
+    avatarEl.textContent = init;
+  }
+
+  const infoEl = document.createElement('div');
+  infoEl.className = 'glp-active-info';
+  infoEl.innerHTML = `
+    <div class="glp-active-name">${_esc(nm)}</div>
+    <div class="glp-active-status">● Live in Box ${boxNum}</div>
+  `;
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'glp-active-remove';
+  removeBtn.textContent = 'Remove';
+  removeBtn.addEventListener('click', () => _gbCreatorRemove(boxNum, data));
+
+  row.append(avatarEl, infoEl, removeBtn);
+  return row;
 }
 
 /* ════════════════════════════════════════════
@@ -1781,20 +1891,11 @@ function _gbSubscribeQueue() {
     const queueList = Object.entries(queueData);
     const count = queueList.length;
 
-    /* update queue badge (legacy panel + new glp panel) */
-    if (D.guestQueueBadge) D.guestQueueBadge.style.display = count > 0 ? 'inline-block' : 'none';
-    if (D.guestQueueCount)  D.guestQueueCount.textContent  = count;
+    /* update queue badge in glp panel */
     if (D.glpQueueBadge)  D.glpQueueBadge.style.display  = count > 0 ? 'inline-flex' : 'none';
     if (D.glpQueueCount)  D.glpQueueCount.textContent     = count;
 
-    /* notification dot on layout settings button */
-    const dot = document.getElementById('_glpNotifDot');
-    if (dot) dot.classList.toggle('visible', count > 0);
-    /* legacy dot (noop if removed) */
-    const dotLegacy = document.getElementById('_gbNotifDot');
-    if (dotLegacy) dotLegacy.classList.toggle('visible', count > 0);
-
-    /* render "Next in queue" accept button in the first available open box */
+    /* render queued request cards in the glp panel */
     if (count > 0) {
       const [firstKey, firstUser] = queueList[0];
       _gbRenderQueueNext(firstKey, firstUser);
@@ -1933,30 +2034,69 @@ function _gbRenderBox(boxNum, data, role) {
 
 /* ════════════════════════════════════════════
    RENDER — "next in queue" prompt (creator)
+   Injects a request card for the queued user into glpRequestCards.
    ════════════════════════════════════════════ */
 function _gbRenderQueueNext(queueKey, userData) {
-  /* find first available box */
+  const reqContainer = document.getElementById('glpRequestCards');
+  if (!reqContainer) return;
+
+  /* avoid duplicating the same queue card */
+  if (reqContainer.querySelector(`[data-queue-key="${queueKey}"]`)) return;
+
+  /* find first available box to accept into */
+  let targetBox = null;
   for (let i = 1; i <= _GB_MAX_BOXES; i++) {
-    const boxEl      = document.getElementById(`guestBox${i}`);
-    const actionsEl  = document.getElementById(`guestBoxActions${i}`);
-    const glpActEl   = document.getElementById(`glpBoxActions${i}`);
-    if (!boxEl) continue;
-    if (boxEl.classList.contains('gb-available')) {
-      /* add "Accept Next" button in legacy panel if not already there */
-      if (actionsEl && !actionsEl.querySelector('.gb-btn-queue-accept')) {
-        const btn = _gbMakeBtn(`📥 ${userData.guestName || 'Next'}`, 'gb-btn-accept gb-btn-queue-accept',
-          () => _gbCreatorAcceptFromQueue(i, queueKey, userData));
-        actionsEl.appendChild(btn);
-      }
-      /* also add in GLP panel if not already there */
-      if (glpActEl && !glpActEl.querySelector('.gb-btn-queue-accept')) {
-        const glpBtn = _gbMakeBtn(`📥 ${userData.guestName || 'Next'}`, 'gb-btn-accept gb-btn-queue-accept',
-          () => _gbCreatorAcceptFromQueue(i, queueKey, userData));
-        glpActEl.appendChild(glpBtn);
-      }
+    const boxEl = document.getElementById(`guestBox${i}`);
+    if (boxEl && boxEl.classList.contains('gb-available')) {
+      targetBox = i;
       break;
     }
   }
+  if (targetBox === null) return;  /* no open box */
+
+  /* build a card via the shared builder, then override buttons for queue semantics */
+  const card = _glpMakeRequestCard(targetBox, userData);
+  card.dataset.queueKey = queueKey;
+
+  /* override accept to use queue-accept logic */
+  const oldAccept = card.querySelector('.glp-req-btn-accept');
+  if (oldAccept) {
+    const newAccept = document.createElement('button');
+    newAccept.className = 'glp-req-btn glp-req-btn-accept';
+    newAccept.textContent = '✔';
+    newAccept.title = 'Accept';
+    newAccept.addEventListener('click', () => _gbCreatorAcceptFromQueue(targetBox, queueKey, userData));
+    oldAccept.replaceWith(newAccept);
+  }
+
+  /* override decline to remove from queue */
+  const declineBtn = card.querySelector('.glp-req-btn-decline');
+  if (declineBtn) {
+    const newDecline = document.createElement('button');
+    newDecline.className = 'glp-req-btn glp-req-btn-decline';
+    newDecline.textContent = '✘';
+    newDecline.title = 'Decline';
+    newDecline.addEventListener('click', async () => {
+      try {
+        await remove(ref(_liveDB, `liveRooms/${_roomId}/guestBoxes/queue/${queueKey}`));
+        await set(_gbReqRef(userData.guestId), { ...userData, status: 'declined' });
+        await _gbNotifyGuest(userData.guestId, 'declined', null);
+        card.remove();
+      } catch (_) {}
+    });
+    declineBtn.replaceWith(newDecline);
+  }
+
+  const label = card.querySelector('.glp-req-label');
+  if (label) label.textContent = 'In queue — wants to join';
+
+  reqContainer.appendChild(card);
+
+  /* show the section label + notification dot */
+  const reqLabel = document.getElementById('glpGuestSectionLabel');
+  if (reqLabel) reqLabel.style.display = 'flex';
+  const dot = document.getElementById('_glpNotifDot');
+  if (dot) dot.classList.add('visible');
 }
 
 function _gbMakeBtn(text, classes, fn) {
@@ -2042,7 +2182,7 @@ async function _gbViewerRequestBox() {
       toast('Could not send request. Try again.');
       if (_gbRequestBtn) {
         _gbRequestBtn.disabled = false;
-        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
+        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request a Box';
       }
       return;
     }
@@ -2067,7 +2207,7 @@ function _gbWatchOwnRequest() {
       toast('✅ You are in a guest box! Joining…');
       if (_gbRequestBtn) {
         _gbRequestBtn.disabled = true;
-        _gbRequestBtn.querySelector('span:last-child').textContent = 'In Box ' + _gbMyBoxNum;
+        _gbRequestBtn.querySelector('span:last-child').textContent = '✅ In Box ' + _gbMyBoxNum;
       }
       off(reqRef);
       /* start capturing local stream + WebRTC signaling to host */
@@ -2076,7 +2216,7 @@ function _gbWatchOwnRequest() {
       toast('❌ Your request was declined.');
       if (_gbRequestBtn) {
         _gbRequestBtn.disabled = false;
-        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
+        _gbRequestBtn.querySelector('span:last-child').textContent = 'Request a Box';
       }
       /* clear the request record */
       remove(reqRef).catch(() => {});
@@ -2099,7 +2239,7 @@ async function _gbViewerLeave(boxNum) {
     _gsHideSelfControls();
     if (_gbRequestBtn) {
       _gbRequestBtn.disabled = false;
-      _gbRequestBtn.querySelector('span:last-child').textContent = 'Request Box';
+      _gbRequestBtn.querySelector('span:last-child').textContent = 'Request a Box';
     }
     toast('You left the guest box.');
   } catch (_) {

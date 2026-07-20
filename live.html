@@ -196,8 +196,7 @@
     <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
     <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
     <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
-    <button id="btnLayoutSettings" class="live-ctrl-btn layout-settings-btn" aria-label="Layout settings" title="Layout & Guests">⚙</button>
-    <button id="btnGuestBoxes" class="live-ctrl-btn guest-boxes-btn" aria-label="Guest boxes" title="Guests" style="display:none;">👥</button>
+    <button id="btnLayoutSettings" class="live-ctrl-btn layout-settings-btn" aria-label="Layout settings" title="Layout &amp; Guests">⚙</button>
     <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
 
   </div>
@@ -222,6 +221,12 @@
     <button id="btnLike" class="live-like-btn" aria-label="Like stream">
       <span class="live-like-icon">❤️</span>
       <span id="likeBtnCount">Like</span>
+    </button>
+
+    <!-- Request a Box — viewer only, shown when not already in a box -->
+    <button id="_gbRequestBtn" class="live-request-box-btn" aria-label="Request a guest box">
+      <span class="live-request-box-icon">🎥</span>
+      <span>Request a Box</span>
     </button>
 
   </div>
@@ -273,51 +278,42 @@
     </button>
   </div>
 
-  <!-- Guest boxes section -->
-  <div class="glp-section-label">Guest Boxes <span id="glpQueueBadge" class="glp-queue-badge" style="display:none;">Queue: <span id="glpQueueCount">0</span></span></div>
-  <div class="glp-guest-boxes">
+  <!-- Guest requests section — populated by JS when requests arrive -->
+  <div class="glp-section-label" id="glpGuestSectionLabel" style="display:none;">
+    Guest Requests
+    <span id="glpQueueBadge" class="glp-queue-badge" style="display:none;"><span id="glpQueueCount">0</span> pending</span>
+  </div>
+  <!-- Request cards injected here by JS -->
+  <div id="glpRequestCards" class="glp-request-cards"></div>
 
-    <!-- Box 1 (mini) -->
-    <div class="glp-box" id="glpBox1" data-box="1">
-      <div class="glp-box-avatar" id="glpBoxAvatar1"></div>
-      <div class="glp-box-info">
-        <div class="glp-box-name"   id="glpBoxName1">Box 1</div>
-        <div class="glp-box-status" id="glpBoxStatus1">Available</div>
-      </div>
-      <div class="glp-box-actions" id="glpBoxActions1"></div>
-    </div>
+  <!-- Active guests section -->
+  <div class="glp-section-label" id="glpActiveGuestLabel" style="display:none;">Active Guests</div>
+  <div id="glpActiveGuests" class="glp-guest-boxes">
+    <!-- Active guest rows injected by JS when guests are live -->
+  </div>
 
-    <!-- Box 2 (mini) -->
-    <div class="glp-box" id="glpBox2" data-box="2">
-      <div class="glp-box-avatar" id="glpBoxAvatar2"></div>
-      <div class="glp-box-info">
-        <div class="glp-box-name"   id="glpBoxName2">Box 2</div>
-        <div class="glp-box-status" id="glpBoxStatus2">Available</div>
-      </div>
-      <div class="glp-box-actions" id="glpBoxActions2"></div>
-    </div>
+  <!-- Hidden anchor elements kept so JS DOM refs don't break -->
+  <span id="glpBoxAvatar1" style="display:none;"></span>
+  <span id="glpBoxName1"   style="display:none;"></span>
+  <span id="glpBoxStatus1" style="display:none;"></span>
+  <span id="glpBoxActions1" style="display:none;"></span>
+  <span id="glpBox1"       style="display:none;" data-box="1"></span>
+  <span id="glpBoxAvatar2" style="display:none;"></span>
+  <span id="glpBoxName2"   style="display:none;"></span>
+  <span id="glpBoxStatus2" style="display:none;"></span>
+  <span id="glpBoxActions2" style="display:none;"></span>
+  <span id="glpBox2"       style="display:none;" data-box="2"></span>
+  <span id="glpBoxAvatar3" style="display:none;"></span>
+  <span id="glpBoxName3"   style="display:none;"></span>
+  <span id="glpBoxStatus3" style="display:none;"></span>
+  <span id="glpBoxActions3" style="display:none;"></span>
+  <span id="glpBox3"       style="display:none;" data-box="3"></span>
+  <span id="glpBoxAvatar4" style="display:none;"></span>
+  <span id="glpBoxName4"   style="display:none;"></span>
+  <span id="glpBoxStatus4" style="display:none;"></span>
+  <span id="glpBoxActions4" style="display:none;"></span>
+  <span id="glpBox4"       style="display:none;" data-box="4"></span>
 
-    <!-- Box 3 (mini) -->
-    <div class="glp-box" id="glpBox3" data-box="3">
-      <div class="glp-box-avatar" id="glpBoxAvatar3"></div>
-      <div class="glp-box-info">
-        <div class="glp-box-name"   id="glpBoxName3">Box 3</div>
-        <div class="glp-box-status" id="glpBoxStatus3">Available</div>
-      </div>
-      <div class="glp-box-actions" id="glpBoxActions3"></div>
-    </div>
-
-    <!-- Box 4 (mini) -->
-    <div class="glp-box" id="glpBox4" data-box="4">
-      <div class="glp-box-avatar" id="glpBoxAvatar4"></div>
-      <div class="glp-box-info">
-        <div class="glp-box-name"   id="glpBoxName4">Box 4</div>
-        <div class="glp-box-status" id="glpBoxStatus4">Available</div>
-      </div>
-      <div class="glp-box-actions" id="glpBoxActions4"></div>
-    </div>
-
-  </div><!-- .glp-guest-boxes -->
 </div><!-- #guestLayoutPanel -->
 
 
@@ -407,111 +403,66 @@
 </div><!-- #guestStage -->
 
 
-<!-- ══════════════════════════════════════════════
-     GUEST BOXES PANEL — host management panel
-     Sits below liveStage on desktop, overlay on mobile
-     ══════════════════════════════════════════════ -->
-<div id="guestBoxPanel" class="guest-box-panel" style="display:none;">
+<!-- Legacy guest box panel — kept for JS DOM refs (never shown) -->
+<div id="guestBoxPanel" style="display:none!important;" aria-hidden="true">
+  <!-- Hidden anchor elements so JS refs don't break -->
+  <span id="guestQueueBadge" style="display:none;"></span>
+  <span id="guestQueueCount" style="display:none;"></span>
+  <span id="btnCloseGuestPanel" style="display:none;"></span>
+  <span id="guestBox1" data-box="1" style="display:none;"></span>
+  <span id="guestBoxStatus1" style="display:none;"></span>
+  <span id="guestBoxName1"   style="display:none;"></span>
+  <span id="guestBoxActions1" style="display:none;"></span>
+  <span id="gbAvatar1" style="display:none;"></span>
+  <span id="gbAvatarImg1"     style="display:none;"></span>
+  <span id="gbAvatarInitial1" style="display:none;"></span>
+  <span id="gbStatusIcons1"   style="display:none;"></span>
+  <span id="gbIconCam1"  style="display:none;"></span>
+  <span id="gbIconMic1"  style="display:none;"></span>
+  <span id="gbIconConn1" style="display:none;"></span>
+  <span id="gbConnWarn1" style="display:none;"></span>
+  <video id="guestVideo1" style="display:none;" playsinline muted></video>
+  <span id="guestBox2" data-box="2" style="display:none;"></span>
+  <span id="guestBoxStatus2" style="display:none;"></span>
+  <span id="guestBoxName2"   style="display:none;"></span>
+  <span id="guestBoxActions2" style="display:none;"></span>
+  <span id="gbAvatar2" style="display:none;"></span>
+  <span id="gbAvatarImg2"     style="display:none;"></span>
+  <span id="gbAvatarInitial2" style="display:none;"></span>
+  <span id="gbStatusIcons2"   style="display:none;"></span>
+  <span id="gbIconCam2"  style="display:none;"></span>
+  <span id="gbIconMic2"  style="display:none;"></span>
+  <span id="gbIconConn2" style="display:none;"></span>
+  <span id="gbConnWarn2" style="display:none;"></span>
+  <video id="guestVideo2" style="display:none;" playsinline muted></video>
+  <span id="guestBox3" data-box="3" style="display:none;"></span>
+  <span id="guestBoxStatus3" style="display:none;"></span>
+  <span id="guestBoxName3"   style="display:none;"></span>
+  <span id="guestBoxActions3" style="display:none;"></span>
+  <span id="gbAvatar3" style="display:none;"></span>
+  <span id="gbAvatarImg3"     style="display:none;"></span>
+  <span id="gbAvatarInitial3" style="display:none;"></span>
+  <span id="gbStatusIcons3"   style="display:none;"></span>
+  <span id="gbIconCam3"  style="display:none;"></span>
+  <span id="gbIconMic3"  style="display:none;"></span>
+  <span id="gbIconConn3" style="display:none;"></span>
+  <span id="gbConnWarn3" style="display:none;"></span>
+  <video id="guestVideo3" style="display:none;" playsinline muted></video>
+  <span id="guestBox4" data-box="4" style="display:none;"></span>
+  <span id="guestBoxStatus4" style="display:none;"></span>
+  <span id="guestBoxName4"   style="display:none;"></span>
+  <span id="guestBoxActions4" style="display:none;"></span>
+  <span id="gbAvatar4" style="display:none;"></span>
+  <span id="gbAvatarImg4"     style="display:none;"></span>
+  <span id="gbAvatarInitial4" style="display:none;"></span>
+  <span id="gbStatusIcons4"   style="display:none;"></span>
+  <span id="gbIconCam4"  style="display:none;"></span>
+  <span id="gbIconMic4"  style="display:none;"></span>
+  <span id="gbIconConn4" style="display:none;"></span>
+  <span id="gbConnWarn4" style="display:none;"></span>
+  <video id="guestVideo4" style="display:none;" playsinline muted></video>
+</div><!-- #guestBoxPanel (hidden) -->
 
-  <div class="guest-box-header">
-    <span class="guest-box-title">🎥 Guest Boxes</span>
-    <span id="guestQueueBadge" class="guest-queue-badge" style="display:none;">Queue: <span id="guestQueueCount">0</span></span>
-    <button id="btnCloseGuestPanel" class="gb-panel-close-btn" aria-label="Close guest boxes panel" style="
-      background:none;border:none;color:#6a90b8;font-size:16px;cursor:pointer;
-      padding:2px 6px;border-radius:6px;line-height:1;
-    ">▾</button>
-  </div>
-
-  <div class="guest-box-grid">
-
-    <!-- Box 1 -->
-    <div class="guest-box" id="guestBox1" data-box="1">
-      <div class="guest-box-video-wrap">
-        <video class="guest-box-video" id="guestVideo1" autoplay playsinline muted></video>
-        <!-- Profile picture (shown when no video) -->
-        <div class="gb-avatar-wrap" id="gbAvatar1">
-          <img class="gb-avatar-img" id="gbAvatarImg1" src="" alt="" style="display:none;">
-          <div class="gb-avatar-initial" id="gbAvatarInitial1"></div>
-        </div>
-        <div class="guest-box-status-label" id="guestBoxStatus1">Available</div>
-        <div class="guest-box-name-label"   id="guestBoxName1"></div>
-        <!-- Camera / Mic / Connection status icons -->
-        <div class="gb-status-icons" id="gbStatusIcons1" style="display:none;">
-          <span class="gb-icon-cam"  id="gbIconCam1"  title="Camera">🎥</span>
-          <span class="gb-icon-mic"  id="gbIconMic1"  title="Mic">🎤</span>
-          <span class="gb-icon-conn" id="gbIconConn1" title="Connection">●</span>
-        </div>
-        <!-- Weak connection badge -->
-        <div class="gb-conn-warn" id="gbConnWarn1" style="display:none;">⚠ Weak Signal</div>
-      </div>
-      <div class="guest-box-actions" id="guestBoxActions1"></div>
-    </div>
-
-    <!-- Box 2 -->
-    <div class="guest-box" id="guestBox2" data-box="2">
-      <div class="guest-box-video-wrap">
-        <video class="guest-box-video" id="guestVideo2" autoplay playsinline muted></video>
-        <div class="gb-avatar-wrap" id="gbAvatar2">
-          <img class="gb-avatar-img" id="gbAvatarImg2" src="" alt="" style="display:none;">
-          <div class="gb-avatar-initial" id="gbAvatarInitial2"></div>
-        </div>
-        <div class="guest-box-status-label" id="guestBoxStatus2">Available</div>
-        <div class="guest-box-name-label"   id="guestBoxName2"></div>
-        <div class="gb-status-icons" id="gbStatusIcons2" style="display:none;">
-          <span class="gb-icon-cam"  id="gbIconCam2"  title="Camera">🎥</span>
-          <span class="gb-icon-mic"  id="gbIconMic2"  title="Mic">🎤</span>
-          <span class="gb-icon-conn" id="gbIconConn2" title="Connection">●</span>
-        </div>
-        <div class="gb-conn-warn" id="gbConnWarn2" style="display:none;">⚠ Weak Signal</div>
-      </div>
-      <div class="guest-box-actions" id="guestBoxActions2"></div>
-    </div>
-
-    <!-- Box 3 -->
-    <div class="guest-box" id="guestBox3" data-box="3">
-      <div class="guest-box-video-wrap">
-        <video class="guest-box-video" id="guestVideo3" autoplay playsinline muted></video>
-        <div class="gb-avatar-wrap" id="gbAvatar3">
-          <img class="gb-avatar-img" id="gbAvatarImg3" src="" alt="" style="display:none;">
-          <div class="gb-avatar-initial" id="gbAvatarInitial3"></div>
-        </div>
-        <div class="guest-box-status-label" id="guestBoxStatus3">Available</div>
-        <div class="guest-box-name-label"   id="guestBoxName3"></div>
-        <div class="gb-status-icons" id="gbStatusIcons3" style="display:none;">
-          <span class="gb-icon-cam"  id="gbIconCam3"  title="Camera">🎥</span>
-          <span class="gb-icon-mic"  id="gbIconMic3"  title="Mic">🎤</span>
-          <span class="gb-icon-conn" id="gbIconConn3" title="Connection">●</span>
-        </div>
-        <div class="gb-conn-warn" id="gbConnWarn3" style="display:none;">⚠ Weak Signal</div>
-      </div>
-      <div class="guest-box-actions" id="guestBoxActions3"></div>
-    </div>
-
-    <!-- Box 4 -->
-    <div class="guest-box" id="guestBox4" data-box="4">
-      <div class="guest-box-video-wrap">
-        <video class="guest-box-video" id="guestVideo4" autoplay playsinline muted></video>
-        <div class="gb-avatar-wrap" id="gbAvatar4">
-          <img class="gb-avatar-img" id="gbAvatarImg4" src="" alt="" style="display:none;">
-          <div class="gb-avatar-initial" id="gbAvatarInitial4"></div>
-        </div>
-        <div class="guest-box-status-label" id="guestBoxStatus4">Available</div>
-        <div class="guest-box-name-label"   id="guestBoxName4"></div>
-        <div class="gb-status-icons" id="gbStatusIcons4" style="display:none;">
-          <span class="gb-icon-cam"  id="gbIconCam4"  title="Camera">🎥</span>
-          <span class="gb-icon-mic"  id="gbIconMic4"  title="Mic">🎤</span>
-          <span class="gb-icon-conn" id="gbIconConn4" title="Connection">●</span>
-        </div>
-        <div class="gb-conn-warn" id="gbConnWarn4" style="display:none;">⚠ Weak Signal</div>
-      </div>
-      <div class="guest-box-actions" id="guestBoxActions4"></div>
-    </div>
-
-  </div>
-</div><!-- #guestBoxPanel -->
-
-<!-- ── Viewer: Request a Box button (injected into viewer actions) ── -->
-<!-- Added dynamically by JS when in viewer mode -->
 
 <!-- ── Guest self-controls bar (shown when viewer is accepted into a box) ── -->
 <div id="guestSelfControls" class="guest-self-controls" style="display:none;" aria-label="Guest controls">
