@@ -134,6 +134,12 @@ let _guestPc           = null;     // viewer-in-box: their own guest RTCPeerConn
 let _guestSigUnsub     = null;     // viewer-in-box: unsubscribe for host-ICE signaling onValue listener
 let _hostSigUnsubs     = {};       // host: uid → onValue unsubscribe for per-guest signaling listener
 
+/* ── Disconnect / heartbeat state ── */
+let _guestHeartbeatInterval = null;  // guest: periodic presence keep-alive writer
+let _hostWatchdogInterval   = null;  // host: periodic sweep for stale guest presence entries
+const _HEARTBEAT_INTERVAL_MS = 8000; // every 8 s the guest writes a timestamp
+const _STALE_THRESHOLD_MS    = 18000; // >18 s without heartbeat → guest is gone
+
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
 
@@ -527,9 +533,13 @@ async function startLive() {
   // ── Start listening for guest box requests ──
   _hostListenForGuestRequests();
 
+  // ── Attach resize observer so guest grid re-layouts on any screen change ──
+  _attachGuestGridResizeObserver();
+
   // ── Publish host's own presence to liveGuests (viewers see cam/mic status) ──
   try {
-    await set(ref(_liveDB, `liveGuests/${_roomId}/_host_`), {
+    const hostGuestRef = ref(_liveDB, `liveGuests/${_roomId}/_host_`);
+    await set(hostGuestRef, {
       uid:      _user.uid,
       name:     creatorData.hostName,
       avatar:   creatorData.hostAvatar,
@@ -537,7 +547,10 @@ async function startLive() {
       camOn:    _camOn,
       micOn:    _micOn,
       joinedAt: Date.now(),
+      hb:       Date.now(),
     });
+    // If the host's page crashes / network drops, remove the whole liveGuests room node
+    try { onDisconnect(ref(_liveDB, `liveGuests/${_roomId}`)).remove(); } catch(_) {}
   } catch (_) {}
 
   toast('🔴 You are LIVE!');
@@ -940,6 +953,9 @@ async function _startViewer() {
 
   /* ── Subscribe to host layout changes so everyone sees the same layout ── */
   _startLayoutSync();
+
+  /* ── Attach resize observer so guest grid re-layouts on any screen change ── */
+  _attachGuestGridResizeObserver();
 
   /* ── Increment viewer count in LIVE RTDB (fire-and-forget, non-blocking) ── */
   (async () => {
@@ -2001,9 +2017,12 @@ function _startViewerGuestGrid() {
     // ── Remove cards for guests who left — animate out then remove ──
     grid.querySelectorAll('.vgc-cell').forEach(card => {
       if (!incoming[card.dataset.guestKey] && !card.classList.contains('removing')) {
-        // Animated exit in ≤260ms — never leaves empty ghost boxes
+        // Animated exit in ≤220ms — never leaves empty ghost boxes
         card.classList.add('removing');
-        setTimeout(() => card.remove(), 260);
+        setTimeout(() => {
+          card.remove();
+          _applyGuestLayout(); // re-layout after DOM node is fully gone
+        }, 220);
       }
     });
 
@@ -2356,6 +2375,12 @@ async function _guestLeaveBox() {
 
 /* ── Internal: perform the guest leave cleanup (called from Leave Box or removedByHost signal) ── */
 function _guestDoLeave() {
+  // Stop heartbeat immediately — no more presence keep-alive
+  if (_guestHeartbeatInterval) {
+    clearInterval(_guestHeartbeatInterval);
+    _guestHeartbeatInterval = null;
+  }
+
   // Tear down the host-ICE signaling listener first
   if (_guestSigUnsub) {
     try { _guestSigUnsub(); } catch(_) {}
@@ -2369,9 +2394,12 @@ function _guestDoLeave() {
     _guestPc = null;
   }
 
-  // Remove own presence from RTDB so grid updates for everyone instantly
+  // Remove own presence from RTDB so grid updates for everyone instantly.
+  // Also cancel the onDisconnect hook so RTDB doesn't attempt a redundant delete.
   if (_user && _roomId) {
-    try { remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); } catch(_) {}
+    const presRef = ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`);
+    try { onDisconnect(presRef).cancel(); } catch(_) {}
+    try { remove(presRef); } catch(_) {}
     // Clean up signaling data
     try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}`)); } catch(_) {}
     try { remove(ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`)); } catch(_) {}
@@ -2504,16 +2532,30 @@ async function _guestJoinAsViewer() {
   // ── Publish own presence to RTDB so everyone (incl. self) sees this box ──
   const guestName   = _userData?.displayName || _user.email?.split('@')[0] || 'Guest';
   const guestAvatar = _userData?.avatar || _userData?.profilePicture || '';
+  const guestPresenceRef = ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`);
   try {
-    await set(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`), {
+    await set(guestPresenceRef, {
       uid:      _user.uid,
       name:     guestName,
       avatar:   guestAvatar,
       camOn:    true,
       micOn:    true,
       joinedAt: Date.now(),
+      hb:       Date.now(),   // initial heartbeat timestamp
     });
   } catch(_) {}
+
+  // ── onDisconnect: RTDB automatically removes this guest's presence
+  //    if the client disconnects (tab close, network loss, app kill).
+  //    Fires within ~2 seconds of connection drop per Firebase RTDB guarantee.
+  try { onDisconnect(guestPresenceRef).remove(); } catch(_) {}
+
+  // ── Heartbeat: keep hb timestamp fresh so host watchdog detects live guests ──
+  if (_guestHeartbeatInterval) clearInterval(_guestHeartbeatInterval);
+  _guestHeartbeatInterval = setInterval(() => {
+    if (!_user || !_roomId || !_guestStream) { clearInterval(_guestHeartbeatInterval); return; }
+    try { update(guestPresenceRef, { hb: Date.now() }); } catch(_) {}
+  }, _HEARTBEAT_INTERVAL_MS);
 
   // ── Subscribe to full guest grid (viewer sees all boxes including own) ──
   // If already subscribed (joined as viewer before requesting a box), it
@@ -2608,6 +2650,9 @@ function _hostListenForGuestRequests() {
 
   // Reset the seen-UID tracker when starting a new listen session
   _shownReqUids.clear();
+
+  // Start the stale-guest watchdog — cleans up ghost boxes every 10 s
+  _startHostGuestWatchdog();
 
   // ── Primary listener: Firestore boxRequests ──
   const fsReqQuery = query(
@@ -2887,10 +2932,27 @@ function _hostAddGuestCell(uid, name, avatar, stream, pc) {
 
   _applyGuestLayout();
 
+  // ── Fast disconnect detection: connectionstatechange fires within ~1-2 s ──
+  let _dcTimer = null;
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-      // Automatic peer disconnect: no confirmation needed
+    const state = pc.connectionState;
+    if (state === 'disconnected') {
+      // Give a 1.5 s grace period — WebRTC may briefly disconnect then recover
+      if (!_dcTimer) {
+        _dcTimer = setTimeout(() => {
+          _dcTimer = null;
+          // Only remove if still disconnected (not reconnected or already removed)
+          if (pc.connectionState !== 'connected' && _guestPeers[uid]) {
+            _hostDoRemoveGuest(uid);
+          }
+        }, 1500);
+      }
+    } else if (state === 'failed' || state === 'closed') {
+      if (_dcTimer) { clearTimeout(_dcTimer); _dcTimer = null; }
       _hostDoRemoveGuest(uid);
+    } else if (state === 'connected') {
+      // Recovered — cancel any pending removal
+      if (_dcTimer) { clearTimeout(_dcTimer); _dcTimer = null; }
     }
   };
 }
@@ -2957,10 +3019,29 @@ function _hostDoRemoveGuest(uid) {
     // Animate cell out (≤260ms) then remove — gives immediate visual feedback
     if (peer.cell && !peer.cell.classList.contains('removing')) {
       peer.cell.classList.add('removing');
-      setTimeout(() => { try { peer.cell.remove(); } catch(_){} }, 260);
-    } else if (peer.cell) {
-      try { peer.cell.remove(); } catch(_){}
+      // Update count + re-layout immediately so remaining boxes rearrange without waiting
+      delete _guestPeers[uid];
+      const grid = D.guestGrid;
+      if (grid) {
+        const updatedCount = Object.keys(_guestPeers).length;
+        grid.dataset.count = updatedCount.toString();
+        if (updatedCount === 0) {
+          grid.classList.remove('has-guests');
+          if (D.liveVideo) { D.liveVideo.style.opacity = ''; D.liveVideo.style.pointerEvents = ''; }
+        }
+        _applyGuestLayout();
+      }
+      setTimeout(() => {
+        try { peer.cell.remove(); } catch(_){}
+        // Final layout pass once the DOM node is gone
+        _applyGuestLayout();
+      }, 260);
+    } else {
+      delete _guestPeers[uid];
+      if (peer.cell) { try { peer.cell.remove(); } catch(_){} }
     }
+  } else {
+    // peer already cleaned up; just delete key if present
     delete _guestPeers[uid];
   }
   // Allow this UID to send a new request in a future session
@@ -2990,8 +3071,44 @@ function _hostDoRemoveGuest(uid) {
   _applyGuestLayout();
 }
 
+/* ── HOST: Start the stale-guest watchdog ──
+   Runs every 10 s and evicts any guest whose heartbeat (hb) timestamp
+   is older than _STALE_THRESHOLD_MS.  Protects against ghosts from
+   hard-crashes / silent network drops that don't trigger onDisconnect. */
+function _startHostGuestWatchdog() {
+  if (!_roomId) return;
+  if (_hostWatchdogInterval) clearInterval(_hostWatchdogInterval);
+
+  _hostWatchdogInterval = setInterval(async () => {
+    if (!_roomId) return;
+    try {
+      const snap = await get(ref(_liveDB, `liveGuests/${_roomId}`));
+      if (!snap.exists()) return;
+      const now = Date.now();
+      snap.forEach(child => {
+        const g = child.val();
+        if (g.isHost) return;   // never evict host entry
+        const uid = child.key;
+        if (!g.hb) return;      // older guest entries without hb — skip
+        if (now - g.hb > _STALE_THRESHOLD_MS) {
+          console.log('[GuestWatchdog] Stale guest detected, evicting:', uid);
+          // Remove RTDB presence — RTDB onValue in viewers fires instantly
+          try { remove(ref(_liveDB, `liveGuests/${_roomId}/${uid}`)); } catch(_) {}
+          // If this guest has an active peer on this host, tear it down too
+          if (_guestPeers[uid]) {
+            _hostDoRemoveGuest(uid);
+          }
+        }
+      });
+    } catch(_) {}
+  }, 10000); // check every 10 s
+}
+
 /* ── Tear down all guest peers (called on endLive) ── */
 function _teardownAllGuestPeers() {
+  // Stop the stale-guest watchdog
+  if (_hostWatchdogInterval) { clearInterval(_hostWatchdogInterval); _hostWatchdogInterval = null; }
+
   // Tear down all host-side signaling listeners
   for (const uid of Object.keys(_hostSigUnsubs)) {
     try { _hostSigUnsubs[uid](); } catch(_) {}
@@ -3037,6 +3154,23 @@ function _applyGuestLayout() {
     _layoutRafId = null;
     _doApplyGuestLayout();
   });
+}
+
+/* ── Wire a ResizeObserver so guest boxes re-layout when the
+   stage (or window) resizes — covers orientation changes, split-
+   screen, keyboard appearing, etc.  Called once from startLive /
+   _startViewer after the stage is shown. ── */
+function _attachGuestGridResizeObserver() {
+  const grid = D.guestGrid;
+  if (!grid || !window.ResizeObserver) return;
+  // Observe the parent .live-video-wrap — this is the true sized container
+  const container = grid.parentElement || grid;
+  const ro = new ResizeObserver(() => { _applyGuestLayout(); });
+  ro.observe(container);
+  // Also fire on orientation change for browsers that don't resize in time
+  window.addEventListener('orientationchange', () => {
+    setTimeout(_applyGuestLayout, 150); // brief delay lets the new size settle
+  }, { passive: true });
 }
 
 function _doApplyGuestLayout() {
@@ -3101,16 +3235,27 @@ function _applyEqualGrid(grid, totalCells) {
   });
 }
 
-/* ── Float layout: cascade guest boxes from top-right ── */
+/* ── Float layout: cascade guest boxes from top-right, responsive ── */
 function _applyFloatLayout(grid, guestCount) {
+  const vw = grid.offsetWidth  || window.innerWidth;
+  const vh = grid.offsetHeight || window.innerHeight;
+
+  // Tile size: 22% of stage width, clamped to sane min/max
+  const tileW = Math.max(80,  Math.min(160, Math.round(vw * 0.22)));
+  const tileH = Math.max(60,  Math.min(120, Math.round(tileW * 0.75)));
+  const gapH  = Math.max(6,   Math.round(vw * 0.015));
+  const gapV  = Math.max(6,   Math.round(vw * 0.015));
+  // How many columns fit across the right side without overlap
+  const maxCols = Math.max(1, Math.floor(vw / (tileW + gapH)));
+
   let guestIndex = 0;
   grid.querySelectorAll('.guest-cell:not(.host-cell)').forEach(cell => {
-    const col = guestIndex % 3;
-    const row = Math.floor(guestIndex / 3);
-    cell.style.width  = '160px';
-    cell.style.height = '120px';
-    cell.style.right  = (12 + col * 176) + 'px';
-    cell.style.top    = (12 + row * 136) + 'px';
+    const col = guestIndex % maxCols;
+    const row = Math.floor(guestIndex / maxCols);
+    cell.style.width  = tileW + 'px';
+    cell.style.height = tileH + 'px';
+    cell.style.right  = (gapH + col * (tileW + gapH)) + 'px';
+    cell.style.top    = (gapV + row * (tileH + gapV)) + 'px';
     cell.style.bottom = 'auto';
     cell.style.left   = 'auto';
     guestIndex++;
