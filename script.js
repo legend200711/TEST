@@ -61,13 +61,10 @@
       console.warn('[SW] Registration failed:', err);
     }
 
-    // ── Register FCM messaging service worker ──
-    try {
-      await navigator.serviceWorker.register(fcmPath, { scope: base });
-      console.log('[FCM-SW] Registered');
-    } catch (err) {
-      console.warn('[FCM-SW] Registration failed:', err);
-    }
+    // NOTE: firebase-messaging-sw.js is registered inside initPushNotifications()
+    // in index.html (after auth + with the correct scope).
+    // Do NOT register it here — a second registration with a conflicting scope
+    // throws a SecurityError and silently breaks all push notifications.
 
   });
 

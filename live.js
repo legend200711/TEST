@@ -587,6 +587,13 @@ async function startLive() {
 
   toast('🔴 You are LIVE!');
 
+  // ── Notify add-on modules (co-host, etc.) that live has started ──
+  window.dispatchEvent(new CustomEvent('snxLiveReady', { detail: {
+    db: _db, liveDB: _liveDB, auth: _auth,
+    user: _user, userData: _userData,
+    roomId: _roomId, isHost: true,
+  }}));
+
   // ── Start optional systems (respects their individual ON/OFF state) ──
   _liveTimerOnLiveStart();
   _shadowBotOnLiveStart();
@@ -848,6 +855,9 @@ async function endLive() {
   _shadowBotOnLiveEnd();
   _aiSafetyOnLiveEnd();
 
+  // ── Co-host cleanup (no-op if cohost.js is not loaded) ──
+  if (typeof window._cohostCleanup === 'function') { try { window._cohostCleanup(); } catch(_){} }
+
   _showEndedOverlay(true);
 }
 
@@ -990,6 +1000,13 @@ async function _startViewer() {
   _populateCreatorInfo(roomData);
   _setupViewerControls(roomData);
   _subscribeChat();
+
+  // ── Notify add-on modules that viewer has joined ──
+  window.dispatchEvent(new CustomEvent('snxLiveReady', { detail: {
+    db: _db, liveDB: _liveDB, auth: _auth,
+    user: _user, userData: _userData,
+    roomId: _roomId, isHost: false,
+  }}));
 
   /* ── Subscribe to live guest presence (shows guest boxes to viewers) ── */
   _startViewerGuestGrid();

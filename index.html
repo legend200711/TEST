@@ -8847,82 +8847,174 @@ body.arcade-fs-ios body::after { display:none !important; }
   };
 
   // ── VAPID public key for FCM web push ──
-  // Generate your own at: Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
   const FCM_VAPID_KEY = 'BMXbxFVBGH9IOYfoi9UYjrD4_pR1ed0giN6OCKwK1BG-3EbVp8EvNj1DLt4XuHjVpdH5KM-1glFMURHQa2-TR14';
 
+  // Guard: only attach the foreground onMessage listener once, ever.
+  let _fcmFgListenerAttached = false;
+
   /* ── Request push-notification permission & register FCM token ──
-     Called once after the user logs in (after a short delay so the app
-     has loaded first). Saves the FCM token to Firestore so we can target
-     this device when sending push messages.
+     Called once after the user logs in (2.5 s delay so the app has
+     fully loaded). Saves the FCM token to Firestore so we can push
+     to this device. Works on PC browser + Android PWA + installed PWA.
   ─────────────────────────────────────────────────────────────────── */
   async function initPushNotifications() {
-    if (!messaging) return;
-    if (!('Notification' in window)) return;
-    if (!('serviceWorker' in navigator)) return;
+    if (!messaging) {
+      console.warn('[FCM] Messaging not initialised — browser may not support it.');
+      return;
+    }
+    if (!('Notification' in window)) {
+      console.warn('[FCM] This browser does not support the Notification API.');
+      return;
+    }
+    if (!('serviceWorker' in navigator)) {
+      console.warn('[FCM] Service workers not supported — push disabled.');
+      return;
+    }
 
-    // Don't nag if user already made a choice
-    if (Notification.permission === 'denied') return;
+    // ── Step 1: Derive the correct scope from the page URL ──
+    // The FCM SW must be registered under the same scope as the app.
+    // Using '/' when the app lives at /TEST/ causes a SecurityError.
+    const isGH    = location.pathname.startsWith('/TEST');
+    const swScope = isGH ? '/TEST/' : './';
+    const swPath  = swScope + 'firebase-messaging-sw.js';
 
+    let swReg = null;
     try {
-      // Register the FCM service worker explicitly so FCM knows where to deliver
-      const swReg = await navigator.serviceWorker.register('firebase-messaging-sw.js', {
-        scope: '/'
-      });
-
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') return;
-
-      // Get the FCM token for this device
-      fcmToken = await getToken(messaging, {
-        vapidKey:            FCM_VAPID_KEY,
-        serviceWorkerRegistration: swReg
-      });
-
-      if (fcmToken && currentUser) {
-        // Save/merge token to the user's Firestore doc
-        await updateDoc(doc(db, 'users', currentUser.uid), {
-          fcmTokens: arrayUnion(fcmToken)
-        });
-        console.log('[FCM] Token saved:', fcmToken.substring(0, 20) + '…');
+      // Use an existing registration if one already controls the scope to avoid
+      // redundant registrations and the "scope already claimed" error.
+      const existing = await navigator.serviceWorker.getRegistrations();
+      swReg = existing.find(r => r.scope && r.scope.includes(swScope.replace('./', '')));
+      if (!swReg) {
+        swReg = await navigator.serviceWorker.register(swPath, { scope: swScope });
+        console.log('[FCM-SW] Registered, scope:', swReg.scope);
+      } else {
+        console.log('[FCM-SW] Reusing existing registration, scope:', swReg.scope);
       }
 
-      // ── Foreground message handler ──
-      // When the app IS open FCM doesn't show an OS notification automatically —
-      // instead it fires onMessage, so we surface it as a toast + in-app notif.
-      onMessage(messaging, (payload) => {
+      // ── Step 2: Wait until the SW is active before calling getToken ──
+      // getToken() fails if the SW is still in the "installing" state.
+      if (!swReg.active) {
+        await new Promise((resolve) => {
+          const worker = swReg.installing || swReg.waiting;
+          if (!worker) { resolve(); return; }
+          worker.addEventListener('statechange', function onState() {
+            if (worker.state === 'activated' || worker.state === 'redundant') {
+              worker.removeEventListener('statechange', onState);
+              resolve();
+            }
+          });
+        });
+      }
+    } catch (swErr) {
+      console.error('[FCM] Service worker registration error:', swErr.message);
+      return;
+    }
+
+    // ── Step 3: Request notification permission ──
+    if (Notification.permission === 'denied') {
+      console.warn('[FCM] Notification permission was denied by the user. Push notifications are disabled.');
+      return;
+    }
+
+    let permission = Notification.permission;
+    if (permission !== 'granted') {
+      try {
+        permission = await Notification.requestPermission();
+      } catch (permErr) {
+        console.error('[FCM] requestPermission() threw:', permErr.message);
+        return;
+      }
+    }
+
+    if (permission !== 'granted') {
+      console.warn('[FCM] Notification permission not granted (status:', permission + ').');
+      return;
+    }
+
+    // ── Step 4: Get/refresh the FCM token ──
+    try {
+      fcmToken = await getToken(messaging, {
+        vapidKey:                  FCM_VAPID_KEY,
+        serviceWorkerRegistration: swReg,
+      });
+    } catch (tokenErr) {
+      console.error('[FCM] getToken() failed:', tokenErr.message,
+        '\n  Common causes: VAPID key mismatch, SW scope wrong, Firebase project config wrong.');
+      return;
+    }
+
+    if (!fcmToken) {
+      console.warn('[FCM] getToken() returned null — no push subscription created.');
+      return;
+    }
+
+    console.log('[FCM] Token obtained:', fcmToken.substring(0, 20) + '…');
+
+    // ── Step 5: Persist token to Firestore ──
+    if (currentUser) {
+      try {
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          fcmTokens: arrayUnion(fcmToken),
+          // Stamp the last token registration time for staleness audits
+          fcmTokenUpdatedAt: Date.now(),
+        });
+        console.log('[FCM] Token saved to Firestore for uid:', currentUser.uid);
+      } catch (saveErr) {
+        console.error('[FCM] Failed to save token to Firestore:', saveErr.message);
+      }
+    }
+
+    // ── Step 6: Foreground message handler (attached once only) ──
+    // When the app IS open FCM doesn't show an OS notification automatically —
+    // it fires onMessage instead. We show both a toast AND an OS notification.
+    if (!_fcmFgListenerAttached) {
+      _fcmFgListenerAttached = true;
+      onMessage(messaging, async (payload) => {
         console.log('[FCM] Foreground message:', payload);
-        const data = payload.data || {};
-        const body = payload.notification?.body || data.body || 'New notification';
+        const data  = payload.data || {};
+        const type  = data.type  || '';
+        const title = payload.notification?.title || data.title || '🔔 Shadow Nexus Social';
+        const body  = payload.notification?.body  || data.body  || 'New notification';
+
+        // Show an OS notification even while the app is open (mobile PWA needs this)
+        if (Notification.permission === 'granted') {
+          try {
+            const _activeReg = await navigator.serviceWorker.ready;
+            await _activeReg.showNotification(title, {
+              body,
+              icon:     swScope + 'icon-192.png',
+              badge:    swScope + 'favicon-32x32.png',
+              tag:      `snx-fg-${type}-${Date.now()}`,
+              renotify: true,
+              vibrate:  type === 'message' ? [120, 60, 120] : [200, 100, 200],
+              data:     { url: swScope, type, fromUid: data.fromUid || '', roomId: data.roomId || '' },
+            });
+          } catch (notifErr) {
+            console.warn('[FCM] Foreground showNotification failed:', notifErr.message);
+          }
+        }
+
+        // In-app toast as well
         toastNotification('🔔 ' + body);
       });
-
-    } catch (err) {
-      // Token fetch errors are non-fatal (e.g. user blocks permission mid-flow)
-      console.warn('[FCM] Push setup failed:', err.message);
     }
   }
 
-  /* ── Send a real FCM push to a target user ──
-     Reads the target's stored FCM tokens from Firestore, then POSTs
-     to the FCM v1 HTTP API via a lightweight fetch.
-
-     NOTE: In production you should do this from a Cloud Function so
-     your service-account key is never in the browser. For this PWA
-     approach we use the FCM Legacy Server Key (read-only send) which
-     is safe to expose. Replace FCM_SERVER_KEY with your own key from
-     Firebase Console → Project Settings → Cloud Messaging.
+  /* ── Write a push notification entry to the target user's pushQueue ──
+     The target device's onSnapshot listener picks this up and shows
+     a real OS notification via navigator.serviceWorker.ready.showNotification().
+     Respects the user's per-type notification preferences stored in notifPrefs.
+     Also prunes stale (>30-day-old) FCM token entries from their Firestore doc
+     to keep the token list clean and prevent silent delivery failures.
   ─────────────────────────────────────────────────────────────────── */
-  /* ── Send a real OS notification to the current device ──
-     Uses the Web Notifications API directly — works instantly,
-     no server key needed, shows real phone/desktop pop-ups.
-     For cross-device push (other users' phones), FCM token delivery
-     is handled automatically when the app is open on their device.
-  ─────────────────────────────────────────────────────────────────── */
-  async function sendPushToUser(targetUid, { title, body, type, fromUid, url }) {
+  async function sendPushToUser(targetUid, { title, body, type, fromUid, url, roomId }) {
     try {
       // Check target user's notification preferences
       const userSnap = await getDoc(doc(db, 'users', targetUid));
-      if (!userSnap.exists()) return;
+      if (!userSnap.exists()) {
+        console.warn('[SNX Push] Target user not found:', targetUid);
+        return;
+      }
       const uData = userSnap.data();
 
       const prefs  = uData.notifPrefs || {};
@@ -8932,20 +9024,40 @@ body.arcade-fs-ios body::after { display:none !important; }
         mention: 'mentions', announcement: 'announcements',
         repost: 'likes', wallPost: 'comments',
       };
-      if (prefs[typeMap[type] || type] === false) return;
+      if (prefs[typeMap[type] || type] === false) {
+        console.log('[SNX Push] User has disabled', type, 'notifications — skipping.');
+        return;
+      }
 
-      // Write to the target user's pushQueue array in their own doc
+      // ── Prune stale FCM tokens older than 30 days ──
+      // Tokens that haven't been refreshed in 30+ days are likely from uninstalled
+      // browsers/devices and will cause silent failures in FCM delivery.
+      const _tokenUpdatedAt = uData.fcmTokenUpdatedAt || 0;
+      const _tokenAgeDays   = (Date.now() - _tokenUpdatedAt) / (1000 * 60 * 60 * 24);
+      if (_tokenAgeDays > 30 && Array.isArray(uData.fcmTokens) && uData.fcmTokens.length > 0) {
+        console.log('[SNX Push] Pruning stale FCM tokens for uid:', targetUid, '(age:', Math.round(_tokenAgeDays), 'days)');
+        try {
+          await updateDoc(doc(db, 'users', targetUid), { fcmTokens: [] });
+        } catch (_pruneErr) { /* non-fatal */ }
+      }
+
+      // Write to the target user's pushQueue — their device picks it up via onSnapshot
       await updateDoc(doc(db, 'users', targetUid), {
           pushQueue: arrayUnion({
               id:      `${type}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-              title, body, type,
+              title,
+              body,
+              type,
               fromUid: fromUid || '',
+              roomId:  roomId  || '',
               url:     url || '/',
               sentAt:  Date.now(),
               read:    false
           })
       });
-    } catch(e) { /* best-effort */ }
+    } catch(e) {
+      console.error('[SNX Push] sendPushToUser failed for', targetUid, ':', e.message);
+    }
   }
 
   let currentUser = null;
@@ -9683,6 +9795,11 @@ body.arcade-fs-ios body::after { display:none !important; }
               if (!_queue.length) return;
               _queue.forEach(n => _seenPushIds.add(n.id));
 
+              // Resolve absolute icon paths once (SW context needs full path, not relative)
+              const _snxBase   = location.pathname.startsWith('/TEST') ? '/TEST/' : '/';
+              const _iconPath  = _snxBase + 'icon-192.png';
+              const _badgePath = _snxBase + 'favicon-32x32.png';
+
               for (const n of _queue) {
                   // Play subtle in-app notification sound
                   try {
@@ -9697,22 +9814,25 @@ body.arcade-fs-ios body::after { display:none !important; }
                       _osc.start(_ctx.currentTime); _osc.stop(_ctx.currentTime + 0.22);
                   } catch(_) {}
 
-                  // OS notification (SW-backed or direct)
+                  // OS notification (SW-backed or direct Web Notification fallback)
                   if ('Notification' in window && Notification.permission === 'granted') {
                       try {
                           const _reg = await navigator.serviceWorker.ready;
-                          _reg.showNotification(n.title || '🔔 Shadow Nexus Social', {
+                          await _reg.showNotification(n.title || '🔔 Shadow Nexus Social', {
                               body:     n.body || 'You have a new notification',
-                              icon:     'icon-192.png',
-                              badge:    'favicon-32x32.png',
+                              icon:     _iconPath,
+                              badge:    _badgePath,
                               tag:      `snx-${n.id}`,
                               renotify: true,
-                              vibrate:  n.type === 'live' ? [100, 50, 100, 50, 100] : [200, 100, 200],
-                              requireInteraction: n.type === 'live',
-                              data:     { url: n.url || '/', type: n.type || '', fromUid: n.fromUid || '', roomId: n.roomId || '' }
+                              vibrate:  n.type === 'message' ? [120, 60, 120, 60, 120]
+                                      : n.type === 'live'    ? [100, 50, 100, 50, 100]
+                                      : [200, 100, 200],
+                              requireInteraction: n.type === 'live' || n.type === 'message',
+                              data:     { url: n.url || _snxBase, type: n.type || '', fromUid: n.fromUid || '', roomId: n.roomId || '' }
                           });
-                      } catch(_) {
-                          try { new Notification(n.title || '🔔 Shadow Nexus', { body: n.body || '', icon: 'icon-192.png' }); } catch(_) {}
+                      } catch(notifErr) {
+                          console.warn('[SNX Push] showNotification failed:', notifErr.message);
+                          try { new Notification(n.title || '🔔 Shadow Nexus', { body: n.body || '', icon: _iconPath }); } catch(_) {}
                       }
                   }
                   // In-app toast: for messages, open the Profile Message modal immediately
