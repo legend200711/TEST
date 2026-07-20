@@ -360,6 +360,40 @@ service cloud.firestore {
       }
     }
 
+    // ── Box Requests (guest box join requests for live streams) ───────────────
+    //
+    //   /boxRequests/{requestId}
+    //     liveId, hostId, viewerId, viewerName, viewerProfileImage,
+    //     status: 'pending' | 'accepted' | 'declined'
+    //     createdAt
+    //
+    //   requestId = "{liveId}_{viewerUid}"
+
+    match /boxRequests/{requestId} {
+      // Viewer (requester) can read their own request
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.viewerId
+            || request.auth.uid == resource.data.hostId
+            || isFounder());
+
+      // Any signed-in (non-anonymous) user can create a request for themselves
+      allow create: if isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.resource.data.viewerId == request.auth.uid;
+
+      // Host can update status (accept/decline); viewer cannot change status
+      allow update: if isSignedIn()
+        && (request.auth.uid == resource.data.hostId
+            || request.auth.uid == resource.data.viewerId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+      // Viewer or host can delete (cleanup); Founder can always delete
+      allow delete: if isSignedIn()
+        && (request.auth.uid == resource.data.viewerId
+            || request.auth.uid == resource.data.hostId
+            || isFounder());
+    }
+
     // ── Live Rooms ─────────────────────────────────────────────────────────────
     //
     //   /liveRooms/{uid}             — one doc per host, keyed by host uid

@@ -911,9 +911,11 @@ async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
 
-  // Clean up any pending box request
+  // Clean up any pending box request (RTDB + Firestore)
   if (_user && _roomId) {
     try { await remove(ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`)); } catch(_) {}
+    const requestId = `${_roomId}_${_user.uid}`;
+    try { await deleteDoc(doc(_db, 'boxRequests', requestId)); } catch(_) {}
   }
   if (_guestStatusUnsub) { try { _guestStatusUnsub(); } catch(_){} _guestStatusUnsub = null; }
 
@@ -1538,35 +1540,111 @@ function _esc(s) {
 
 /* ── VIEWER: Request a Box ── */
 async function _viewerRequestBox() {
-  if (!_user || !_roomId) return;
-  const btn = D.btnRequestBox;
-  if (btn && btn.classList.contains('pending')) return; // already requested
+  console.log('[BoxRequest] Request button clicked');
 
-  const reqRef = ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`);
-  try {
-    await set(reqRef, {
-      uid:    _user.uid,
-      name:   _userData.displayName || 'Guest',
-      avatar: _userData.avatar || _userData.profilePicture || '',
-      status: 'pending',
-      ts:     Date.now(),
-    });
-  } catch (e) {
-    toast('Could not send request. Try again.');
+  // ── Guard: user must be logged in ──
+  if (!_user) {
+    console.warn('[BoxRequest] User not authenticated');
+    toast('Please sign in to request a box.');
     return;
+  }
+
+  // ── Guard: must have a valid room ──
+  if (!_roomId) {
+    console.warn('[BoxRequest] Missing liveId (roomId is null)');
+    toast('No live stream found. Try refreshing.');
+    return;
+  }
+
+  const btn = D.btnRequestBox;
+
+  // ── Guard: already in a guest box ──
+  if (btn && btn.style.display === 'none') {
+    console.log('[BoxRequest] Viewer already in a guest box');
+    return;
+  }
+
+  // ── Guard: already has a pending request ──
+  if (btn && btn.classList.contains('pending')) {
+    console.log('[BoxRequest] Viewer already has a pending request');
+    toast('Your request is already pending…');
+    return;
+  }
+
+  // ── Resolve hostId from RTDB room ──
+  let hostId = null;
+  try {
+    const roomSnap = await get(ref(_liveDB, `liveRooms/${_roomId}`));
+    if (roomSnap.exists()) {
+      hostId = roomSnap.val().hostId || null;
+    }
+  } catch (e) {
+    console.error('[BoxRequest] Could not read liveRoom to get hostId:', e);
+  }
+
+  if (!hostId) {
+    console.warn('[BoxRequest] Missing hostId — cannot send request');
+    toast('Could not find stream host. Try again.');
+    return;
+  }
+
+  console.log('[BoxRequest] Creating request — liveId:', _roomId, 'hostId:', hostId, 'viewerId:', _user.uid);
+
+  const viewerName  = _userData?.displayName || _user.email?.split('@')[0] || 'Guest';
+  const viewerAvatar = _userData?.avatar || _userData?.profilePicture || '';
+  const requestId   = `${_roomId}_${_user.uid}`;
+
+  // ── Write to Firestore boxRequests ──
+  try {
+    await setDoc(doc(_db, 'boxRequests', requestId), {
+      liveId:             _roomId,
+      hostId,
+      viewerId:           _user.uid,
+      viewerName,
+      viewerProfileImage: viewerAvatar,
+      status:             'pending',
+      createdAt:          serverTimestamp(),
+    });
+    console.log('[BoxRequest] Firestore write successful — requestId:', requestId);
+  } catch (e) {
+    console.error('[BoxRequest] Firestore write failed:', e.code, e.message);
+    toast('Could not send request (permission denied?). Try again.');
+    return;
+  }
+
+  // ── Write to RTDB guestRequests (for real-time WebRTC signaling flow) ──
+  const rtdbReqRef = ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`);
+  try {
+    await set(rtdbReqRef, {
+      uid:       _user.uid,
+      name:      viewerName,
+      avatar:    viewerAvatar,
+      requestId,
+      status:    'pending',
+      ts:        Date.now(),
+    });
+    console.log('[BoxRequest] RTDB guestRequest written');
+  } catch (e) {
+    console.error('[BoxRequest] RTDB write failed:', e.code, e.message);
+    // Non-fatal — Firestore is the source of truth for the host notification
   }
 
   if (btn) {
     btn.classList.add('pending');
-    btn.querySelector('span:last-child') && (btn.querySelector('span:last-child').textContent = 'Waiting…');
+    const label = btn.querySelector('span:last-child');
+    if (label) label.textContent = 'Waiting…';
   }
   toast('📺 Request sent to host!');
 
-  // Watch for host's response
-  if (_guestStatusUnsub) { try { _guestStatusUnsub(); } catch(_){} }
-  const statusRef = ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}/status`);
-  _guestStatusUnsub = onValue(statusRef, async snap => {
-    const status = snap.val();
+  // ── Watch Firestore boxRequest status for host response ──
+  if (_guestStatusUnsub) { try { _guestStatusUnsub(); } catch(_){} _guestStatusUnsub = null; }
+
+  const reqDocRef = doc(_db, 'boxRequests', requestId);
+  _guestStatusUnsub = onSnapshot(reqDocRef, async snap => {
+    if (!snap.exists()) return;
+    const status = snap.data().status;
+    console.log('[BoxRequest] Status update received:', status);
+
     if (status === 'accepted') {
       if (btn) {
         btn.classList.remove('pending');
@@ -1576,6 +1654,7 @@ async function _viewerRequestBox() {
       _guestStatusUnsub && _guestStatusUnsub();
       _guestStatusUnsub = null;
       await _guestJoinAsViewer();
+
     } else if (status === 'declined') {
       if (btn) {
         btn.classList.remove('pending');
@@ -1585,6 +1664,8 @@ async function _viewerRequestBox() {
       toast('Request declined.');
       _guestStatusUnsub && _guestStatusUnsub();
       _guestStatusUnsub = null;
+      // Clean up Firestore doc
+      try { await deleteDoc(reqDocRef); } catch(_) {}
     }
   });
 }
@@ -1715,19 +1796,59 @@ function _guestAddViewerSelf(stream, pc) {
   };
 }
 
-/* ── HOST: Listen for incoming guest requests ── */
+/* ── HOST: Listen for incoming guest requests (Firestore + RTDB) ── */
 function _hostListenForGuestRequests() {
-  if (!_roomId) return;
-  const reqsRef = ref(_liveDB, `guestRequests/${_roomId}`);
-  _guestReqUnsub = onValue(reqsRef, snap => {
+  if (!_roomId || !_user) return;
+  console.log('[BoxRequest] Host listening for guest requests on roomId:', _roomId);
+
+  // ── Primary listener: Firestore boxRequests ──
+  const fsReqQuery = query(
+    collection(_db, 'boxRequests'),
+    where('liveId',  '==', _roomId),
+    where('hostId',  '==', _user.uid),
+    where('status',  '==', 'pending')
+  );
+
+  const fsUnsub = onSnapshot(fsReqQuery, snap => {
+    snap.docChanges().forEach(change => {
+      if (change.type === 'added') {
+        const d = change.doc.data();
+        console.log('[BoxRequest] Request received by host from viewer:', d.viewerId, 'name:', d.viewerName);
+        // Build a unified req object compatible with _hostShowRequestCard
+        _hostShowRequestCard({
+          uid:        d.viewerId,
+          name:       d.viewerName,
+          avatar:     d.viewerProfileImage || '',
+          requestId:  change.doc.id,
+          status:     'pending',
+        });
+      }
+    });
+  }, err => {
+    console.error('[BoxRequest] Firestore boxRequests listener error:', err.code, err.message);
+  });
+
+  // ── Fallback: RTDB guestRequests (for resilience) ──
+  const rtdbReqsRef = ref(_liveDB, `guestRequests/${_roomId}`);
+  const rtdbUnsub = onValue(rtdbReqsRef, snap => {
     if (!snap.exists()) return;
     snap.forEach(child => {
       const req = child.val();
       if (req.status === 'pending') {
-        _hostShowRequestCard(req);
+        // Only show if not already shown via Firestore
+        const queue = D.guestRequestQueue;
+        if (queue && !queue.querySelector(`[data-uid="${req.uid}"]`)) {
+          _hostShowRequestCard(req);
+        }
       }
     });
   });
+
+  // Combine both unsubs into _guestReqUnsub
+  _guestReqUnsub = () => {
+    try { fsUnsub(); }   catch(_) {}
+    try { rtdbUnsub(); } catch(_) {}
+  };
 }
 
 /* ── HOST: Show a request card ── */
@@ -1765,7 +1886,7 @@ function _hostShowRequestCard(req) {
   acceptBtn.textContent = 'Accept';
   acceptBtn.addEventListener('click', () => {
     card.remove();
-    _hostAcceptGuest(req);
+    _hostAcceptGuest(req);  // req carries requestId
   });
 
   const declineBtn = document.createElement('button');
@@ -1773,7 +1894,7 @@ function _hostShowRequestCard(req) {
   declineBtn.textContent = 'Decline';
   declineBtn.addEventListener('click', () => {
     card.remove();
-    _hostDeclineGuest(req.uid);
+    _hostDeclineGuest(req.uid, req.requestId);
   });
 
   actions.appendChild(acceptBtn);
@@ -1784,18 +1905,36 @@ function _hostShowRequestCard(req) {
   queue.appendChild(card);
 
   // Auto-dismiss after 30 seconds
-  setTimeout(() => { if (card.parentNode) { card.remove(); _hostDeclineGuest(req.uid); } }, 30000);
+  setTimeout(() => {
+    if (card.parentNode) {
+      card.remove();
+      _hostDeclineGuest(req.uid, req.requestId);
+    }
+  }, 30000);
 }
 
 /* ── HOST: Accept guest ── */
 async function _hostAcceptGuest(req) {
   if (!_roomId || !_localStream) return;
 
-  const guestUid = req.uid;
-  const sigRef = ref(_liveDB, `guestSignaling/${_roomId}/${guestUid}`);
+  const guestUid  = req.uid;
+  const requestId = req.requestId || `${_roomId}_${guestUid}`;
+  const sigRef    = ref(_liveDB, `guestSignaling/${_roomId}/${guestUid}`);
 
-  // Update request status to accepted
+  console.log('[BoxRequest] Host accepting guest:', guestUid, 'name:', req.name);
+
+  // ── Update Firestore boxRequest status to "accepted" ──
+  try {
+    await updateDoc(doc(_db, 'boxRequests', requestId), { status: 'accepted' });
+    console.log('[BoxRequest] Firestore boxRequest status → accepted');
+  } catch (e) {
+    console.error('[BoxRequest] Could not update Firestore boxRequest (accepted):', e.code, e.message);
+  }
+
+  // ── Update RTDB guestRequest status to "accepted" ──
   try { await update(ref(_liveDB, `guestRequests/${_roomId}/${guestUid}`), { status: 'accepted' }); } catch(_) {}
+
+  console.log('[BoxRequest] Guest added to box — starting WebRTC signaling for:', guestUid);
 
   // Create peer connection for this guest
   const guestPc = new RTCPeerConnection(_ICE_SERVERS);
@@ -1853,11 +1992,25 @@ async function _hostAcceptGuest(req) {
 }
 
 /* ── HOST: Decline guest ── */
-async function _hostDeclineGuest(guestUid) {
+async function _hostDeclineGuest(guestUid, requestId) {
+  const reqId = requestId || `${_roomId}_${guestUid}`;
+  console.log('[BoxRequest] Host declining guest:', guestUid);
+
+  // ── Update Firestore boxRequest status to "declined" ──
+  try {
+    await updateDoc(doc(_db, 'boxRequests', reqId), { status: 'declined' });
+    console.log('[BoxRequest] Firestore boxRequest status → declined, viewer will be notified');
+  } catch (e) {
+    console.error('[BoxRequest] Could not update Firestore boxRequest (declined):', e.code, e.message);
+  }
+
+  // ── Update RTDB status → declined, then remove ──
   try { await update(ref(_liveDB, `guestRequests/${_roomId}/${guestUid}`), { status: 'declined' }); } catch(_) {}
   setTimeout(async () => {
     try { await remove(ref(_liveDB, `guestRequests/${_roomId}/${guestUid}`)); } catch(_) {}
-  }, 3000);
+    // Clean up Firestore doc after 5s (viewer has had time to see the declined status)
+    try { await deleteDoc(doc(_db, 'boxRequests', reqId)); } catch(_) {}
+  }, 5000);
 }
 
 /* ── HOST: Add a guest cell to the video grid ── */
@@ -1981,10 +2134,19 @@ function _teardownAllGuestPeers() {
     D.guestGrid.classList.remove('has-guests');
     D.guestGrid.dataset.count = '0';
   }
-  // Clean up all signaling + requests for this room
+  // Clean up all signaling + requests for this room (RTDB)
   if (_roomId) {
     try { remove(ref(_liveDB, `guestRequests/${_roomId}`)); }  catch(_) {}
     try { remove(ref(_liveDB, `guestSignaling/${_roomId}`)); } catch(_) {}
+  }
+  // Clean up all pending Firestore boxRequests for this room
+  if (_roomId) {
+    getDocs(query(
+      collection(_db, 'boxRequests'),
+      where('liveId', '==', _roomId)
+    )).then(snap => {
+      snap.forEach(d => { try { deleteDoc(d.ref); } catch(_) {} });
+    }).catch(() => {});
   }
 }
 
