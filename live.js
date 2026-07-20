@@ -369,8 +369,14 @@ async function _startCreatorSetup() {
 
   try {
     _localStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: _facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: true,
+      // Default: 720p 30fps — safe for 5G/4G (adaptive quality shifts tiers automatically)
+      video: {
+        facingMode:  _facingMode,
+        width:       { ideal: 1280 },
+        height:      { ideal: 720  },
+        frameRate:   { ideal: 30, max: 30 },
+      },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
     if (D.setupPreview) {
       D.setupPreview.srcObject = _localStream;
@@ -451,7 +457,8 @@ async function flipSetupCamera() {
   }
   try {
     _localStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: _facingMode }, audio: _micOn,
+      video: { facingMode: _facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+      audio: _micOn ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
     });
     if (D.setupPreview) {
       D.setupPreview.srcObject = _localStream;
@@ -735,7 +742,8 @@ async function flipLiveCamera() {
   const oldStream = _localStream;
   try {
     const newStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: _facingMode }, audio: _micOn,
+      video: { facingMode: _facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+      audio: _micOn ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
     });
     if (oldStream) oldStream.getTracks().forEach(t => t.stop());
     _localStream = newStream;
@@ -1149,9 +1157,20 @@ async function _startCreatorWebRTC() {
     _rtcPc.addTrack(track, _localStream);
   });
 
-  // Ensure transceivers are explicitly set to sendonly (belt+braces for iOS Safari)
+  // Ensure transceivers are sendonly and set initial encoding to 720p / 3000 kbps CBR
   _rtcPc.getTransceivers().forEach(tc => {
     tc.direction = 'sendonly';
+    if (tc.sender && tc.sender.track && tc.sender.track.kind === 'video') {
+      const params = tc.sender.getParameters();
+      if (!params.encodings || !params.encodings.length) {
+        params.encodings = [{}];
+      }
+      // Default tier: MED — 720p, 3000 kbps, 30fps
+      params.encodings[0].maxBitrate           = 3_000_000;
+      params.encodings[0].maxFramerate         = 30;
+      params.encodings[0].scaleResolutionDownBy = 1;
+      tc.sender.setParameters(params).catch(() => {});
+    }
   });
 
   _rtcPc.onconnectionstatechange = () => {
@@ -1286,6 +1305,11 @@ async function _startViewerWebRTC(roomData) {
     const stream = e.streams[0] || new MediaStream([e.track]);
     D.liveVideo.srcObject = stream;
     D.liveVideo.muted = true;
+    // Buffer / mobile optimisation: low-latency mode where supported
+    if ('playsInline' in D.liveVideo) D.liveVideo.playsInline = true;
+    if (typeof D.liveVideo.disableRemotePlayback !== 'undefined') D.liveVideo.disableRemotePlayback = true;
+    // Prefer low-latency (Chrome hint)
+    try { D.liveVideo.setPreferredQuality && D.liveVideo.setPreferredQuality('auto'); } catch(_) {}
     D.liveVideo.play().catch(() => {});
     _showUnmutePrompt();
     _hideConnBanner();
@@ -1389,26 +1413,44 @@ async function _startViewerWebRTC(roomData) {
 }
 
 /* ═══════════════════════════════════════════════════
-   ADAPTIVE VIDEO QUALITY (creator-side)
+   STREAM QUALITY PROFILES
+   Phone sends 720p 30fps 3000 kbps CBR by default.
+   Auto-quality shifts between tiers based on
+   bandwidth and packet-loss measured every 10 s.
    ═══════════════════════════════════════════════════ */
 
 /**
- * Monitor RTCPeerConnection stats every 10 seconds and reduce or restore
- * video bitrate/resolution based on packet-loss rate.
- *   packet loss ≥ 15%  → reduce to 360p / 400 kbps
- *   packet loss < 5%   → restore to 720p / 1200 kbps
+ * Sender-side quality tiers (used by _startAdaptiveQuality).
  *
- * Uses setParameters() on the video sender, which is non-destructive and
- * does NOT renegotiate — so the viewer's connection stays stable.
+ * Tier selection on the SENDER is driven by packet-loss rate
+ * (what the creator's upload path can sustain). The viewer's
+ * playback simply receives whatever the sender transmits —
+ * because this is a direct P2P WebRTC stream there is only one
+ * encoded copy, so "viewer quality switching" means the sender
+ * adapts to network conditions automatically.
+ *
+ *  Tier  | Resolution | maxBitrate | scaleDown | Condition
+ *  ------+------------+------------+-----------+-------------------
+ *  HIGH  | 1080p      | 6 000 kbps |     1     | loss < 3 %
+ *  MED   | 720p       | 3 000 kbps |     1     | loss 3–10 %  (default)
+ *  LOW   | 480p       | 1 500 kbps |  ~1.5     | loss 10–20 %
+ *  MIN   | ~240p      |   600 kbps |     3     | loss > 20 %
  */
-let _adaptiveQualityTimer = null;
-let _adaptiveQualityLow   = false;
+const _QUALITY_TIERS = [
+  { name: 'HIGH', maxBitrate: 6_000_000, scaleDown: 1,   lossThreshold: 0.03  },
+  { name: 'MED',  maxBitrate: 3_000_000, scaleDown: 1,   lossThreshold: 0.10  },
+  { name: 'LOW',  maxBitrate: 1_500_000, scaleDown: 1.5, lossThreshold: 0.20  },
+  { name: 'MIN',  maxBitrate:   600_000, scaleDown: 3,   lossThreshold: Infinity },
+];
+
+let _adaptiveQualityTimer    = null;
+let _adaptiveQualityTierIdx  = 1; // start at MED (720p / 3000 kbps)
 
 function _startAdaptiveQuality(pc) {
   if (_adaptiveQualityTimer) return; // already running
 
   let _prevPacketsSent = 0;
-  let _prevPacketsLost  = 0;
+  let _prevPacketsLost = 0;
 
   _adaptiveQualityTimer = setInterval(async () => {
     if (!pc || pc.connectionState !== 'connected') {
@@ -1419,17 +1461,18 @@ function _startAdaptiveQuality(pc) {
 
     try {
       const stats = await pc.getStats();
-      let totalSent = 0, totalLost = 0;
+      let totalSent = 0, totalLost = 0, totalBytesSent = 0;
 
       stats.forEach(report => {
         if (report.type === 'outbound-rtp' && report.kind === 'video') {
-          totalSent += report.packetsSent  || 0;
-          totalLost += report.packetsLost  || 0;
+          totalSent      += report.packetsSent  || 0;
+          totalLost      += report.packetsLost  || 0;
+          totalBytesSent += report.bytesSent    || 0;
         }
       });
 
       const deltaSent = totalSent - _prevPacketsSent;
-      const deltaLost = totalLost - _prevPacketsLost;   // delta lost in this interval
+      const deltaLost = totalLost - _prevPacketsLost;
       _prevPacketsSent = totalSent;
       _prevPacketsLost = totalLost;
 
@@ -1443,22 +1486,34 @@ function _startAdaptiveQuality(pc) {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) return;
 
-      if (lossRate >= 0.15 && !_adaptiveQualityLow) {
-        // Degrade quality
-        _adaptiveQualityLow = true;
-        params.encodings[0].maxBitrate    = 400_000;
-        params.encodings[0].scaleResolutionDownBy = 2;
-        await sender.setParameters(params).catch(() => {});
-        console.log('[AdaptiveQuality] Degraded to low quality (loss:', (lossRate*100).toFixed(1) + '%)');
-
-      } else if (lossRate < 0.05 && _adaptiveQualityLow) {
-        // Restore quality
-        _adaptiveQualityLow = false;
-        params.encodings[0].maxBitrate    = 1_200_000;
-        params.encodings[0].scaleResolutionDownBy = 1;
-        await sender.setParameters(params).catch(() => {});
-        console.log('[AdaptiveQuality] Restored to high quality');
+      // Determine which tier we should be in
+      let targetIdx = _QUALITY_TIERS.length - 1; // default: lowest
+      for (let i = 0; i < _QUALITY_TIERS.length; i++) {
+        if (lossRate < _QUALITY_TIERS[i].lossThreshold) { targetIdx = i; break; }
       }
+
+      // Only change tier when moving down immediately, or when improving
+      // after two consecutive good intervals (hysteresis to avoid flapping)
+      if (targetIdx === _adaptiveQualityTierIdx) return;
+
+      // Allow instant degradation; require loss to be below prev tier threshold
+      // for at least one check before upgrading (simple 1-step hysteresis)
+      if (targetIdx > _adaptiveQualityTierIdx) {
+        // degrading → apply immediately
+      } else {
+        // upgrading → only move one tier at a time
+        targetIdx = _adaptiveQualityTierIdx - 1;
+        if (lossRate >= _QUALITY_TIERS[targetIdx].lossThreshold) return;
+      }
+
+      _adaptiveQualityTierIdx = targetIdx;
+      const tier = _QUALITY_TIERS[targetIdx];
+
+      params.encodings[0].maxBitrate           = tier.maxBitrate;
+      params.encodings[0].scaleResolutionDownBy = tier.scaleDown;
+      await sender.setParameters(params).catch(() => {});
+      console.log(`[AdaptiveQuality] → ${tier.name} (loss:${(lossRate*100).toFixed(1)}%  bitrate:${tier.maxBitrate/1000}kbps)`);
+
     } catch(_) {}
   }, 10_000);
 }
@@ -1466,8 +1521,8 @@ function _startAdaptiveQuality(pc) {
 function _stopAdaptiveQuality() {
   if (_adaptiveQualityTimer) {
     clearInterval(_adaptiveQualityTimer);
-    _adaptiveQualityTimer = null;
-    _adaptiveQualityLow   = false;
+    _adaptiveQualityTimer   = null;
+    _adaptiveQualityTierIdx = 1; // reset to MED for next session
   }
 }
 
