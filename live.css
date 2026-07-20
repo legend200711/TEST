@@ -644,10 +644,13 @@ body.is-creator .live-viewer-actions { display: none !important; }
 .guest-stage {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 210;
   background: #000;
   display: none;
 }
+/* flex is overridden by grid-layout rules below — keep as fallback */
 .guest-stage.active { display: flex; }
 
 /* ── Tile base ── */
@@ -783,37 +786,97 @@ body.layout-side .gs-guest-tile:nth-of-type(5) { grid-column: 2; grid-row: 4; }
 }
 
 /* ════════════════════════════════════════════════════
-   LAYOUT 2: AUTO GRID  (body.layout-grid)
+   LAYOUT 2: AUTO GRID  (body.layout-grid / body.layout-auto)
+   TikTok-style: count-driven, no scrolling, fits screen
    ════════════════════════════════════════════════════ */
-/* 1 tile  → full */
-body.layout-grid .guest-stage[data-count="1"] {
+
+/* Base grid — both aliases share the same rules */
+body.layout-grid .guest-stage,
+body.layout-auto .guest-stage {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+}
+
+/* ── 1 person: host fills screen, no guest tiles shown ── */
+body.layout-grid .guest-stage[data-count="1"],
+body.layout-auto .guest-stage[data-count="1"] {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
-/* 2 tiles → 2 cols */
-body.layout-grid .guest-stage {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-auto-rows: 1fr;
-  align-items: stretch;
+
+/* ── 2 people: 50/50 split — host | guest ── */
+body.layout-grid .guest-stage[data-count="2"],
+body.layout-auto .guest-stage[data-count="2"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
 }
-/* 3 tiles → 2 top + 1 bottom centered */
-body.layout-grid .guest-stage[data-count="3"] {
-  grid-template-columns: repeat(2, 1fr);
+
+/* ── 3 people: big host top-row, 2 guests bottom-row ── */
+body.layout-grid .guest-stage[data-count="3"],
+body.layout-auto .guest-stage[data-count="3"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 2fr 1fr;
+}
+body.layout-grid .guest-stage[data-count="3"] .gs-host-tile,
+body.layout-auto .guest-stage[data-count="3"] .gs-host-tile {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile,
+body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile {
+  grid-row: 2;
+}
+
+/* ── 4 people: 2×2 equal grid ── */
+body.layout-grid .guest-stage[data-count="4"],
+body.layout-auto .guest-stage[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
 }
-body.layout-grid .guest-stage[data-count="3"] .gs-tile:last-child {
+
+/* ── 5 people: big host top, 4 guests row below ── */
+body.layout-grid .guest-stage[data-count="5"],
+body.layout-auto .guest-stage[data-count="5"] {
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: 2fr 1fr;
+}
+body.layout-grid .guest-stage[data-count="5"] .gs-host-tile,
+body.layout-auto .guest-stage[data-count="5"] .gs-host-tile {
   grid-column: 1 / -1;
+  grid-row: 1;
 }
-/* 5 tiles: 2+2+1 */
-body.layout-grid .guest-stage[data-count="5"] {
-  grid-template-columns: repeat(2, 1fr);
+body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile,
+body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile {
+  grid-row: 2;
 }
-body.layout-grid .guest-stage[data-count="5"] .gs-tile:last-child {
-  grid-column: 1 / -1;
+
+/* All tiles fill their grid cell */
+body.layout-grid .gs-tile,
+body.layout-auto .gs-tile { width: 100%; height: 100%; }
+
+/* ── Portrait phone: 3-person layout stacks guests in a row ── */
+@media (max-width: 480px) {
+  /* 2 people: stack vertically on very narrow screens */
+  body.layout-grid .guest-stage[data-count="2"],
+  body.layout-auto .guest-stage[data-count="2"] {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+  }
+  /* 5 people: 2 columns on phone */
+  body.layout-grid .guest-stage[data-count="5"],
+  body.layout-auto .guest-stage[data-count="5"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 2fr 1fr 1fr;
+  }
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4),
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4) {
+    grid-row: 3;
+  }
 }
-/* all tiles fill their cell */
-body.layout-grid .gs-tile { width: 100%; height: 100%; }
 
 /* ════════════════════════════════════════════════════
    LAYOUT 3: FULLSCREEN HOST + FLOATING BOXES  (body.layout-floating)

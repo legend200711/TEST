@@ -108,7 +108,7 @@ let _creatorEndedFlag = false;  // guard: prevent beforeunload re-running endLiv
 // _guestPcs[boxNum] = { pc: RTCPeerConnection, statsInterval, guestId, localStream }
 const _guestPcs = {};
 // Layout mode
-let _layoutMode = 'side';   // 'side' | 'grid' | 'floating' | 'equal'
+let _layoutMode = 'grid';   // 'side' | 'grid' | 'floating' | 'equal'  (grid = TikTok auto)
 // Guest self-stream (the guest's own camera/mic when they are in a box)
 let _guestSelfStream   = null;
 let _guestSelfCamOn    = true;
@@ -2246,6 +2246,7 @@ function _gsUpdateTile(boxNum, data, role) {
   if (status !== 'occupied') {
     tileEl.style.display = 'none';
     _gsRefreshActiveCount();
+    _gsActivateIfNeeded();
     return;
   }
 
@@ -2309,8 +2310,10 @@ function _gsUpdateTile(boxNum, data, role) {
 function _gsRefreshActiveCount() {
   const stageEl = D.guestStage;
   if (!stageEl) return;
-  const visibleTiles = stageEl.querySelectorAll('.gs-tile:not([style*="display: none"])');
-  stageEl.dataset.count = visibleTiles.length;
+  // Count host tile + visible guest tiles for the grid data-count
+  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile:not([style*="display: none"])');
+  // data-count = total participants (1 host + N guests) — drives CSS grid layouts
+  stageEl.dataset.count = visibleGuests.length + 1;
 }
 
 /* ── Show guest stage (replaces the single liveVideo area) ── */
@@ -2326,6 +2329,10 @@ function _gsActivateIfNeeded() {
   }
   if (visibleGuests.length === 0 && document.body.classList.contains('gs-active')) {
     _gsHideStage();
+  }
+  /* Auto-reflow grid layout whenever participant count changes */
+  if (_layoutMode === 'grid') {
+    _setLayout('grid', false);
   }
 }
 
