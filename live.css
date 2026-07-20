@@ -691,6 +691,93 @@ body.is-creator .live-viewer-actions { display: none !important; }
 }
 .live-request-box-btn.off:hover { background: rgba(255,30,50,0.4); }
 
+/* ── Leave Box button (guest viewer) ── */
+.live-leave-box-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 0;
+  background: rgba(200,30,50,0.45); backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255,60,80,0.75);
+  color: #fff; font-size: 0; font-weight: 700;
+  cursor: pointer; transition: transform 0.15s, background 0.18s, border-color 0.18s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(255,50,70,0.35);
+}
+.live-leave-box-btn > span:first-child { font-size: 20px; line-height: 1; display: block; }
+.live-leave-box-btn > span:not(:first-child) { display: none; }
+.live-leave-box-btn:hover  { background: rgba(220,0,30,0.65); box-shadow: 0 0 16px rgba(255,50,70,0.55); }
+.live-leave-box-btn:active { transform: scale(0.88); }
+
+/* ── Confirmation dialog (Leave Box / Remove Guest) ── */
+.snx-confirm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.72);
+  z-index: 9800;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  animation: snxConfirmIn 0.18s ease-out both;
+}
+@keyframes snxConfirmIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.snx-confirm-box {
+  background: rgba(6,18,44,0.98);
+  border: 1.5px solid rgba(0,174,239,0.5);
+  border-radius: 18px;
+  padding: 24px 20px 20px;
+  width: min(300px, calc(100vw - 40px));
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  animation: snxConfirmBoxIn 0.2s ease-out both;
+}
+@keyframes snxConfirmBoxIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.snx-confirm-icon { font-size: 36px; line-height: 1; }
+.snx-confirm-title {
+  font-size: 15px; font-weight: 800; color: #e8f4ff;
+  text-align: center; line-height: 1.4;
+}
+.snx-confirm-sub {
+  font-size: 12px; color: #6a90b8;
+  text-align: center; line-height: 1.5;
+  margin-top: -6px;
+}
+.snx-confirm-actions {
+  display: flex; gap: 10px; width: 100%;
+}
+.snx-confirm-cancel {
+  flex: 1; padding: 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  color: #a8c8e8; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s;
+  touch-action: manipulation;
+}
+.snx-confirm-cancel:hover { background: rgba(255,255,255,0.12); }
+.snx-confirm-ok {
+  flex: 1; padding: 10px;
+  border-radius: 10px;
+  background: rgba(200,0,30,0.35);
+  border: 1.5px solid rgba(255,50,70,0.65);
+  color: #ff7788; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s;
+  touch-action: manipulation;
+}
+.snx-confirm-ok:hover { background: rgba(220,0,40,0.6); color: #fff; }
+.snx-confirm-ok.ok-blue {
+  background: rgba(0,80,200,0.35);
+  border-color: rgba(0,174,239,0.65);
+  color: #00AEEF;
+}
+.snx-confirm-ok.ok-blue:hover { background: rgba(0,100,220,0.6); color: #fff; }
+
 /* ── Incoming request queue (host side) ── */
 .guest-request-queue {
   position: absolute;

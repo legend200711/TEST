@@ -187,6 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGuestCamLabel:    document.getElementById('btnGuestCamLabel'),
     btnGuestMic:         document.getElementById('btnGuestMic'),
     btnGuestMicLabel:    document.getElementById('btnGuestMicLabel'),
+    btnLeaveBox:         document.getElementById('btnLeaveBox'),
     btnLayoutSettings:   document.getElementById('btnLayoutSettings'),
     layoutSettingsPanel: document.getElementById('layoutSettingsPanel'),
   };
@@ -225,6 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnRequestBox     && D.btnRequestBox.addEventListener('click', _viewerRequestBox);
   D.btnGuestCam       && D.btnGuestCam.addEventListener('click', _toggleGuestCam);
   D.btnGuestMic       && D.btnGuestMic.addEventListener('click', _toggleGuestMic);
+  D.btnLeaveBox       && D.btnLeaveBox.addEventListener('click', _guestLeaveBox);
   D.btnLayoutSettings && D.btnLayoutSettings.addEventListener('click', _toggleLayoutPanel);
 
   // Layout option buttons
@@ -952,8 +954,16 @@ async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
 
-  // Stop guest media stream if viewer was in a box
-  if (_guestStream) { try { _guestStream.getTracks().forEach(t => t.stop()); } catch(_){} _guestStream = null; }
+  // If viewer was in a guest box, clean up that state first
+  if (_guestStream || _guestPc) {
+    // Direct cleanup without confirmation (page is unloading)
+    if (_guestPc) { try { _guestPc.close(); } catch(_){} _guestPc = null; }
+    if (_user && _roomId) {
+      try { remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); }      catch(_) {}
+      try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}`)); }  catch(_) {}
+    }
+    if (_guestStream) { try { _guestStream.getTracks().forEach(t => t.stop()); } catch(_){} _guestStream = null; }
+  }
 
   // Tear down viewer guest grid listener
   if (_viewerGuestUnsub) {
@@ -965,11 +975,6 @@ async function _viewerLeave() {
   if (_layoutSyncUnsub) {
     try { _layoutSyncUnsub(); } catch(_) {}
     _layoutSyncUnsub = null;
-  }
-
-  // Remove own guest presence if viewer was in a box
-  if (_user && _roomId && _guestStream) {
-    try { await remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); } catch(_) {}
   }
 
   // Clean up any pending box request (RTDB + Firestore)
@@ -1158,6 +1163,11 @@ async function _startViewerWebRTC(roomData) {
     _hideConnBanner();
     // Safety: hide banner once video actually starts playing
     D.liveVideo.addEventListener('playing', _hideConnBanner, { once: true });
+    // ── If the guest grid is already showing a host cell, attach the stream now ──
+    const hostCell = D.guestGrid?.querySelector('.vgc-cell.host-cell');
+    if (hostCell && !hostCell.querySelector('video')) {
+      _attachHostVideoToCell(hostCell);
+    }
   };
 
   _rtcPc.onconnectionstatechange = () => {
@@ -1591,6 +1601,39 @@ function _esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* ── Confirmation dialog — Promise-based modal ──
+   _snxConfirm({ icon, title, sub, okLabel, okClass })
+   Resolves true (confirmed) or false (cancelled). */
+function _snxConfirm({ icon = '❓', title = 'Are you sure?', sub = '', okLabel = 'Confirm', okClass = '' } = {}) {
+  return new Promise(resolve => {
+    // Remove any stale overlay
+    document.getElementById('_snxConfirmOverlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = '_snxConfirmOverlay';
+    overlay.className = 'snx-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="snx-confirm-box">
+        <div class="snx-confirm-icon">${icon}</div>
+        <div class="snx-confirm-title">${_esc(title)}</div>
+        ${sub ? `<div class="snx-confirm-sub">${_esc(sub)}</div>` : ''}
+        <div class="snx-confirm-actions">
+          <button class="snx-confirm-cancel">Cancel</button>
+          <button class="snx-confirm-ok${okClass ? ' ' + okClass : ''}">${_esc(okLabel)}</button>
+        </div>
+      </div>
+    `;
+
+    const close = (result) => { overlay.remove(); resolve(result); };
+    overlay.querySelector('.snx-confirm-cancel').addEventListener('click', () => close(false));
+    overlay.querySelector('.snx-confirm-ok').addEventListener('click',     () => close(true));
+    // Tap backdrop to cancel
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
+
+    document.body.appendChild(overlay);
+  });
+}
+
 /* ═══════════════════════════════════════════════════════════════
    VIEWER GUEST GRID — real-time presence display for followers
    ─────────────────────────────────────────────────────────────
@@ -1705,6 +1748,10 @@ function _startViewerGuestGrid() {
         // Insert: host always first
         if (g.isHost) {
           grid.insertBefore(card, grid.firstChild);
+          // ── Attach host video stream to the host cell so it never disappears ──
+          // For viewers, the host video arrives via WebRTC on #liveVideo.
+          // Re-use that stream in the host cell so the grid always shows the host feed.
+          _attachHostVideoToCell(card);
         } else {
           grid.appendChild(card);
         }
@@ -1722,6 +1769,10 @@ function _startViewerGuestGrid() {
         if (camIcon) camIcon.textContent = g.camOn !== false ? '📷' : '🚫';
         if (micIcon) micIcon.textContent = g.micOn !== false ? '🎤' : '🔇';
         if (camOff)  camOff.classList.toggle('vgc-cam-off--visible', g.camOn === false);
+        // Ensure host video is attached if not yet (e.g. stream arrived after card was built)
+        if (g.isHost && !card.querySelector('video')) {
+          _attachHostVideoToCell(card);
+        }
       }
     });
 
@@ -1735,6 +1786,41 @@ function _startViewerGuestGrid() {
     }
     _applyGuestLayout();
   });
+}
+
+/* ── Attach the host's live video stream into a viewer-side host cell ──
+   The host stream arrives via WebRTC on #liveVideo. We create a <video>
+   element in the host cell that reads from the same MediaStream so the
+   host camera is always visible, even when the guest grid is shown. */
+function _attachHostVideoToCell(cell) {
+  const _tryAttach = (attempts) => {
+    const liveVid = D.liveVideo;
+    if (!liveVid) return;
+    const stream = liveVid.srcObject;
+    if (!stream) {
+      // Host stream not yet arrived — retry up to 30 times (3 seconds)
+      if (attempts > 0) setTimeout(() => _tryAttach(attempts - 1), 100);
+      return;
+    }
+    // Don't add a second video if one already exists
+    if (cell.querySelector('video')) return;
+    const vid = document.createElement('video');
+    vid.autoplay   = true;
+    vid.muted      = false;   // viewers should hear the host
+    vid.playsInline = true;
+    vid.srcObject  = stream;
+    vid.play().catch(() => {});
+    // Insert before the name label so it sits behind the overlay elements
+    const nameEl = cell.querySelector('.vgc-name, .guest-cell-name');
+    cell.insertBefore(vid, nameEl || null);
+    // Hide avatar once video is attached
+    const avatar = cell.querySelector('.vgc-avatar');
+    if (avatar) avatar.style.display = 'none';
+    // Hide cam-off overlay (host cam state already reflects in the card)
+    const camOff = cell.querySelector('.vgc-cam-off');
+    if (camOff) camOff.classList.remove('vgc-cam-off--visible');
+  };
+  _tryAttach(30);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1938,6 +2024,62 @@ function _toggleGuestMic() {
   if (_user && _roomId) try { update(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`), { micOn: _guestMicOn }); } catch(_) {}
 }
 
+/* ── VIEWER: Leave the guest box voluntarily ── */
+async function _guestLeaveBox() {
+  // Guard: only a viewer who is currently in a box can leave
+  if (!_guestStream && !_guestPc) return;
+
+  const confirmed = await _snxConfirm({
+    icon:     '🚪',
+    title:    'Leave guest box?',
+    sub:      'You will return to watching the live stream.',
+    okLabel:  'Leave Box',
+    okClass:  '',
+  });
+  if (!confirmed) return;
+
+  _guestDoLeave();
+}
+
+/* ── Internal: perform the guest leave cleanup (called from Leave Box or removedByHost signal) ── */
+function _guestDoLeave() {
+  // Close peer connection — triggers onconnectionstatechange cleanup below,
+  // but also handle directly here for immediate UI response
+  if (_guestPc) {
+    try { _guestPc.close(); } catch(_) {}
+    _guestPc = null;
+  }
+
+  // Remove own presence from RTDB so grid updates for everyone instantly
+  if (_user && _roomId) {
+    try { remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); } catch(_) {}
+    // Clean up signaling data
+    try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}`)); } catch(_) {}
+    try { remove(ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`)); } catch(_) {}
+    // Clean up Firestore boxRequest
+    const requestId = `${_roomId}_${_user.uid}`;
+    try { deleteDoc(doc(_db, 'boxRequests', requestId)); } catch(_) {}
+  }
+
+  // Stop local guest media tracks
+  if (_guestStream) {
+    try { _guestStream.getTracks().forEach(t => t.stop()); } catch(_) {}
+    _guestStream = null;
+  }
+
+  // Hide guest controls, restore Request a Box button
+  if (D.btnGuestCam)  D.btnGuestCam.style.display  = 'none';
+  if (D.btnGuestMic)  D.btnGuestMic.style.display  = 'none';
+  if (D.btnLeaveBox)  D.btnLeaveBox.style.display   = 'none';
+  if (D.btnRequestBox) {
+    D.btnRequestBox.style.display = '';
+    D.btnRequestBox.classList.remove('pending');
+  }
+  if (D.btnRequestBoxLabel) D.btnRequestBoxLabel.textContent = 'Request a Box';
+
+  toast('You left the guest box.');
+}
+
 /* ── VIEWER: Join as a guest box (answerer) ── */
 async function _guestJoinAsViewer() {
   if (!_user || !_roomId) return;
@@ -2070,23 +2212,32 @@ async function _guestJoinAsViewer() {
   // Poll for the cell (RTDB listener may not have fired yet)
   _attachGuestSelfStream(guestStream);
 
-  // Show cam/mic toggle buttons now that the viewer is in a box
+  // Show cam/mic/leave toggle buttons now that the viewer is in a box
   if (D.btnGuestCam) D.btnGuestCam.style.display = 'flex';
   if (D.btnGuestMic) D.btnGuestMic.style.display = 'flex';
+  if (D.btnLeaveBox) D.btnLeaveBox.style.display  = 'flex';
 
-  // Handle peer disconnect: clean up presence and controls
+  // ── Listen for host-remove signal on own signaling node ──
+  // Host sets removedByHost:true when it removes this guest.
+  // Guest client responds by cleaning up immediately.
+  let _removedListened = false;
+  const _removedRef = ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}/removedByHost`);
+  onValue(_removedRef, snap => {
+    if (!snap.exists() || !snap.val()) return;
+    if (_removedListened) return;
+    _removedListened = true;
+    off(_removedRef);
+    toast('The host removed you from the guest box.');
+    _guestDoLeave();
+  });
+
+  // Handle peer disconnect: delegate to _guestDoLeave for consistent cleanup
   guestPc.onconnectionstatechange = () => {
     if (guestPc.connectionState === 'disconnected' || guestPc.connectionState === 'failed' || guestPc.connectionState === 'closed') {
-      // Remove own presence so grid updates for everyone
-      if (_user && _roomId) try { remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); } catch(_) {}
-      // Hide guest controls and restore request button
-      if (D.btnGuestCam) D.btnGuestCam.style.display = 'none';
-      if (D.btnGuestMic) D.btnGuestMic.style.display = 'none';
-      if (D.btnRequestBox) { D.btnRequestBox.style.display = ''; D.btnRequestBox.classList.remove('pending'); }
-      if (D.btnRequestBoxLabel) D.btnRequestBoxLabel.textContent = 'Request a Box';
-      // Stop local guest stream
-      if (_guestStream) { _guestStream.getTracks().forEach(t => t.stop()); _guestStream = null; }
-      _guestPc = null;
+      // Only run if _guestDoLeave hasn't already cleaned up
+      if (_guestStream || _guestPc) {
+        _guestDoLeave();
+      }
     }
   };
 }
@@ -2417,7 +2568,8 @@ function _hostAddGuestCell(uid, name, avatar, stream, pc) {
 
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-      _hostRemoveGuest(uid);
+      // Automatic peer disconnect: no confirmation needed
+      _hostDoRemoveGuest(uid);
     }
   };
 }
@@ -2447,8 +2599,31 @@ function _addHostCellToGrid() {
   grid.insertBefore(cell, grid.firstChild);
 }
 
-/* ── HOST: Remove a guest ── */
-function _hostRemoveGuest(uid) {
+/* ── HOST: Remove a guest (with confirmation) ── */
+async function _hostRemoveGuest(uid) {
+  const peer = _guestPeers[uid];
+  const guestName = peer?.name || 'this guest';
+
+  const confirmed = await _snxConfirm({
+    icon:    '✕',
+    title:   `Remove ${guestName}?`,
+    sub:     'They will be disconnected from the guest box.',
+    okLabel: 'Remove',
+    okClass: '',
+  });
+  if (!confirmed) return;
+
+  _hostDoRemoveGuest(uid);
+}
+
+/* ── Internal: perform the host-side guest removal ── */
+function _hostDoRemoveGuest(uid) {
+  // ── Signal the guest client to disconnect gracefully ──
+  // Write removedByHost flag BEFORE closing the peer so the guest's listener fires
+  try {
+    set(ref(_liveDB, `guestSignaling/${_roomId}/${uid}/removedByHost`), true);
+  } catch(_) {}
+
   const peer = _guestPeers[uid];
   if (peer) {
     if (peer.pc) { try { peer.pc.close(); } catch(_){} }
@@ -2458,9 +2633,15 @@ function _hostRemoveGuest(uid) {
   // Allow this UID to send a new request in a future session
   _shownReqUids.delete(uid);
   try { remove(ref(_liveDB, `guestRequests/${_roomId}/${uid}`)); }  catch(_) {}
-  try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${uid}`)); } catch(_) {}
+  // Remove signaling AFTER a short delay so the guest client can read the removedByHost flag
+  setTimeout(() => {
+    try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${uid}`)); } catch(_) {}
+  }, 3000);
   // Remove guest presence so viewers' grids update instantly
   try { remove(ref(_liveDB, `liveGuests/${_roomId}/${uid}`)); } catch(_) {}
+  // Clean up Firestore boxRequest
+  const requestId = `${_roomId}_${uid}`;
+  try { deleteDoc(doc(_db, 'boxRequests', requestId)); } catch(_) {}
 
   const grid = D.guestGrid;
   if (!grid) return;
