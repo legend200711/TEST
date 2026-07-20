@@ -231,6 +231,9 @@ document.addEventListener('DOMContentLoaded', () => {
   D.likeBtn          && D.likeBtn.addEventListener('click',          sendLike);
   D.btnShare         && D.btnShare.addEventListener('click',         shareLive);
   D.btnShareCreator  && D.btnShareCreator.addEventListener('click',  shareLive);
+  /* left-panel share button (both creator + viewer see this) */
+  document.getElementById('llpShareBtn') &&
+    document.getElementById('llpShareBtn').addEventListener('click', shareLive);
   D.chatSend  && D.chatSend.addEventListener('click',  sendChat);
   D.chatInput && D.chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
@@ -2258,12 +2261,14 @@ function _gsUpdateTile(boxNum, data, role) {
 
   if (status !== 'occupied') {
     tileEl.style.display = 'none';
+    tileEl.dataset.gsVisible = '0';
     _gsRefreshActiveCount();
     _gsActivateIfNeeded();
     return;
   }
 
   tileEl.style.display = '';
+  tileEl.dataset.gsVisible = '1';
 
   /* name + avatar */
   const nameEl   = document.getElementById(`gsGuest${boxNum}Name`);
@@ -2323,8 +2328,8 @@ function _gsUpdateTile(boxNum, data, role) {
 function _gsRefreshActiveCount() {
   const stageEl = D.guestStage;
   if (!stageEl) return;
-  // Count host tile + visible guest tiles for the grid data-count
-  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile:not([style*="display: none"])');
+  // Count guest tiles that are currently visible (have data-gs-visible set by _gsUpdateTile)
+  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile[data-gs-visible="1"]');
   // data-count = total participants (1 host + N guests) — drives CSS grid layouts
   stageEl.dataset.count = visibleGuests.length + 1;
 }
@@ -2333,7 +2338,7 @@ function _gsRefreshActiveCount() {
 function _gsActivateIfNeeded() {
   const stageEl = D.guestStage;
   if (!stageEl) return;
-  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile:not([style*="display: none"])');
+  const visibleGuests = stageEl.querySelectorAll('.gs-guest-tile[data-gs-visible="1"]');
   if (visibleGuests.length > 0 && !document.body.classList.contains('gs-active')) {
     document.body.classList.add('gs-active');
     stageEl.style.display = '';

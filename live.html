@@ -153,9 +153,14 @@
 
     </div>
 
-    <!-- ── Stats ribbon (likes) ── -->
-    <div class="live-stats-ribbon">
-      <div class="live-stat-pill" id="liveLikeCount">❤️ 0</div>
+    <!-- ── Left-side floating panel: follower/stat controls ── -->
+    <div class="live-left-panel" aria-label="Stream stats">
+      <!-- Viewer count (compact pill — always visible) -->
+      <div class="llp-pill" id="llpViewers">👁 <span id="llpViewerVal">0</span></div>
+      <!-- Like count -->
+      <div class="llp-pill llp-likes" id="liveLikeCount">❤️ 0</div>
+      <!-- Share (creator only — viewers have their own share btn) -->
+      <button class="llp-btn" id="llpShareBtn" aria-label="Share stream" title="Share">📤</button>
     </div>
 
     <!-- ── Chat panel (both creator and viewer) ── -->

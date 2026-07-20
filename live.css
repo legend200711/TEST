@@ -302,55 +302,101 @@ body.is-creator #liveVideo {
 .live-close-btn:hover { background: rgba(255,40,60,0.35); }
 .live-close-btn:active { transform: scale(0.93); }
 
-/* ── Bottom controls (creator only) ── */
+/* ══════════════════════════════════════════════════════════════
+   BOTTOM CONTROL BAR — creator only
+   Scrolls horizontally on tiny phones so nothing is cut off.
+   Safe-area padding keeps buttons above iOS home indicator.
+   ══════════════════════════════════════════════════════════════ */
 .live-bottom-bar {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  padding: 10px 16px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
-  background: linear-gradient(0deg, rgba(0,0,0,0.72) 0%, transparent 100%);
-  display: flex; align-items: center; justify-content: center;
-  gap: 16px; z-index: 10;
+  /* safe-area: iOS home bar + 10px breathing room */
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 12px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.0) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;          /* wrap on very narrow phones */
+  gap: 10px;
+  z-index: 10;
+  /* Allow horizontal scroll as last-resort fallback on ultra-narrow phones */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.live-bottom-bar::-webkit-scrollbar { display: none; }
+
+/* ── Individual round control button ── */
 .live-ctrl-btn {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
-  border: 2px solid rgba(255,255,255,0.22);
-  color: #fff; font-size: 22px;
+  width: 50px; height: 50px; border-radius: 50%;
+  background: rgba(4, 12, 32, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255,255,255,0.22);
+  color: #fff; font-size: 21px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; flex-shrink: 0;
   transition: background 0.18s, border-color 0.18s, transform 0.1s;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
-.live-ctrl-btn:hover { background: rgba(0,80,200,0.3); border-color: rgba(0,174,239,0.6); }
-.live-ctrl-btn:active { transform: scale(0.92); }
-.live-ctrl-btn.off { background: rgba(255,30,50,0.25); border-color: rgba(255,50,70,0.65); }
-.live-ctrl-btn.off:hover { background: rgba(255,30,50,0.4); }
+.live-ctrl-btn:hover { background: rgba(0,80,200,0.32); border-color: rgba(0,174,239,0.65); }
+.live-ctrl-btn:active { transform: scale(0.90); }
+.live-ctrl-btn.off {
+  background: rgba(255,30,50,0.28);
+  border-color: rgba(255,50,70,0.72);
+}
+.live-ctrl-btn.off:hover { background: rgba(255,30,50,0.42); }
 
-/* End Live button */
+/* ── End Live: pill shape, stands out ── */
 #btnEndLive {
-  padding: 10px 22px; border-radius: 28px; height: auto;
-  width: auto; font-size: 13px; font-weight: 800;
-  background: rgba(180,0,30,0.6); border-color: rgba(255,50,70,0.7);
-  letter-spacing: 0.5px; text-transform: uppercase;
+  padding: 0 18px;
+  border-radius: 26px;
+  height: 50px;
+  width: auto;
+  font-size: 12px; font-weight: 800;
+  background: rgba(160,0,28,0.68);
+  border-color: rgba(255,50,70,0.78);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
   color: #ffb0b8;
+  white-space: nowrap;
 }
-#btnEndLive:hover { background: rgba(220,0,40,0.8); color: #fff; }
+#btnEndLive:hover { background: rgba(220,0,40,0.88); color: #fff; }
+
+/* ── Micro-phone safety: shrink buttons on very small screens ── */
+@media (max-width: 360px) {
+  .live-ctrl-btn  { width: 42px; height: 42px; font-size: 18px; }
+  .live-bottom-bar { gap: 7px; padding-left: 8px; padding-right: 8px; }
+  #btnEndLive { padding: 0 12px; font-size: 11px; }
+}
+
+/* ── Landscape phone: compress bar height, reduce padding ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .live-ctrl-btn  { width: 44px; height: 44px; font-size: 19px; }
+  .live-bottom-bar {
+    padding-top: 6px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+  }
+}
 
 /* ── Chat panel ── */
 .live-chat-panel {
   position: absolute;
   bottom: 0; right: 0;
-  width: min(300px, 80vw);
+  /* left clears the 48px left panel + 10px margin + 8px gap = 66px */
+  left: 66px;
+  width: auto;
+  max-width: min(300px, calc(100vw - 66px));
   height: 55%;
   display: flex; flex-direction: column;
   pointer-events: none;
   z-index: 9;
 }
 
-/* Creator mode — shift up above bottom controls */
+/* Creator mode — shift up above bottom controls (70px bar height is reliable) */
 body.is-creator .live-chat-panel {
-  bottom: 80px;
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
   height: 48%;
 }
 
@@ -431,10 +477,13 @@ body.is-creator .live-chat-input-row {
 /* ── Viewer action bar ── */
 .live-viewer-actions {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
+  bottom: 0;
+  /* Push right so it doesn't overlap the left panel */
+  left: 60px;
+  right: 0;
   padding: 10px 16px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
-  background: linear-gradient(0deg, rgba(0,0,0,0.5) 0%, transparent 100%);
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(0deg, rgba(0,0,0,0.55) 0%, transparent 100%);
   display: flex; align-items: flex-end; justify-content: flex-end;
   gap: 12px; z-index: 10;
   pointer-events: none;
@@ -481,12 +530,78 @@ body.is-creator .live-chat-input-row {
 .live-share-btn:active { transform: scale(0.92); }
 .live-share-icon { font-size: 22px; line-height: 1; }
 
-/* ── Viewer count ribbon for chat ── */
-.live-stats-ribbon {
+/* ══════════════════════════════════════════════════════════════
+   LEFT SIDE PANEL — floating follower / stat controls
+   Floats over the video on the left edge, below the top bar.
+   Does not block faces (narrow column, ~52px wide).
+   ══════════════════════════════════════════════════════════════ */
+.live-left-panel {
   position: absolute;
-  top: 56px; left: 14px;
-  display: flex; gap: 8px; z-index: 10;
+  /* Sit below the top bar; top bar is ~52px tall with safe-area */
+  top: calc(env(safe-area-inset-top, 0px) + 58px);
+  left: 10px;
+  /* Stop above the bottom bar (70px covers safe-area + bar height) */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;  /* container transparent; children re-enable */
+  width: 48px;
+}
+
+/* Round glass pill — used for viewer count & like count */
+.llp-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(4,12,32,0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 24px;
+  padding: 7px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #d0e8ff;
+  white-space: nowrap;
   pointer-events: none;
+  min-width: 44px;
+  text-align: center;
+  line-height: 1.3;
+}
+.llp-likes {
+  border-color: rgba(255,80,100,0.38);
+  color: #ffaabb;
+}
+
+/* Round glass button — used for share */
+.llp-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(4,12,32,0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(0,174,239,0.38);
+  color: #fff;
+  font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s, border-color 0.18s, transform 0.1s;
+  flex-shrink: 0;
+}
+.llp-btn:hover  { background: rgba(0,80,200,0.30); border-color: rgba(0,174,239,0.7); }
+.llp-btn:active { transform: scale(0.91); }
+
+/* ── Old stat-pill kept for any dynamic JS insertions ── */
+.live-stats-ribbon {
+  display: none;   /* replaced by .live-left-panel */
 }
 .live-stat-pill {
   display: flex; align-items: center; gap: 4px;
@@ -556,12 +671,34 @@ body.is-creator .live-chat-input-row {
 
 /* ── Responsive tweaks ── */
 @media (max-width: 400px) {
-  .live-ctrl-btn { width: 46px; height: 46px; font-size: 20px; }
-  .live-chat-panel { width: 100%; }
+  /* buttons already handled in .live-ctrl-btn @360px block above */
+  .live-chat-panel {
+    left: 60px;
+    max-width: calc(100vw - 60px);
+  }
 }
+
 @media (min-width: 768px) {
-  .live-chat-panel { width: 280px; }
-  body.is-creator .live-chat-panel { bottom: 90px; }
+  /* On tablet/desktop chat gets a fixed width since there's more space */
+  .live-chat-panel {
+    left: auto;
+    width: 280px;
+    max-width: 280px;
+  }
+  body.is-creator .live-chat-panel {
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Larger left-panel pills/buttons on tablet */
+  .live-left-panel { width: 54px; left: 14px; gap: 10px; }
+  .llp-pill { font-size: 11px; padding: 9px 8px; min-width: 50px; }
+  .llp-btn  { width: 48px; height: 48px; font-size: 22px; }
+}
+
+/* ── Landscape phone: hide left panel to reclaim horizontal space ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .live-left-panel { display: none; }
+  .live-chat-panel { left: 0; max-width: min(260px, 50vw); }
+  .live-viewer-actions { left: 0; }
 }
 
 /* ── Viewer-only: no bottom bar, use viewer-actions ── */
@@ -641,33 +778,38 @@ body.is-creator .live-viewer-actions { display: none !important; }
 /* ════════════════════════════════════════════════════
    GUEST STAGE — multi-participant video area
    ════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════
+   SHADOW NEXUS LIVE — GUEST STAGE LAYOUT ENGINE v2
+   Full-screen, no-scroll, responsive video grid.
+   All layout is driven by body class + data-count attr.
+   ════════════════════════════════════════════════════ */
+
+/* ── Stage container: fixed fullscreen, never scrolls ── */
 .guest-stage {
   position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   z-index: 210;
   background: #000;
   display: none;
-  /* prevent tiles from ever going off-screen */
   overflow: hidden;
 }
-/* flex is overridden by grid-layout rules below — keep as fallback */
-.guest-stage.active { display: flex; }
+.guest-stage.active { display: grid; }    /* default to grid; layouts below override */
 
-/* On mobile creator view: shrink stage vertically so it doesn't hide behind the bottom panel */
+/* On mobile creator view: shrink stage vertically so the bottom management panel
+   (max-height 42vh) doesn't cover any video tile */
 @media (max-width: 767px) {
   body.is-creator.gs-active .guest-stage {
-    top: 0;
-    bottom: 42vh;        /* panel is max-height 42vh */
+    bottom: 42vh;
     height: auto;
   }
 }
 
-/* On desktop: inset stage right to leave room for the side management panel */
+/* On desktop: inset stage right to leave room for the side management panel (220 px) */
 @media (min-width: 768px) {
   body.gs-active .guest-stage {
-    right: 220px;        /* matches .guest-box-panel width on desktop */
+    right: 220px;
     width: calc(100% - 220px);
   }
 }
@@ -677,17 +819,23 @@ body.is-creator .live-viewer-actions { display: none !important; }
   position: relative;
   overflow: hidden;
   background: #040d1a;
+  border-radius: 10px;          /* rounded corners on every tile */
+  min-width: 0;
+  min-height: 0;
 }
 .gs-video {
   width: 100%; height: 100%;
-  object-fit: cover;
+  object-fit: cover;            /* fill cell, keep faces centered, no black bars */
+  object-position: center;
   display: block;
+  border-radius: inherit;
 }
 .gs-cam-off {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 36px;
   background: #040d1a;
+  border-radius: inherit;
 }
 .gs-name-bar {
   position: absolute;
@@ -749,45 +897,10 @@ body.is-creator .live-viewer-actions { display: none !important; }
    LAYOUT 1: HOST BIG + SIDE BOXES  (body.layout-side)
    ════════════════════════════════════════════════════ */
 body.layout-side .guest-stage {
-  flex-direction: row;
-}
-body.layout-side .gs-host-tile {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-}
-body.layout-side .gs-guest-tile {
-  width: 120px;
-  flex-shrink: 0;
-  height: calc(100% / 4);
-  border-left: 1px solid rgba(0,174,239,0.18);
-}
-/* Side strip container for guest tiles */
-body.layout-side .guest-stage {
-  display: flex;
-  flex-wrap: nowrap;
-}
-body.layout-side .gs-host-tile {
-  order: 0;
-}
-body.layout-side .gs-guest-tile {
-  order: 1;
-}
-/* Stack all guest tiles in a vertical column */
-body.layout-side #gsTile1,
-body.layout-side #gsTile2,
-body.layout-side #gsTile3,
-body.layout-side #gsTile4 {
-  width: 120px;
-  flex: none;
-  height: 25%;
-  max-height: 25%;
-}
-/* Create a flex column for the side strip via wrapper — achieved via grid on parent */
-body.layout-side .guest-stage {
   display: grid;
   grid-template-columns: 1fr 120px;
   grid-template-rows: repeat(4, 25%);
+  gap: 2px;
 }
 body.layout-side .gs-host-tile {
   grid-column: 1; grid-row: 1 / span 4;
@@ -797,52 +910,60 @@ body.layout-side .gs-guest-tile:nth-of-type(3) { grid-column: 2; grid-row: 2; }
 body.layout-side .gs-guest-tile:nth-of-type(4) { grid-column: 2; grid-row: 3; }
 body.layout-side .gs-guest-tile:nth-of-type(5) { grid-column: 2; grid-row: 4; }
 
-@media (max-width: 600px) {
+@media (max-width: 480px) {
   body.layout-side .guest-stage {
     grid-template-columns: 1fr 80px;
   }
-  body.layout-side .gs-guest-tile { width: 80px; }
+}
+@media (min-width: 768px) {
+  body.layout-side .guest-stage {
+    grid-template-columns: 1fr 160px;
+  }
 }
 
 /* ════════════════════════════════════════════════════
    LAYOUT 2: AUTO GRID  (body.layout-grid / body.layout-auto)
    TikTok-style: count-driven, no scrolling, fits screen
+   Every tile gets width:100% height:100% of its grid cell.
    ════════════════════════════════════════════════════ */
 
-/* Base grid — both aliases share the same rules */
+/* Base — all grid layouts share this */
 body.layout-grid .guest-stage,
 body.layout-auto .guest-stage {
   display: grid;
-  width: 100%;
-  height: 100%;
-  gap: 2px;
+  gap: 3px;
 }
 
-/* ── 1 person: host fills screen, no guest tiles shown ── */
+/* All tiles fill their grid cell, no stretching */
+body.layout-grid .gs-tile,
+body.layout-auto .gs-tile {
+  width: 100%; height: 100%;
+  min-width: 0; min-height: 0;
+}
+
+/* ── 1 person (host only): full screen ── */
 body.layout-grid .guest-stage[data-count="1"],
 body.layout-auto .guest-stage[data-count="1"] {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
 
-/* ── 2 people: host top | guest bottom (portrait-first) ── */
+/* ── 2 people: side-by-side equal boxes (TikTok-style) ── */
 body.layout-grid .guest-stage[data-count="2"],
 body.layout-auto .guest-stage[data-count="2"] {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
 }
-
-/* On landscape / wide screens use side-by-side */
-@media (min-width: 481px) and (orientation: landscape),
-       (min-width: 600px) {
+/* Portrait phone: stack vertically */
+@media (max-width: 480px) and (orientation: portrait) {
   body.layout-grid .guest-stage[data-count="2"],
   body.layout-auto .guest-stage[data-count="2"] {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
   }
 }
 
-/* ── 3 people: big host top-row, 2 guests bottom-row ── */
+/* ── 3 people: host takes 2/3 height, 2 guests split the remaining third ── */
 body.layout-grid .guest-stage[data-count="3"],
 body.layout-auto .guest-stage[data-count="3"] {
   grid-template-columns: 1fr 1fr;
@@ -857,48 +978,91 @@ body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile,
 body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile {
   grid-row: 2;
 }
+/* Portrait phone: stack all 3 vertically with host bigger */
+@media (max-width: 480px) and (orientation: portrait) {
+  body.layout-grid .guest-stage[data-count="3"],
+  body.layout-auto .guest-stage[data-count="3"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 2fr 1fr 1fr;
+  }
+  body.layout-grid .guest-stage[data-count="3"] .gs-host-tile,
+  body.layout-auto .guest-stage[data-count="3"] .gs-host-tile {
+    grid-column: 1; grid-row: 1;
+  }
+  body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile:nth-child(2),
+  body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile:nth-child(2) { grid-row: 2; }
+  body.layout-grid .guest-stage[data-count="3"] .gs-guest-tile:nth-child(3),
+  body.layout-auto .guest-stage[data-count="3"] .gs-guest-tile:nth-child(3) { grid-row: 3; }
+}
 
-/* ── 4 people: 2×2 equal grid ── */
+/* ── 4 people: perfect 2×2 grid ── */
 body.layout-grid .guest-stage[data-count="4"],
 body.layout-auto .guest-stage[data-count="4"] {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
 }
 
-/* ── 5 people: big host top, 4 guests row below ── */
+/* ── 5 people: host larger on left, 2×2 guests on right ── */
 body.layout-grid .guest-stage[data-count="5"],
 body.layout-auto .guest-stage[data-count="5"] {
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: 2fr 1fr;
+  grid-template-columns: 3fr 2fr;
+  grid-template-rows: 1fr 1fr;
 }
 body.layout-grid .guest-stage[data-count="5"] .gs-host-tile,
 body.layout-auto .guest-stage[data-count="5"] .gs-host-tile {
-  grid-column: 1 / -1;
-  grid-row: 1;
+  grid-column: 1; grid-row: 1 / span 2;
 }
 body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile,
 body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile {
-  grid-row: 2;
+  grid-column: 2;
 }
-
-/* All tiles fill their grid cell */
-body.layout-grid .gs-tile,
-body.layout-auto .gs-tile { width: 100%; height: 100%; min-width: 0; min-height: 0; }
-
-/* ── Portrait phone ── */
-@media (max-width: 480px) {
-  /* 5 people: 2 columns on phone */
+body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2),
+body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2) { grid-row: 1; }
+body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
+body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3) { grid-row: 2; }
+body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4),
+body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4) { grid-row: 1; grid-column: 2; }
+body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5),
+body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5) { grid-row: 2; grid-column: 2; }
+/* Portrait phone: host full width top, 4 guests in 2×2 below */
+@media (max-width: 480px) and (orientation: portrait) {
   body.layout-grid .guest-stage[data-count="5"],
   body.layout-auto .guest-stage[data-count="5"] {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr 1fr;
     grid-template-rows: 2fr 1fr 1fr;
   }
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
-  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4),
-  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4) {
-    grid-row: 3;
+  body.layout-grid .guest-stage[data-count="5"] .gs-host-tile,
+  body.layout-auto .guest-stage[data-count="5"] .gs-host-tile {
+    grid-column: 1 / -1; grid-row: 1;
   }
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile,
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile {
+    grid-column: auto; grid-row: auto;
+  }
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2),
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(2) { grid-column: 1; grid-row: 2; }
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3),
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(3) { grid-column: 2; grid-row: 2; }
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4),
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(4) { grid-column: 1; grid-row: 3; }
+  body.layout-grid .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5),
+  body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile:nth-child(5) { grid-column: 2; grid-row: 3; }
+}
+
+/* ── 6+ people: balanced auto-grid, host highlighted ── */
+body.layout-grid .guest-stage[data-count="6"],
+body.layout-auto .guest-stage[data-count="6"],
+body.layout-grid .guest-stage[data-count="7"],
+body.layout-auto .guest-stage[data-count="7"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+body.layout-grid .guest-stage[data-count="6"] .gs-host-tile,
+body.layout-auto .guest-stage[data-count="6"] .gs-host-tile,
+body.layout-grid .guest-stage[data-count="7"] .gs-host-tile,
+body.layout-auto .guest-stage[data-count="7"] .gs-host-tile {
+  grid-column: 1 / span 2;
+  grid-row: 1;
 }
 
 /* ════════════════════════════════════════════════════
@@ -912,12 +1076,13 @@ body.layout-floating .guest-stage {
 body.layout-floating .gs-host-tile {
   position: absolute;
   inset: 0;
+  border-radius: 0;   /* host is fullscreen — no corner radius */
 }
-/* Floating guest tiles — positioned bottom-left area, draggable */
+/* Floating guest tiles — draggable PiP overlays */
 body.layout-floating .gs-guest-tile {
   position: absolute;
   width: 110px; height: 165px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 2px solid rgba(0,174,239,0.55);
   overflow: hidden;
   cursor: move;
@@ -936,6 +1101,13 @@ body.layout-floating #gsTile4 { bottom: 100px; left: 378px; }
   body.layout-floating #gsTile3 { bottom: 90px; left: 188px; }
   body.layout-floating #gsTile4 { bottom: 90px; left: 278px; }
 }
+@media (min-width: 768px) {
+  body.layout-floating .gs-guest-tile { width: 140px; height: 210px; }
+  body.layout-floating #gsTile1 { bottom: 90px; left: 16px; }
+  body.layout-floating #gsTile2 { bottom: 90px; left: 168px; }
+  body.layout-floating #gsTile3 { bottom: 90px; left: 320px; }
+  body.layout-floating #gsTile4 { bottom: 90px; left: 472px; }
+}
 
 /* ════════════════════════════════════════════════════
    LAYOUT 4: EQUAL BOXES  (body.layout-equal)
@@ -943,8 +1115,8 @@ body.layout-floating #gsTile4 { bottom: 100px; left: 378px; }
 body.layout-equal .guest-stage {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);   /* always fits in viewport, no scroll */
-  gap: 2px;
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
 }
 body.layout-equal .gs-tile { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 
@@ -1271,17 +1443,14 @@ body.layout-equal .gs-tile { width: 100%; height: 100%; min-width: 0; min-height
 }
 
 /* ════════════════════════════════════════════════════
-   GUEST STAGE — overlay UI that sits on top (top-bar etc.)
+   GUEST STAGE — overlay UI integration
    ════════════════════════════════════════════════════ */
 /* When guest stage is active, hide the single liveVideo */
 body.gs-active #liveVideo { display: none !important; }
 body.gs-active #liveCamOffOverlay { display: none !important; }
-/* liveStage stays at z-200, guest-stage at z-210.
-   The liveStage UI controls (top bar, chat, bottom bar) need z above guest stage. */
+/* liveStage UI controls (top bar, chat, bottom bar) float above guest stage */
 body.gs-active #liveStage { background: transparent; z-index: 220; }
-body.gs-active .live-video-wrap { background: transparent; }
-/* ensure the video wrap itself doesn't obscure guest stage */
-body.gs-active .live-video-wrap { z-index: 0; }
+body.gs-active .live-video-wrap { background: transparent; z-index: 0; }
 
 /* On desktop: nudge chat panel left so it doesn't overlap the side panel */
 @media (min-width: 768px) {
@@ -1293,23 +1462,5 @@ body.gs-active .live-video-wrap { z-index: 0; }
 /* floating layout: tiles can overflow the video wrap area */
 body.layout-floating .live-video-wrap { overflow: visible; }
 
-/* When layout-switcher is visible (creator has active guests) */
+/* Show layout-switcher when guests are active */
 body.gs-active .layout-switcher { display: flex !important; }
-
-/* ── Responsive: side layout on small screens becomes 80px strip ── */
-@media (max-width: 480px) {
-  body.layout-side .guest-stage {
-    grid-template-columns: 1fr 80px;
-  }
-}
-/* ── Tablet/desktop: side strip widens ── */
-@media (min-width: 768px) {
-  body.layout-side .guest-stage {
-    grid-template-columns: 1fr 160px;
-  }
-  body.layout-floating .gs-guest-tile { width: 140px; height: 210px; }
-  body.layout-floating #gsTile1 { bottom: 90px; left: 16px; }
-  body.layout-floating #gsTile2 { bottom: 90px; left: 168px; }
-  body.layout-floating #gsTile3 { bottom: 90px; left: 320px; }
-  body.layout-floating #gsTile4 { bottom: 90px; left: 472px; }
-}
