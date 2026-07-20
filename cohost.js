@@ -349,24 +349,42 @@
         return;
       }
 
-      // Fetch presence for each friend from RTDB
+      // Determine co-host availability for each friend.
+      //
+      // Source of truth for "is this person online right now":
+      //   f.status field on the Firestore user doc — written as 'online' / 'offline'
+      //   by index.html on login and on browser unload.  This is what the whole app
+      //   uses for the green-dot presence system.
+      //
+      // RTDB presence/{uid} is a secondary check only written by cohost.js when a
+      // user is on the live page — treat it as a bonus signal, not a gate.
       const { ref: rtRef, get: rtGet } = await _importRTDB();
       const withStatus = await Promise.all(friends.map(async f => {
-        let status = 'offline';
+        // If the user has explicitly disabled co-host invites → busy
+        if (f.allowCoHostInvites === false) return { ...f, status: 'busy' };
+
+        // Use the Firestore status field (set by index.html) as primary signal
+        const fsStatus = f.status; // 'online' | 'offline' | undefined
+        if (fsStatus === 'offline') return { ...f, status: 'offline' };
+
+        // fsStatus === 'online' or undefined (new accounts / never updated)
+        // Check RTDB presence as secondary — if they're actively on live.html
+        // we can show 'available' (green) instead of just 'online' (blue)
+        let cohostStatus = (fsStatus === 'online') ? 'online' : 'online'; // assume online
+
         try {
           const presSnap = await rtGet(rtRef(_liveDB, `presence/${f.uid}`));
           if (presSnap.exists()) {
             const p = presSnap.val();
-            if (p.online) {
-              // Check if they allow co-host invites
-              const allowsInvites = f.allowCoHostInvites !== false;
-              status = allowsInvites ? 'available' : 'busy';
-            } else {
-              status = 'offline';
+            const freshEnough = (Date.now() - (p.lastSeen || 0)) < 10 * 60 * 1000; // <10 min
+            if (p.online && freshEnough) {
+              // On live page right now — mark as available
+              cohostStatus = 'available';
             }
           }
         } catch (_) {}
-        return { ...f, status };
+
+        return { ...f, status: cohostStatus };
       }));
 
       _friendsCache = withStatus;
@@ -488,17 +506,15 @@
         return;
       }
 
-      // ── Check 3: friend is online (check RTDB presence) ──
-      const { ref: rtRef, get: rtGet } = await _importRTDB();
-      const presSnap = await rtGet(rtRef(_liveDB, `presence/${friend.uid}`));
-      if (!presSnap.exists() || !presSnap.val().online) {
-        _liveToast(`${friend.displayName || 'User'} is offline.`);
-        _updateFriendStatus(friend.uid, 'offline');
-        _resetInviteBtn(btns, false);
+      // ── Check 3: host permission (non-anonymous) ──
+      if (_user.isAnonymous) {
+        _liveToast('Permission denied. Sign in to send co-host invites.');
+        _resetInviteBtn(btns);
         return;
       }
 
       // ── Check 4: live room still exists ──
+      const { ref: rtRef, get: rtGet, set: rtSet } = await _importRTDB();
       const roomSnap = await rtGet(rtRef(_liveDB, `liveRooms/${_roomId}`));
       if (!roomSnap.exists() || roomSnap.val().status !== 'live') {
         _liveToast('Live room not found. Are you still live?');
@@ -506,33 +522,7 @@
         return;
       }
 
-      // ── Check 5: host permission (non-anonymous) ──
-      if (_user.isAnonymous) {
-        _liveToast('Permission denied. Sign in to send co-host invites.');
-        _resetInviteBtn(btns);
-        return;
-      }
-
-      // ── All checks passed — write invite ──
-      const requestId = `${_roomId}_${friend.uid}`;
-      await fsSetDoc(fsDoc(_db, 'coHostRequests', requestId), {
-        liveId:    _roomId,
-        hostId:    _user.uid,
-        hostName:  _userData.displayName || _user.email?.split('@')[0] || 'Host',
-        hostAvatar: _userData.avatar || _userData.profilePicture || '',
-        guestId:   friend.uid,
-        guestName: friend.displayName || friend.username || 'User',
-        status:    'pending',
-        createdAt: fsST(),
-      });
-
-      // Mark as sent locally
-      _pendingInvites[friend.uid] = requestId;
-      btns.forEach(b => { b.disabled = true; b.textContent = '✓ Sent'; b.classList.add('sent'); });
-      _liveToast(`🎙️ Invite sent to ${friend.displayName || 'user'}!`);
-
-      // Also write to RTDB so the invitee gets the card even without a Firestore listener
-      const { set: rtSet } = await _importRTDB();
+      // ── All checks passed — write RTDB invite first (instant delivery) ──
       await rtSet(rtRef(_liveDB, `cohosts/${_roomId}/requests/${friend.uid}`), {
         from:       _user.uid,
         fromName:   _userData.displayName || _user.email?.split('@')[0] || 'Host',
@@ -544,15 +534,41 @@
         timestamp:  Date.now(),
       });
 
+      // ── Write Firestore record (persistent log) ──
+      const requestId = `${_roomId}_${friend.uid}`;
+      try {
+        await fsSetDoc(fsDoc(_db, 'coHostRequests', requestId), {
+          liveId:     _roomId,
+          hostId:     _user.uid,
+          hostName:   _userData.displayName || _user.email?.split('@')[0] || 'Host',
+          hostAvatar: _userData.avatar || _userData.profilePicture || '',
+          guestId:    friend.uid,
+          guestName:  friend.displayName || friend.username || 'User',
+          status:     'pending',
+          createdAt:  fsST(),
+        });
+      } catch (fsErr) {
+        // Firestore write failed — RTDB write already succeeded so the invite IS delivered.
+        // Log for debugging but don't show error to user.
+        console.warn('[CoHost] Firestore coHostRequests write failed (non-fatal):', fsErr?.code, fsErr?.message);
+      }
+
+      // Mark as sent locally
+      _pendingInvites[friend.uid] = requestId;
+      btns.forEach(b => { b.disabled = true; b.textContent = '✓ Sent'; b.classList.add('sent'); });
+      _liveToast(`🎙️ Invite sent to ${friend.displayName || 'user'}!`);
+
     } catch (e) {
-      console.error('[CoHost] sendInvite error:', e);
+      console.error('[CoHost] sendInvite error — code:', e?.code, '| message:', e?.message, '| full:', e);
       const code = e?.code || '';
       if (code === 'permission-denied' || code === 'PERMISSION_DENIED') {
-        _liveToast('Permission denied. Check your account settings.');
+        _liveToast('Permission denied. Check Firebase rules for cohosts/.');
       } else if (code === 'unavailable' || code === 'network-request-failed') {
         _liveToast('Connection error. Check your internet and try again.');
+      } else if (code === 'not-found') {
+        _liveToast('Live room not found. Are you still live?');
       } else {
-        _liveToast('Could not send invite. Please try again.');
+        _liveToast(`Invite error: ${e?.message || 'unknown — check console'}`);
       }
       _resetInviteBtn(btns);
     }

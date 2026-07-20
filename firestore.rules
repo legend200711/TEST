@@ -557,9 +557,10 @@ service cloud.firestore {
           || resource.data.status == 'accepted'
         );
 
-      // Only the guest can update status (accept / decline)
+      // Guest can update status (accept / decline)
+      // Host can also update status (e.g. cancel invite after removing co-host)
       allow update: if isSignedIn()
-        && request.auth.uid == resource.data.guestId
+        && (request.auth.uid == resource.data.guestId || request.auth.uid == resource.data.hostId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
 
       // Host or guest can delete (cleanup); Founder always can
