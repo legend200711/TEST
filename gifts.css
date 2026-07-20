@@ -442,6 +442,7 @@
 .gift-anim-wolf    .snx-gift-burst-emoji { filter: drop-shadow(0 0 24px rgba(140, 60, 255, 0.9)); }
 .gift-anim-reaper  .snx-gift-burst-emoji { filter: drop-shadow(0 0 20px rgba(200, 200, 255, 0.8)); }
 .gift-anim-rose    .snx-gift-burst-emoji { filter: drop-shadow(0 0 22px rgba(220, 60, 180, 0.9)); }
+.gift-anim-cat     .snx-gift-burst-emoji { filter: drop-shadow(0 0 22px rgba(119, 0, 204, 0.9)); }
 
 /* ── Gift chat message in live chat ─────────────────────── */
 .live-chat-msg.gift-msg {
@@ -453,6 +454,117 @@
 }
 .live-chat-msg.gift-msg .live-chat-author { color: #ffd700; }
 .live-chat-msg.gift-msg .live-chat-text   { color: #ffe77a; font-weight: 700; }
+
+/* ── Coin balance chip (sidebar / feed nav) ───────────────── */
+.snx-nav-coin-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 20, 60, 0.75);
+  border: 1px solid rgba(0, 174, 239, 0.30);
+  border-radius: 20px;
+  padding: 6px 12px 6px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0;
+}
+.snx-nav-coin-chip:hover {
+  background: rgba(0, 50, 130, 0.35);
+  border-color: rgba(0, 200, 255, 0.55);
+}
+.snx-nav-coin-chip-icon { font-size: 16px; }
+.snx-nav-coin-chip-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd700;
+  flex: 1;
+}
+.snx-nav-coin-chip-val { font-size: 12px; font-weight: 800; color: #ffd700; }
+.snx-nav-coin-chip-add {
+  font-size: 13px;
+  font-weight: 900;
+  color: #44ff99;
+  margin-left: 2px;
+}
+
+/* ── Creator Cash Out settings rows ──────────────────────── */
+.snx-cashout-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.snx-cashout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0, 80, 160, 0.15);
+  font-size: 13px;
+  color: #b8d4f0;
+  flex-wrap: wrap;
+}
+.snx-cashout-row:last-child { border-bottom: none; }
+.snx-cashout-lbl { flex: 1; min-width: 160px; }
+.snx-cashout-lbl small { display: block; font-size: 11px; color: #4a6a8a; margin-top: 2px; }
+.snx-cashout-method-row {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;
+}
+.snx-cashout-method-btn {
+  background: rgba(0, 20, 55, 0.7);
+  border: 1.5px solid rgba(0, 174, 239, 0.22);
+  color: #b8d4f0; border-radius: 10px;
+  padding: 7px 14px; font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.snx-cashout-method-btn:hover {
+  background: rgba(0, 50, 120, 0.3);
+  border-color: rgba(0, 174, 239, 0.6);
+}
+.snx-cashout-method-btn.snx-method-active {
+  border-color: rgba(0, 200, 255, 0.7);
+  background: rgba(0, 80, 180, 0.2);
+  color: #00d4ff;
+}
+.snx-cashout-stat-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px; margin: 10px 0 4px;
+}
+.snx-cashout-stat {
+  background: rgba(0, 20, 55, 0.5);
+  border: 1px solid rgba(0, 174, 239, 0.15);
+  border-radius: 10px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.snx-cashout-stat-val { font-size: 15px; font-weight: 800; color: #44ff99; }
+.snx-cashout-stat-lbl { font-size: 10px; color: #6a90b8; }
+.snx-cashout-history-list {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 6px; max-height: 200px; overflow-y: auto;
+}
+.snx-cashout-history-list::-webkit-scrollbar { display: none; }
+.snx-cashout-hist-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0, 20, 55, 0.45);
+  border: 1px solid rgba(0, 174, 239, 0.10);
+  border-radius: 10px; padding: 8px 12px;
+  font-size: 12px; color: #b8d4f0;
+}
+.snx-cashout-hist-date { flex: 1; color: #6a90b8; font-size: 11px; }
+.snx-cashout-hist-amt  { font-weight: 800; color: #44ff99; }
+.snx-cashout-hist-status { font-size: 10px; font-weight: 700; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 8px; }
+.snx-cashout-hist-status.pending   { background: rgba(255,200,0,0.12); color: #ffd700; }
+.snx-cashout-hist-status.approved,
+.snx-cashout-hist-status.completed,
+.snx-cashout-hist-status.sent      { background: rgba(0,200,100,0.12); color: #44ff99; }
+.snx-cashout-hist-status.declined,
+.snx-cashout-hist-status.failed    { background: rgba(255,60,80,0.12); color: #ff8899; }
+.snx-cashout-hist-status.processing{ background: rgba(0,174,239,0.12); color: #00d4ff; }
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 380px) {

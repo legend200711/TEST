@@ -44,6 +44,7 @@
 <!-- ── Shared stylesheet ── -->
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="album.css">
+<link rel="stylesheet" href="gifts.css">
 
 <!-- ── Preconnect to Firebase + R2 CDN so first load is faster ── -->
 <link rel="preconnect" href="https://www.gstatic.com">
@@ -5950,6 +5951,18 @@ body.arcade-fs-ios body::after { display:none !important; }
 
     <div class="sidebar-divider"></div>
 
+    <!-- 💰 Shadow Coins chip — Buy Coins shortcut -->
+    <div style="padding:0 10px;">
+        <button class="snx-nav-coin-chip" id="navCoinChip" onclick="window._snxOpenBuyCoins && window._snxOpenBuyCoins()" title="Buy Shadow Coins" aria-label="Shadow Coins balance — tap to buy more">
+            <span class="snx-nav-coin-chip-icon">🪙</span>
+            <span class="snx-nav-coin-chip-label">Shadow Coins</span>
+            <span class="snx-coin-balance-val snx-nav-coin-chip-val" id="navCoinBalanceVal">0</span>
+            <span class="snx-nav-coin-chip-add">＋</span>
+        </button>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
     <!-- Footer / logout -->
     <div class="sidebar-footer">
         <button class="nav-item nav-logout" onclick="handleLogout()">
@@ -7085,6 +7098,101 @@ body.arcade-fs-ios body::after { display:none !important; }
                 <div class="settings-label">Moderator Panel<small>Review reports &amp; moderate content</small></div>
                 <button onclick="navTo('moderatorPage')" style="padding:7px 16px;font-size:12px;border-radius:10px;background:linear-gradient(135deg,#1a0033,#550099);border-color:rgba(170,80,255,0.6);color:#cc88ff;">🛡️ Open Panel</button>
             </div>
+        </div>
+
+        <!-- ── Creator Earnings & Cash Out Settings ────────────── -->
+        <div class="settings-section" id="creatorCashOutSection">
+            <h4>💰 Creator Cash Out Settings</h4>
+
+            <!-- Coin balance summary -->
+            <div class="snx-cashout-stat-grid" id="settingsCashoutStats">
+                <div class="snx-cashout-stat">
+                    <span class="snx-cashout-stat-val" id="settingsPendingUsd">$0.00</span>
+                    <span class="snx-cashout-stat-lbl">Available to Cash Out</span>
+                </div>
+                <div class="snx-cashout-stat">
+                    <span class="snx-cashout-stat-val" id="settingsTotalUsd" style="color:#ffd700;">$0.00</span>
+                    <span class="snx-cashout-stat-lbl">Lifetime Earnings</span>
+                </div>
+                <div class="snx-cashout-stat">
+                    <span class="snx-cashout-stat-val" id="settingsPendingCoins" style="color:#c8e8ff;">0</span>
+                    <span class="snx-cashout-stat-lbl">Coins Available</span>
+                </div>
+                <div class="snx-cashout-stat">
+                    <span class="snx-cashout-stat-val" id="settingsWithdrawnUsd" style="color:#8ab0cc;">$0.00</span>
+                    <span class="snx-cashout-stat-lbl">Total Withdrawn</span>
+                </div>
+            </div>
+
+            <p style="font-size:11px;color:#4a6a8a;margin:6px 0 10px;line-height:1.5;">
+                💡 You receive <strong style="color:#44ff99;">90%</strong> of all gift values.
+                Shadow Nexus keeps 10%.
+            </p>
+
+            <!-- Payout method -->
+            <div class="snx-cashout-row">
+                <div class="snx-cashout-lbl">
+                    Payout Method
+                    <small>Choose how you receive your earnings</small>
+                </div>
+                <div class="snx-cashout-method-row">
+                    <button class="snx-cashout-method-btn snx-method-active" id="settingsMethodPayPal" onclick="snxSelectPayoutMethod('paypal', this)">🅿️ PayPal</button>
+                    <button class="snx-cashout-method-btn" id="settingsMethodBank" onclick="snxSelectPayoutMethod('bank', this)">🏦 Bank Transfer</button>
+                </div>
+            </div>
+
+            <!-- PayPal email -->
+            <div class="snx-cashout-row" id="settingsPayPalRow">
+                <div class="snx-cashout-lbl">
+                    PayPal Email
+                    <small>The email linked to your PayPal account</small>
+                </div>
+                <input id="settingsPayoutEmail" class="snx-card-input" type="email"
+                    placeholder="your@paypal.com"
+                    style="max-width:220px;margin:0;"
+                    autocomplete="email">
+            </div>
+
+            <!-- Bank transfer note -->
+            <div class="snx-cashout-row" id="settingsBankRow" style="display:none;">
+                <div class="snx-cashout-lbl">
+                    Bank Transfer
+                    <small>Contact support to connect your bank account</small>
+                </div>
+                <button style="padding:6px 14px;font-size:12px;border-radius:10px;" onclick="alert('Bank transfer setup — contact support@shadownexus.com')">Contact Support</button>
+            </div>
+
+            <!-- Cash out amount -->
+            <div class="snx-cashout-row">
+                <div class="snx-cashout-lbl">
+                    Cash Out Amount (Coins)
+                    <small>Minimum 500 coins ($5.00)</small>
+                </div>
+                <input id="settingsPayoutCoins" class="snx-card-input" type="number"
+                    placeholder="Min 500" min="500"
+                    style="max-width:120px;margin:0;">
+            </div>
+
+            <!-- Request cash out button -->
+            <div class="settings-row" style="border-bottom:none;margin-top:4px;">
+                <button id="settingsCashOutBtn"
+                    style="padding:10px 22px;border-radius:10px;font-size:13px;font-weight:800;background:linear-gradient(135deg,#003388,#0066cc);border-color:rgba(0,180,255,0.6);color:#fff;"
+                    onclick="snxSettingsRequestCashOut()">
+                    💸 Request Cash Out
+                </button>
+                <button id="settingsRefreshEarnings"
+                    style="padding:10px 14px;border-radius:10px;font-size:12px;margin-left:6px;"
+                    onclick="snxLoadSettingsEarnings()">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <!-- Cash out history -->
+            <div id="settingsCashoutHistoryWrap" style="margin-top:14px;display:none;">
+                <div style="font-size:11px;font-weight:700;color:#6a90b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Cash Out History</div>
+                <div class="snx-cashout-history-list" id="settingsCashoutHistoryList"></div>
+            </div>
+
         </div>
 
         <div class="settings-section">
@@ -24663,6 +24771,137 @@ window.switchAdminTab = function(tab) {
   }
 
 })();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SHADOW NEXUS — Gift & Coin System integration (index.html / feed)
+     Initialises the gift/coin module on the feed page so users can:
+       • See their coin balance in the sidebar chip
+       • Buy Shadow Coins from the sidebar or Settings page
+       • Request creator cash-outs from Settings
+     ══════════════════════════════════════════════════════════════════ -->
+<script type="module">
+'use strict';
+
+import {
+  giftSystemInit,
+  openBuyCoinsPanel,
+  requestCashOut,
+  getCreatorDashboard,
+} from './gifts.js';
+
+// ── Expose buy-coins opener so the nav chip onclick can call it ─────────────
+window._snxOpenBuyCoins = openBuyCoinsPanel;
+
+// ── Initialise gift system (no live context on feed page) ──────────────────
+giftSystemInit({
+  onBalanceChange: (bal) => {
+    // Update sidebar coin chip
+    const navVal = document.getElementById('navCoinBalanceVal');
+    if (navVal) navVal.textContent = bal.toLocaleString();
+  },
+});
+
+// ── Settings: load creator earnings ────────────────────────────────────────
+window.snxLoadSettingsEarnings = async function () {
+  const uid = window._snxCurrentUser?.uid;
+  if (!uid) return;
+
+  const data = await getCreatorDashboard(uid).catch(() => null);
+  if (!data) return;
+
+  const { earnings, payouts } = data;
+  const COIN_VAL = 0.01; // $0.01 per coin when cashing out
+
+  const pendingUsd   = ((earnings.pendingCoins   || 0) * COIN_VAL).toFixed(2);
+  const totalUsd     = ((earnings.totalCoins     || 0) * COIN_VAL).toFixed(2);
+  const withdrawnUsd = ((earnings.withdrawnCoins || 0) * COIN_VAL).toFixed(2);
+  const pendingCoins = earnings.pendingCoins || 0;
+
+  const _set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  _set('settingsPendingUsd',    '$' + pendingUsd);
+  _set('settingsTotalUsd',      '$' + totalUsd);
+  _set('settingsPendingCoins',  pendingCoins.toLocaleString());
+  _set('settingsWithdrawnUsd',  '$' + withdrawnUsd);
+
+  // Pre-fill coins input
+  const coinsInput = document.getElementById('settingsPayoutCoins');
+  if (coinsInput && pendingCoins >= 500) coinsInput.value = pendingCoins;
+
+  // Disable cash out if below minimum
+  const btn = document.getElementById('settingsCashOutBtn');
+  if (btn) {
+    btn.disabled = pendingCoins < 500;
+    btn.style.opacity = pendingCoins < 500 ? '0.5' : '1';
+  }
+
+  // Payout history
+  const histWrap = document.getElementById('settingsCashoutHistoryWrap');
+  const histList = document.getElementById('settingsCashoutHistoryList');
+  if (histList && payouts.length > 0) {
+    histList.innerHTML = payouts.map(p => {
+      const date    = p.createdAt?.toDate ? p.createdAt.toDate().toLocaleDateString() : '—';
+      const amount  = '$' + (p.amountUsd || '0.00');
+      const status  = p.status || 'pending';
+      return `
+        <div class="snx-cashout-hist-row">
+          <span class="snx-cashout-hist-date">${date}</span>
+          <span class="snx-cashout-hist-amt">${amount}</span>
+          <span class="snx-cashout-hist-status ${status}">${status}</span>
+        </div>`;
+    }).join('');
+    if (histWrap) histWrap.style.display = 'block';
+  }
+};
+
+// ── Settings: payout method toggle ─────────────────────────────────────────
+window.snxSelectPayoutMethod = function (method, btnEl) {
+  document.querySelectorAll('.snx-cashout-method-btn').forEach(b => b.classList.remove('snx-method-active'));
+  if (btnEl) btnEl.classList.add('snx-method-active');
+
+  const paypalRow = document.getElementById('settingsPayPalRow');
+  const bankRow   = document.getElementById('settingsBankRow');
+  if (paypalRow) paypalRow.style.display = method === 'paypal' ? '' : 'none';
+  if (bankRow)   bankRow.style.display   = method === 'bank'   ? '' : 'none';
+};
+
+// ── Settings: request cash out ─────────────────────────────────────────────
+window.snxSettingsRequestCashOut = async function () {
+  const email  = document.getElementById('settingsPayoutEmail')?.value?.trim();
+  const coins  = parseInt(document.getElementById('settingsPayoutCoins')?.value || '0', 10);
+  const btn    = document.getElementById('settingsCashOutBtn');
+
+  if (!email || !email.includes('@')) {
+    if (typeof toastNotification === 'function') toastNotification('⚠️ Enter a valid PayPal email.');
+    return;
+  }
+  if (coins < 500) {
+    if (typeof toastNotification === 'function') toastNotification('⚠️ Minimum cash out is 500 coins ($5.00).');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Processing…'; }
+
+  const ok = await requestCashOut(email, coins);
+
+  if (ok) {
+    if (typeof toastNotification === 'function') toastNotification('✅ Cash out request sent!');
+    window.snxLoadSettingsEarnings(); // refresh stats
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '💸 Request Cash Out'; }
+};
+
+// ── Auto-load earnings when Settings page opens ─────────────────────────────
+// Hook into the existing navTo function to detect settingsPage navigation
+const _origNavTo = window.navTo;
+window.navTo = function (page) {
+  if (typeof _origNavTo === 'function') _origNavTo(page);
+  if (page === 'settingsPage') {
+    setTimeout(window.snxLoadSettingsEarnings, 300);
+  }
+};
+
 </script>
 
 </body>

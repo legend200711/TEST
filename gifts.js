@@ -113,14 +113,23 @@ export const GIFTS = [
     color:     '#cc44aa',
     animClass: 'gift-anim-rose',
   },
+  {
+    id:        'shadow_cat',
+    name:      'Shadow Cat',
+    emoji:     '🐈‍⬛',
+    coins:     250,
+    color:     '#7700cc',
+    animClass: 'gift-anim-cat',
+  },
 ];
 
 /* ── Coin packages (must match Cloud Function COIN_PACKAGES) ── */
 export const COIN_PACKAGES = [
-  { id: 'coins_100',  coins: 100,  price: 0.99,  label: '100 Coins',   badge: '' },
-  { id: 'coins_500',  coins: 500,  price: 3.99,  label: '500 Coins',   badge: 'Popular' },
-  { id: 'coins_1000', coins: 1000, price: 6.99,  label: '1,000 Coins', badge: 'Best Value' },
-  { id: 'coins_5000', coins: 5000, price: 29.99, label: '5,000 Coins', badge: '' },
+  { id: 'coins_5',    coins: 5,    price: 0.05,  label: '5 Coins',     badge: 'Starter' },
+  { id: 'coins_100',  coins: 100,  price: 1.00,  label: '100 Coins',   badge: '' },
+  { id: 'coins_500',  coins: 500,  price: 5.00,  label: '500 Coins',   badge: 'Popular' },
+  { id: 'coins_1000', coins: 1000, price: 10.00, label: '1,000 Coins', badge: 'Best Value' },
+  { id: 'coins_5000', coins: 5000, price: 50.00, label: '5,000 Coins', badge: 'Mega' },
 ];
 
 export const CREATOR_SPLIT  = 0.90;
