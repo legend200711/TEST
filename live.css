@@ -628,6 +628,12 @@ body.is-creator .live-viewer-actions { display: none !important; }
   color: #ffe066;
   cursor: default;
 }
+.live-request-box-btn.off {
+  background: rgba(255,30,50,0.25);
+  border-color: rgba(255,50,70,0.65);
+  color: #ff8899;
+}
+.live-request-box-btn.off:hover { background: rgba(255,30,50,0.4); }
 
 /* ── Incoming request queue (host side) ── */
 .guest-request-queue {
@@ -928,4 +934,3 @@ body.is-creator .live-viewer-actions { display: none !important; }
 body.is-viewer .guest-layout-btn      { display: none !important; }
 body.is-viewer .guest-request-queue   { display: none !important; }
 body.is-viewer #layoutSettingsPanel   { display: none !important; }
-body.is-creator .live-request-box-btn { display: none !important; }

@@ -269,7 +269,17 @@
       <!-- Request a Box button (viewer only) -->
       <button id="btnRequestBox" class="live-request-box-btn" aria-label="Request a guest box">
         <span style="font-size:18px;line-height:1;">📺</span>
-        Request a Box
+        <span id="btnRequestBoxLabel">Request a Box</span>
+      </button>
+
+      <!-- Guest cam/mic controls (shown only when viewer is in a guest box) -->
+      <button id="btnGuestCam" class="live-request-box-btn" aria-label="Toggle guest camera" style="display:none;">
+        <span style="font-size:18px;line-height:1;">📷</span>
+        <span id="btnGuestCamLabel">Cam</span>
+      </button>
+      <button id="btnGuestMic" class="live-request-box-btn" aria-label="Toggle guest microphone" style="display:none;">
+        <span style="font-size:18px;line-height:1;">🎤</span>
+        <span id="btnGuestMicLabel">Mic</span>
       </button>
 
     </div>

@@ -111,6 +111,10 @@ let _guestPeers        = {};       // uid → { pc, stream, cell, name }
 let _guestReqUnsub     = null;     // RTDB listener for incoming requests (host)
 let _guestStatusUnsub  = null;     // RTDB listener for request status (viewer)
 let _layoutPanelOpen   = false;
+let _guestStream       = null;     // viewer's own guest media stream
+let _guestCamOn        = true;     // viewer's guest cam state
+let _guestMicOn        = true;     // viewer's guest mic state
+let _shownReqUids      = new Set(); // host: tracks UIDs already shown in request queue
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -175,6 +179,11 @@ document.addEventListener('DOMContentLoaded', () => {
     guestGrid:           document.getElementById('guestGrid'),
     guestRequestQueue:   document.getElementById('guestRequestQueue'),
     btnRequestBox:       document.getElementById('btnRequestBox'),
+    btnRequestBoxLabel:  document.getElementById('btnRequestBoxLabel'),
+    btnGuestCam:         document.getElementById('btnGuestCam'),
+    btnGuestCamLabel:    document.getElementById('btnGuestCamLabel'),
+    btnGuestMic:         document.getElementById('btnGuestMic'),
+    btnGuestMicLabel:    document.getElementById('btnGuestMicLabel'),
     btnLayoutSettings:   document.getElementById('btnLayoutSettings'),
     layoutSettingsPanel: document.getElementById('layoutSettingsPanel'),
   };
@@ -211,6 +220,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Guest box button wiring
   D.btnRequestBox     && D.btnRequestBox.addEventListener('click', _viewerRequestBox);
+  D.btnGuestCam       && D.btnGuestCam.addEventListener('click', _toggleGuestCam);
+  D.btnGuestMic       && D.btnGuestMic.addEventListener('click', _toggleGuestMic);
   D.btnLayoutSettings && D.btnLayoutSettings.addEventListener('click', _toggleLayoutPanel);
 
   // Layout option buttons
@@ -911,6 +922,9 @@ async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
 
+  // Stop guest media stream if viewer was in a box
+  if (_guestStream) { try { _guestStream.getTracks().forEach(t => t.stop()); } catch(_){} _guestStream = null; }
+
   // Clean up any pending box request (RTDB + Firestore)
   if (_user && _roomId) {
     try { await remove(ref(_liveDB, `guestRequests/${_roomId}/${_user.uid}`)); } catch(_) {}
@@ -1545,14 +1559,26 @@ async function _viewerRequestBox() {
   // ── Guard: user must be logged in ──
   if (!_user) {
     console.warn('[BoxRequest] User not authenticated');
-    toast('Please sign in to request a box.');
+    toast('❌ Please sign in to request a box.');
+    return;
+  }
+
+  // ── Guard: anonymous users are blocked by Firestore rules ──
+  if (_user.isAnonymous) {
+    toast('❌ Sign in with an account to request a box.');
+    return;
+  }
+
+  // ── Guard: user data must be loaded ──
+  if (!_userData) {
+    toast('Loading your profile… Please try again.');
     return;
   }
 
   // ── Guard: must have a valid room ──
   if (!_roomId) {
     console.warn('[BoxRequest] Missing liveId (roomId is null)');
-    toast('No live stream found. Try refreshing.');
+    toast('❌ No live stream found. Try refreshing.');
     return;
   }
 
@@ -1580,19 +1606,21 @@ async function _viewerRequestBox() {
     }
   } catch (e) {
     console.error('[BoxRequest] Could not read liveRoom to get hostId:', e);
+    toast('❌ Firebase connection error. Please try again.');
+    return;
   }
 
   if (!hostId) {
     console.warn('[BoxRequest] Missing hostId — cannot send request');
-    toast('Could not find stream host. Try again.');
+    toast('❌ Could not find stream host. Try refreshing.');
     return;
   }
 
   console.log('[BoxRequest] Creating request — liveId:', _roomId, 'hostId:', hostId, 'viewerId:', _user.uid);
 
-  const viewerName  = _userData?.displayName || _user.email?.split('@')[0] || 'Guest';
-  const viewerAvatar = _userData?.avatar || _userData?.profilePicture || '';
-  const requestId   = `${_roomId}_${_user.uid}`;
+  const viewerName   = _userData.displayName || _user.email?.split('@')[0] || 'Guest';
+  const viewerAvatar = _userData.avatar || _userData.profilePicture || '';
+  const requestId    = `${_roomId}_${_user.uid}`;
 
   // ── Write to Firestore boxRequests ──
   try {
@@ -1608,7 +1636,11 @@ async function _viewerRequestBox() {
     console.log('[BoxRequest] Firestore write successful — requestId:', requestId);
   } catch (e) {
     console.error('[BoxRequest] Firestore write failed:', e.code, e.message);
-    toast('Could not send request (permission denied?). Try again.');
+    if (e.code === 'permission-denied') {
+      toast('❌ Permission denied. Make sure you are signed in.');
+    } else {
+      toast('❌ Could not send request. Please try again.');
+    }
     return;
   }
 
@@ -1629,11 +1661,11 @@ async function _viewerRequestBox() {
     // Non-fatal — Firestore is the source of truth for the host notification
   }
 
+  // ── Update button to show pending state ──
   if (btn) {
     btn.classList.add('pending');
-    const label = btn.querySelector('span:last-child');
-    if (label) label.textContent = 'Waiting…';
   }
+  if (D.btnRequestBoxLabel) D.btnRequestBoxLabel.textContent = 'Waiting…';
   toast('📺 Request sent to host!');
 
   // ── Watch Firestore boxRequest status for host response ──
@@ -1658,16 +1690,43 @@ async function _viewerRequestBox() {
     } else if (status === 'declined') {
       if (btn) {
         btn.classList.remove('pending');
-        const label = btn.querySelector('span:last-child');
-        if (label) label.textContent = 'Request a Box';
       }
+      if (D.btnRequestBoxLabel) D.btnRequestBoxLabel.textContent = 'Request a Box';
       toast('Request declined.');
       _guestStatusUnsub && _guestStatusUnsub();
       _guestStatusUnsub = null;
       // Clean up Firestore doc
       try { await deleteDoc(reqDocRef); } catch(_) {}
     }
+  }, err => {
+    console.error('[BoxRequest] Snapshot listener error:', err.code, err.message);
+    if (err.code === 'permission-denied') {
+      toast('❌ Permission denied watching request status.');
+    }
   });
+}
+
+/* ── VIEWER: Guest cam toggle ── */
+function _toggleGuestCam() {
+  if (!_guestStream) return;
+  _guestCamOn = !_guestCamOn;
+  _guestStream.getVideoTracks().forEach(t => { t.enabled = _guestCamOn; });
+  if (D.btnGuestCam) D.btnGuestCam.classList.toggle('off', !_guestCamOn);
+  if (D.btnGuestCamLabel) D.btnGuestCamLabel.textContent = _guestCamOn ? 'Cam' : 'Cam Off';
+  const icon = D.btnGuestCam && D.btnGuestCam.querySelector('span:first-child');
+  if (icon) icon.textContent = _guestCamOn ? '📷' : '🚫';
+}
+
+/* ── VIEWER: Guest mic toggle ── */
+function _toggleGuestMic() {
+  if (!_guestStream) return;
+  _guestMicOn = !_guestMicOn;
+  _guestStream.getAudioTracks().forEach(t => { t.enabled = _guestMicOn; });
+  if (D.btnGuestMic) D.btnGuestMic.classList.toggle('off', !_guestMicOn);
+  if (D.btnGuestMicLabel) D.btnGuestMicLabel.textContent = _guestMicOn ? 'Mic' : 'Mic Off';
+  const icon = D.btnGuestMic && D.btnGuestMic.querySelector('span:first-child');
+  if (icon) icon.textContent = _guestMicOn ? '🎤' : '🔇';
+  toast(_guestMicOn ? 'Mic on' : 'Mic muted');
 }
 
 /* ── VIEWER: Join as a guest box (answerer) ── */
@@ -1681,9 +1740,21 @@ async function _guestJoinAsViewer() {
       audio: true,
     });
   } catch (e) {
-    toast('Camera access denied. Cannot join box.');
+    console.error('[GuestBox] getUserMedia failed:', e.name, e.message);
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      toast('❌ Camera & mic access denied. Allow in browser settings.');
+    } else if (e.name === 'NotFoundError') {
+      toast('❌ No camera/mic found on this device.');
+    } else {
+      toast('❌ Could not access camera. Please try again.');
+    }
     return;
   }
+
+  // Store stream so cam/mic toggles work
+  _guestStream = guestStream;
+  _guestCamOn  = true;
+  _guestMicOn  = true;
 
   const sigRef = ref(_liveDB, `guestSignaling/${_roomId}/${_user.uid}`);
   const MAX_WAIT = 10000;
@@ -1756,8 +1827,12 @@ async function _guestJoinAsViewer() {
     }
   });
 
-  // Show own video locally (viewer sees their own box)
+  // Show own video locally (viewer sees their own box) and reveal controls
   _guestAddViewerSelf(guestStream, guestPc);
+
+  // Show cam/mic toggle buttons now that the viewer is in a box
+  if (D.btnGuestCam) D.btnGuestCam.style.display = 'flex';
+  if (D.btnGuestMic) D.btnGuestMic.style.display = 'flex';
 }
 
 /* ── Show viewer's own guest box on their screen ── */
@@ -1792,6 +1867,13 @@ function _guestAddViewerSelf(stream, pc) {
     if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
       cell.remove();
       _applyGuestLayout();
+      // Hide guest controls and restore request button
+      if (D.btnGuestCam) D.btnGuestCam.style.display = 'none';
+      if (D.btnGuestMic) D.btnGuestMic.style.display = 'none';
+      if (D.btnRequestBox) { D.btnRequestBox.style.display = ''; D.btnRequestBox.classList.remove('pending'); }
+      if (D.btnRequestBoxLabel) D.btnRequestBoxLabel.textContent = 'Request a Box';
+      // Stop local guest stream
+      if (_guestStream) { _guestStream.getTracks().forEach(t => t.stop()); _guestStream = null; }
     }
   };
 }
@@ -1800,6 +1882,9 @@ function _guestAddViewerSelf(stream, pc) {
 function _hostListenForGuestRequests() {
   if (!_roomId || !_user) return;
   console.log('[BoxRequest] Host listening for guest requests on roomId:', _roomId);
+
+  // Reset the seen-UID tracker when starting a new listen session
+  _shownReqUids.clear();
 
   // ── Primary listener: Firestore boxRequests ──
   const fsReqQuery = query(
@@ -1814,32 +1899,33 @@ function _hostListenForGuestRequests() {
       if (change.type === 'added') {
         const d = change.doc.data();
         console.log('[BoxRequest] Request received by host from viewer:', d.viewerId, 'name:', d.viewerName);
-        // Build a unified req object compatible with _hostShowRequestCard
-        _hostShowRequestCard({
-          uid:        d.viewerId,
-          name:       d.viewerName,
-          avatar:     d.viewerProfileImage || '',
-          requestId:  change.doc.id,
-          status:     'pending',
-        });
+        if (!_shownReqUids.has(d.viewerId)) {
+          _shownReqUids.add(d.viewerId);
+          _hostShowRequestCard({
+            uid:        d.viewerId,
+            name:       d.viewerName,
+            avatar:     d.viewerProfileImage || '',
+            requestId:  change.doc.id,
+            status:     'pending',
+          });
+        }
       }
     });
   }, err => {
     console.error('[BoxRequest] Firestore boxRequests listener error:', err.code, err.message);
   });
 
-  // ── Fallback: RTDB guestRequests (for resilience) ──
+  // ── Fallback: RTDB guestRequests (only fires on child_added, not all value changes) ──
   const rtdbReqsRef = ref(_liveDB, `guestRequests/${_roomId}`);
+  // Use onChildAdded (via onValue snapshot forEach for new items only)
+  // To avoid duplicates we check _shownReqUids which is shared with the Firestore path
   const rtdbUnsub = onValue(rtdbReqsRef, snap => {
     if (!snap.exists()) return;
     snap.forEach(child => {
       const req = child.val();
-      if (req.status === 'pending') {
-        // Only show if not already shown via Firestore
-        const queue = D.guestRequestQueue;
-        if (queue && !queue.querySelector(`[data-uid="${req.uid}"]`)) {
-          _hostShowRequestCard(req);
-        }
+      if (req.status === 'pending' && !_shownReqUids.has(req.uid)) {
+        _shownReqUids.add(req.uid);
+        _hostShowRequestCard(req);
       }
     });
   });
@@ -1847,7 +1933,8 @@ function _hostListenForGuestRequests() {
   // Combine both unsubs into _guestReqUnsub
   _guestReqUnsub = () => {
     try { fsUnsub(); }   catch(_) {}
-    try { rtdbUnsub(); } catch(_) {}
+    try { off(rtdbReqsRef); } catch(_) {}
+    _shownReqUids.clear();
   };
 }
 
@@ -2104,6 +2191,8 @@ function _hostRemoveGuest(uid) {
     if (peer.cell) { try { peer.cell.remove(); } catch(_){} }
     delete _guestPeers[uid];
   }
+  // Allow this UID to send a new request in a future session
+  _shownReqUids.delete(uid);
   try { remove(ref(_liveDB, `guestRequests/${_roomId}/${uid}`)); } catch(_) {}
   try { remove(ref(_liveDB, `guestSignaling/${_roomId}/${uid}`)); } catch(_) {}
 

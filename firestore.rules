@@ -439,7 +439,7 @@ service cloud.firestore {
         allow delete: if isSignedIn()
           && (
             resource.data.userId == request.auth.uid
-            || get(/databases/$(database)/documents/liveRooms/$(roomId)).data.hostId == request.auth.uid
+            || get(/databases/$(database)/documents/liveRooms/$(uid)).data.hostId == request.auth.uid
             || isFounder()
           );
         allow update: if false;
