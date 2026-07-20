@@ -246,39 +246,43 @@
     </div>
 
     <!-- ═══════════════════════════════════
-         VIEWER ACTIONS (bottom-right)
+         VIEWER ACTIONS — right side column
+         TikTok-style circular buttons
          Hidden for creator via CSS
          ═══════════════════════════════════ -->
     <div class="live-viewer-actions">
 
-      <button id="btnCreatorProfile" class="live-profile-btn" aria-label="View creator profile">
-        <span class="live-profile-icon">👤</span>
-        Profile
+      <!-- Like ❤️ -->
+      <button id="btnLike" class="live-like-btn" aria-label="Like stream">
+        <span class="live-like-icon">❤️</span>
+        <span id="likeBtnCount" style="display:none;">Like</span>
       </button>
 
+      <!-- Request a Box 📺 -->
+      <button id="btnRequestBox" class="live-request-box-btn" aria-label="Request a guest box">
+        <span>📺</span>
+        <span id="btnRequestBoxLabel">Request a Box</span>
+      </button>
+
+      <!-- Share 📤 -->
       <button id="btnShareLive" class="live-share-btn" aria-label="Share live stream">
         <span class="live-share-icon">📤</span>
         Share
       </button>
 
-      <button id="btnLike" class="live-like-btn" aria-label="Like stream">
-        <span class="live-like-icon">❤️</span>
-        <span id="likeBtnCount">Like</span>
-      </button>
-
-      <!-- Request a Box button (viewer only) -->
-      <button id="btnRequestBox" class="live-request-box-btn" aria-label="Request a guest box">
-        <span style="font-size:18px;line-height:1;">📺</span>
-        <span id="btnRequestBoxLabel">Request a Box</span>
+      <!-- Profile 👤 (sits below share) -->
+      <button id="btnCreatorProfile" class="live-profile-btn" aria-label="View creator profile">
+        <span class="live-profile-icon">👤</span>
+        Profile
       </button>
 
       <!-- Guest cam/mic controls (shown only when viewer is in a guest box) -->
       <button id="btnGuestCam" class="live-request-box-btn" aria-label="Toggle guest camera" style="display:none;">
-        <span style="font-size:18px;line-height:1;">📷</span>
+        <span>📷</span>
         <span id="btnGuestCamLabel">Cam</span>
       </button>
       <button id="btnGuestMic" class="live-request-box-btn" aria-label="Toggle guest microphone" style="display:none;">
-        <span style="font-size:18px;line-height:1;">🎤</span>
+        <span>🎤</span>
         <span id="btnGuestMicLabel">Mic</span>
       </button>
 

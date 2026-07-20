@@ -2416,8 +2416,28 @@ function _applyGuestLayout() {
   const grid = D.guestGrid;
   if (!grid) return;
 
+  // ── Viewer mode: grid state is managed entirely by _startViewerGuestGrid.
+  //    _guestPeers is always empty for viewers, so we must NOT recompute from it.
+  //    Just apply visual layout (size class + equal-grid math) based on DOM state.
+  if (_mode === 'viewer') {
+    const guestCount = parseInt(grid.dataset.count || '0', 10);
+    grid.dataset.layout = _guestLayout;
+    grid.classList.remove('box-sm', 'box-md', 'box-lg');
+    grid.classList.add('box-' + _guestBoxSize);
+    if (guestCount === 0) { grid.classList.remove('has-guests'); return; }
+    grid.classList.add('has-guests');
+    if (_guestLayout === 'grid') {
+      _applyEqualGrid(grid, guestCount + 1);
+    } else if (_guestLayout === 'float') {
+      _applyFloatLayout(grid, guestCount);
+    } else if (_guestLayout === 'auto' && guestCount >= 5) {
+      _applyEqualGrid(grid, guestCount + 1);
+    }
+    return;
+  }
+
+  // ── Creator mode: derive count from _guestPeers ──
   const guestCount = Object.keys(_guestPeers).length;  // guests only (not host)
-  const totalCount = guestCount;                         // data-count = guest count
 
   grid.dataset.count  = guestCount.toString();
   grid.dataset.layout = _guestLayout;

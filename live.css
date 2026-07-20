@@ -340,17 +340,19 @@ body.is-creator #liveVideo {
 /* ── Chat panel ── */
 .live-chat-panel {
   position: absolute;
-  bottom: 0; right: 0;
-  width: min(300px, 80vw);
+  /* Leave right side clear for viewer action buttons (54px wide) */
+  bottom: 0; left: 0;
+  right: 64px; /* clear of side buttons */
   height: 55%;
   display: flex; flex-direction: column;
   pointer-events: none;
   z-index: 9;
 }
 
-/* Creator mode — shift up above bottom controls */
+/* Creator mode — right edge can go full width, shift up above bottom controls */
 body.is-creator .live-chat-panel {
   bottom: 66px;
+  right: 0;
   height: 48%;
 }
 
@@ -396,9 +398,13 @@ body.is-creator .live-chat-panel {
 /* Chat input row (viewer + creator) */
 .live-chat-input-row {
   display: flex; gap: 6px; align-items: center;
-  padding: 8px 12px;
+  padding: 8px 10px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
   pointer-events: auto;
+  /* Subtle background so text is always readable over video */
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(4px);
+  border-radius: 0 0 0 0;
 }
 body.is-creator .live-chat-input-row {
   padding-bottom: 8px;
@@ -429,57 +435,61 @@ body.is-creator .live-chat-input-row {
 .live-chat-send:active { transform: scale(0.9); }
 
 /* ── Viewer action bar ── */
+/* ══════════════════════════════════════════════════════
+   VIEWER LAYOUT — TikTok-style
+   Side buttons: right edge, vertical column
+   Chat: bottom-left area, clear of the side buttons
+   ══════════════════════════════════════════════════════ */
+
 .live-viewer-actions {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
-  padding: 8px 10px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
-  background: linear-gradient(0deg, rgba(0,0,0,0.5) 0%, transparent 100%);
-  display: flex; align-items: flex-end; justify-content: flex-end;
-  flex-wrap: wrap; gap: 7px; z-index: 10;
+  /* Sit above the chat input row (≈ 60px) + safe area */
+  bottom: calc(64px + env(safe-area-inset-bottom, 0));
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  z-index: 20;
   pointer-events: none;
 }
 .live-viewer-actions > * { pointer-events: auto; }
 
-/* Like button */
-.live-like-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
-  border: 1.5px solid rgba(255,255,255,0.18);
-  border-radius: 12px; padding: 6px 9px;
-  color: #fff; font-size: 10px; font-weight: 700;
-  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
+/* ── Shared base style for all circular side buttons ── */
+.live-like-btn,
+.live-profile-btn,
+.live-share-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.58);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255,255,255,0.2);
+  color: #fff;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 0;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.18s, border-color 0.18s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  text-decoration: none;
+  font-size: 0; /* hide text label on circular buttons */
 }
-.live-like-btn:hover { border-color: rgba(255,60,100,0.7); background: rgba(255,30,70,0.2); }
-.live-like-btn:active { transform: scale(0.92); }
-.live-like-btn.liked { border-color: rgba(255,60,100,0.85); color: #ff6688; }
-.live-like-icon { font-size: 18px; line-height: 1; }
+
+/* Like button */
+.live-like-btn:hover  { background: rgba(255,30,70,0.35);  border-color: rgba(255,60,100,0.7); }
+.live-like-btn:active { transform: scale(0.88); }
+.live-like-btn.liked  { border-color: rgba(255,60,100,0.85); color: #ff6688; }
+.live-like-icon { font-size: 22px; line-height: 1; display: block; }
 
 /* Profile button */
-.live-profile-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
-  border: 1.5px solid rgba(255,255,255,0.18);
-  border-radius: 12px; padding: 6px 9px;
-  color: #fff; font-size: 10px; font-weight: 700;
-  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
-  text-decoration: none;
-}
-.live-profile-btn:hover { border-color: rgba(0,174,239,0.7); background: rgba(0,80,200,0.2); }
-.live-profile-icon { font-size: 18px; line-height: 1; }
+.live-profile-btn:hover  { background: rgba(0,80,200,0.32); border-color: rgba(0,174,239,0.7); }
+.live-profile-icon { font-size: 22px; line-height: 1; display: block; }
 
 /* Share button */
-.live-share-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
-  border: 1.5px solid rgba(0,174,239,0.38);
-  border-radius: 12px; padding: 6px 9px;
-  color: #fff; font-size: 10px; font-weight: 700;
-  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
-}
-.live-share-btn:hover { border-color: rgba(0,174,239,0.75); background: rgba(0,80,200,0.22); box-shadow: 0 0 14px rgba(0,174,239,0.35); }
-.live-share-btn:active { transform: scale(0.92); }
-.live-share-icon { font-size: 18px; line-height: 1; }
+.live-share-btn:hover  { background: rgba(0,80,200,0.32); border-color: rgba(0,174,239,0.75); box-shadow: 0 0 12px rgba(0,174,239,0.3); }
+.live-share-btn:active { transform: scale(0.88); }
+.live-share-icon { font-size: 22px; line-height: 1; display: block; }
 
 /* ── Viewer count ribbon for chat ── */
 .live-stats-ribbon {
@@ -560,31 +570,45 @@ body.is-creator .live-chat-input-row {
   .live-ctrl-btn  { width: 36px; height: 36px; font-size: 15px; }
   .live-bottom-bar { gap: 5px; padding: 6px 6px; }
   #btnEndLive { padding: 6px 10px; font-size: 10px; }
+  /* Side buttons stay circular — just shrink slightly */
   .live-like-btn, .live-profile-btn, .live-share-btn, .live-request-box-btn {
-    padding: 5px 7px; font-size: 9px; border-radius: 10px;
+    width: 38px; height: 38px;
   }
-  .live-like-icon, .live-profile-icon, .live-share-icon { font-size: 16px; }
-  .live-chat-panel { width: 100%; }
+  .live-like-icon { font-size: 18px; }
+  .live-profile-icon { font-size: 18px; }
+  .live-share-icon { font-size: 18px; }
+  .live-viewer-actions { gap: 10px; right: 7px; }
 }
 @media (max-width: 480px) and (min-width: 381px) {
   .live-ctrl-btn  { width: 38px; height: 38px; font-size: 16px; }
   .live-bottom-bar { gap: 6px; }
-  .live-chat-panel { width: 100%; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  /* Landscape on phones — shrink further and raise bottom bar */
+  /* Landscape on phones — shrink side buttons, shift viewer actions up */
   .live-ctrl-btn  { width: 34px; height: 34px; font-size: 14px; }
   .live-bottom-bar { gap: 6px; padding-bottom: calc(4px + env(safe-area-inset-bottom, 0)); }
   #btnEndLive { padding: 5px 10px; font-size: 10px; }
-  .live-viewer-actions { padding: 5px 8px; gap: 5px; }
-  .live-like-btn, .live-profile-btn, .live-share-btn, .live-request-box-btn {
-    padding: 4px 7px; font-size: 9px;
+  .live-viewer-actions {
+    bottom: calc(52px + env(safe-area-inset-bottom, 0));
+    right: 8px; gap: 8px;
   }
-  .live-like-icon, .live-profile-icon, .live-share-icon { font-size: 15px; }
+  .live-like-btn, .live-profile-btn, .live-share-btn, .live-request-box-btn {
+    width: 36px; height: 36px;
+  }
+  .live-like-icon { font-size: 16px; }
+  .live-profile-icon { font-size: 16px; }
+  .live-share-icon { font-size: 16px; }
+  /* In landscape, chat can use more height */
+  .live-chat-panel { height: 70%; right: 54px; }
 }
 @media (min-width: 768px) {
-  .live-chat-panel { width: 280px; }
-  body.is-creator .live-chat-panel { bottom: 72px; }
+  /* Tablet/Desktop: wider chat, bigger side buttons */
+  .live-chat-panel { width: 280px; right: auto; }
+  body.is-creator .live-chat-panel { bottom: 72px; right: 0; }
+  .live-viewer-actions { right: 14px; gap: 16px; }
+  .live-like-btn, .live-profile-btn, .live-share-btn, .live-request-box-btn {
+    width: 50px; height: 50px;
+  }
   /* Desktop: restore comfortable button sizes */
   .live-ctrl-btn { width: 46px; height: 46px; font-size: 20px; }
   .live-bottom-bar { gap: 14px; }
@@ -635,19 +659,25 @@ body.is-creator .live-viewer-actions { display: none !important; }
    GUEST BOX SYSTEM
    ═══════════════════════════════════════════════ */
 
-/* ── Request a Box button (viewer only) ── */
+/* ── Request a Box / Guest Cam / Guest Mic buttons (viewer side column) ── */
 .live-request-box-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  background: rgba(0,80,200,0.55); backdrop-filter: blur(4px);
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 0;
+  background: rgba(0,80,200,0.55); backdrop-filter: blur(6px);
   border: 1.5px solid rgba(0,174,239,0.7);
-  border-radius: 12px; padding: 6px 9px;
-  color: #fff; font-size: 10px; font-weight: 700;
-  cursor: pointer; transition: all 0.18s; touch-action: manipulation;
-  white-space: nowrap;
-  box-shadow: 0 0 14px rgba(0,174,239,0.35);
+  color: #fff; font-size: 0; font-weight: 700;
+  cursor: pointer; transition: transform 0.15s, background 0.18s, border-color 0.18s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(0,174,239,0.3);
 }
-.live-request-box-btn:hover  { background: rgba(0,100,255,0.65); box-shadow: 0 0 20px rgba(0,174,239,0.55); }
-.live-request-box-btn:active { transform: scale(0.93); }
+.live-request-box-btn > span:first-child { font-size: 20px; line-height: 1; display: block; }
+.live-request-box-btn > span:not(:first-child) { display: none; } /* hide text label */
+.live-request-box-btn:hover  { background: rgba(0,100,255,0.65); box-shadow: 0 0 16px rgba(0,174,239,0.55); }
+.live-request-box-btn:active { transform: scale(0.88); }
 .live-request-box-btn.pending {
   background: rgba(180,120,0,0.45);
   border-color: rgba(255,200,0,0.6);
