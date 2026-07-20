@@ -1109,12 +1109,13 @@ async function _startViewerWebRTC(roomData) {
     D.liveVideo.play().catch(() => {});
     _showUnmutePrompt();
     _hideConnBanner();
+    // Safety: hide banner once video actually starts playing
+    D.liveVideo.addEventListener('playing', _hideConnBanner, { once: true });
   };
 
   _rtcPc.onconnectionstatechange = () => {
     if (_rtcPc.connectionState === 'connected') {
       _hideConnBanner();
-      // connected — banner already hidden by ontrack
     } else if (_rtcPc.connectionState === 'disconnected' || _rtcPc.connectionState === 'failed') {
       _showConnBanner('Waiting for stream…', '');
     }
@@ -1189,6 +1190,14 @@ async function _startViewerWebRTC(roomData) {
   });
 
   _showConnBanner('Waiting for stream…', '');
+
+  // ── 3-second safety timeout: if video is already playing, remove banner ──
+  setTimeout(() => {
+    const v = D.liveVideo;
+    if (v && v.srcObject && !v.paused && v.readyState >= 2) {
+      _hideConnBanner();
+    }
+  }, 3000);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1355,6 +1364,9 @@ function _showStage() {
 
 function _showConnBanner(title, sub) {
   if (!D.connBanner) return;
+  // Don't show the banner if the video is already playing
+  const v = D.liveVideo;
+  if (v && v.srcObject && !v.paused && v.readyState >= 2) return;
   if (D.connTitle) D.connTitle.textContent = title;
   if (D.connSub)   D.connSub.textContent   = sub;
   D.connBanner.classList.add('visible');
