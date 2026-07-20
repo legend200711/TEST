@@ -116,6 +116,8 @@ let _guestCamOn        = true;     // viewer's guest cam state
 let _guestMicOn        = true;     // viewer's guest mic state
 let _shownReqUids      = new Set(); // host: tracks UIDs already shown in request queue
 let _viewerGuestUnsub  = null;     // viewer: RTDB listener for liveGuests presence
+let _layoutSyncUnsub   = null;     // viewer/guest: RTDB listener for layout sync
+let _guestPc           = null;     // viewer-in-box: their own guest RTCPeerConnection (for disconnect cleanup)
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -232,6 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       _guestLayout = btn.dataset.layout;
       _applyGuestLayout();
+      // Broadcast layout change to all viewers and guests
+      _broadcastLayout();
     });
   });
 
@@ -242,6 +246,8 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       _guestBoxSize = btn.dataset.size;
       _applyGuestLayout();
+      // Broadcast size change to all viewers and guests
+      _broadcastLayout();
     });
   });
 
@@ -910,6 +916,9 @@ async function _startViewer() {
   /* ── Subscribe to live guest presence (shows guest boxes to viewers) ── */
   _startViewerGuestGrid();
 
+  /* ── Subscribe to host layout changes so everyone sees the same layout ── */
+  _startLayoutSync();
+
   /* ── Increment viewer count in LIVE RTDB ── */
   try {
     const viewersRef = ref(_liveDB, `liveRooms/${_roomId}/viewers`);
@@ -950,6 +959,17 @@ async function _viewerLeave() {
   if (_viewerGuestUnsub) {
     try { off(ref(_liveDB, `liveGuests/${_roomId}`)); } catch(_) {}
     _viewerGuestUnsub = null;
+  }
+
+  // Tear down layout sync listener
+  if (_layoutSyncUnsub) {
+    try { _layoutSyncUnsub(); } catch(_) {}
+    _layoutSyncUnsub = null;
+  }
+
+  // Remove own guest presence if viewer was in a box
+  if (_user && _roomId && _guestStream) {
+    try { await remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); } catch(_) {}
   }
 
   // Clean up any pending box request (RTDB + Firestore)
@@ -1580,6 +1600,35 @@ function _esc(s) {
    who is in each box and their cam/mic status in real time.
    ═══════════════════════════════════════════════════════════════ */
 
+/* ── HOST: Broadcast current layout + size to all viewers via RTDB ── */
+function _broadcastLayout() {
+  if (!_roomId) return;
+  try {
+    update(ref(_liveDB, `liveRooms/${_roomId}`), {
+      guestLayout:  _guestLayout,
+      guestBoxSize: _guestBoxSize,
+    });
+  } catch(_) {}
+}
+
+/* ── VIEWER / GUEST: Subscribe to layout changes broadcast by the host ── */
+function _startLayoutSync() {
+  if (!_roomId) return;
+  // Detach any previous listener
+  if (_layoutSyncUnsub) { try { _layoutSyncUnsub(); } catch(_) {} _layoutSyncUnsub = null; }
+
+  const roomRef = ref(_liveDB, `liveRooms/${_roomId}`);
+  // onValue returns an unsubscribe function in the modular SDK
+  _layoutSyncUnsub = onValue(roomRef, snap => {
+    if (!snap.exists()) return;
+    const d = snap.val();
+    let changed = false;
+    if (d.guestLayout  && d.guestLayout  !== _guestLayout)  { _guestLayout  = d.guestLayout;  changed = true; }
+    if (d.guestBoxSize && d.guestBoxSize !== _guestBoxSize)  { _guestBoxSize = d.guestBoxSize; changed = true; }
+    if (changed) _applyGuestLayout();
+  });
+}
+
 function _startViewerGuestGrid() {
   if (!_roomId) return;
   const guestsRef = ref(_liveDB, `liveGuests/${_roomId}`);
@@ -1658,6 +1707,12 @@ function _startViewerGuestGrid() {
           grid.insertBefore(card, grid.firstChild);
         } else {
           grid.appendChild(card);
+        }
+
+        // If this is the current viewer's own cell and they have a live guest stream,
+        // attach the stream so they see their own live video (not just the avatar).
+        if (_guestStream && g.uid === _user?.uid) {
+          _attachGuestSelfStream(_guestStream);
         }
       } else {
         // ── Update existing card ──
@@ -1981,46 +2036,49 @@ async function _guestJoinAsViewer() {
     }
   });
 
-  // Show own video locally (viewer sees their own box) and reveal controls
-  _guestAddViewerSelf(guestStream, guestPc);
+  // Store peer connection so disconnect handler can clean up
+  _guestPc = guestPc;
+
+  // ── Publish own presence to RTDB so everyone (incl. self) sees this box ──
+  const guestName   = _userData?.displayName || _user.email?.split('@')[0] || 'Guest';
+  const guestAvatar = _userData?.avatar || _userData?.profilePicture || '';
+  try {
+    await set(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`), {
+      uid:      _user.uid,
+      name:     guestName,
+      avatar:   guestAvatar,
+      camOn:    true,
+      micOn:    true,
+      joinedAt: Date.now(),
+    });
+  } catch(_) {}
+
+  // ── Subscribe to full guest grid (viewer sees all boxes including own) ──
+  // If already subscribed (joined as viewer before requesting a box), it
+  // is already running — the new RTDB entry above will trigger a re-render.
+  // If not yet subscribed, start now.
+  if (!_viewerGuestUnsub) {
+    _startViewerGuestGrid();
+  }
+
+  // ── Subscribe to layout sync if not already running ──
+  if (!_layoutSyncUnsub) {
+    _startLayoutSync();
+  }
+
+  // ── Attach live stream to own cell once RTDB grid renders it ──
+  // Poll for the cell (RTDB listener may not have fired yet)
+  _attachGuestSelfStream(guestStream);
 
   // Show cam/mic toggle buttons now that the viewer is in a box
   if (D.btnGuestCam) D.btnGuestCam.style.display = 'flex';
   if (D.btnGuestMic) D.btnGuestMic.style.display = 'flex';
-}
 
-/* ── Show viewer's own guest box on their screen ── */
-function _guestAddViewerSelf(stream, pc) {
-  const grid = D.guestGrid;
-  if (!grid) return;
-
-  grid.classList.add('has-guests');
-  grid.dataset.count = (parseInt(grid.dataset.count || '0') + 1).toString();
-
-  const cell = document.createElement('div');
-  cell.className = 'guest-cell';
-  cell.dataset.uid = _user.uid;
-
-  const vid = document.createElement('video');
-  vid.autoplay = true;
-  vid.muted = true;   // mute self-preview
-  vid.playsInline = true;
-  vid.srcObject = stream;
-  vid.play().catch(()=>{});
-  cell.appendChild(vid);
-
-  const nameEl = document.createElement('div');
-  nameEl.className = 'guest-cell-name';
-  nameEl.textContent = (_userData.displayName || 'You') + ' (You)';
-  cell.appendChild(nameEl);
-
-  grid.appendChild(cell);
-  _applyGuestLayout();
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-      cell.remove();
-      _applyGuestLayout();
+  // Handle peer disconnect: clean up presence and controls
+  guestPc.onconnectionstatechange = () => {
+    if (guestPc.connectionState === 'disconnected' || guestPc.connectionState === 'failed' || guestPc.connectionState === 'closed') {
+      // Remove own presence so grid updates for everyone
+      if (_user && _roomId) try { remove(ref(_liveDB, `liveGuests/${_roomId}/${_user.uid}`)); } catch(_) {}
       // Hide guest controls and restore request button
       if (D.btnGuestCam) D.btnGuestCam.style.display = 'none';
       if (D.btnGuestMic) D.btnGuestMic.style.display = 'none';
@@ -2028,8 +2086,48 @@ function _guestAddViewerSelf(stream, pc) {
       if (D.btnRequestBoxLabel) D.btnRequestBoxLabel.textContent = 'Request a Box';
       // Stop local guest stream
       if (_guestStream) { _guestStream.getTracks().forEach(t => t.stop()); _guestStream = null; }
+      _guestPc = null;
     }
   };
+}
+
+/* ── Attach the guest's own live stream to their cell in the RTDB-driven grid ──
+   The RTDB onValue callback may render the cell asynchronously; retry until found. */
+function _attachGuestSelfStream(stream) {
+  const uid = _user?.uid;
+  if (!uid || !stream) return;
+
+  const _tryAttach = (attempts) => {
+    const grid = D.guestGrid;
+    if (!grid) return;
+    // Find own cell by uid (rendered by _startViewerGuestGrid)
+    const cell = grid.querySelector(`.vgc-cell[data-uid="${uid}"]`);
+    if (cell) {
+      // Replace avatar with live video
+      let vid = cell.querySelector('video');
+      if (!vid) {
+        vid = document.createElement('video');
+        vid.autoplay = true;
+        vid.muted    = true;   // mute self-preview
+        vid.playsInline = true;
+        // Insert before name label
+        const nameEl = cell.querySelector('.vgc-name, .guest-cell-name');
+        cell.insertBefore(vid, nameEl || null);
+      }
+      vid.srcObject = stream;
+      vid.play().catch(() => {});
+      // Hide camera-off overlay since stream is live
+      const camOff = cell.querySelector('.vgc-cam-off');
+      if (camOff) camOff.classList.remove('vgc-cam-off--visible');
+      return; // done
+    }
+    // Cell not yet rendered — retry up to 20 times (2 seconds total)
+    if (attempts > 0) {
+      setTimeout(() => _tryAttach(attempts - 1), 100);
+    }
+  };
+
+  _tryAttach(20);
 }
 
 /* ── HOST: Listen for incoming guest requests (Firestore + RTDB) ── */

@@ -418,11 +418,15 @@ service cloud.firestore {
       // Allowed updates:
       //  - host can update anything in their own room (uid == doc key)
       //  - any signed-in user can increment viewers / likes (fields only)
+      //  - host can update layout/size fields (guestLayout, guestBoxSize)
       allow update: if isSignedIn()
         && (
           resource.data.hostId == request.auth.uid
           || request.resource.data.diff(resource.data)
                .affectedKeys().hasOnly(['viewers', 'likes'])
+          || (resource.data.hostId == request.auth.uid
+              && request.resource.data.diff(resource.data)
+                   .affectedKeys().hasOnly(['guestLayout', 'guestBoxSize']))
         );
 
       // Only the host or Founder may delete a room
