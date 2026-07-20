@@ -302,40 +302,151 @@ body.is-creator #liveVideo {
 .live-close-btn:hover { background: rgba(255,40,60,0.35); }
 .live-close-btn:active { transform: scale(0.93); }
 
-/* ── Bottom controls (creator only) ── */
+/* ══════════════════════════════════════════════════
+   LIVE CONTROL PANEL  (creator-only bottom bar)
+   ══════════════════════════════════════════════════ */
+
+/* ── Outer container — sits flush at the bottom ── */
 .live-bottom-bar {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  padding: 8px 10px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
-  background: linear-gradient(0deg, rgba(0,0,0,0.72) 0%, transparent 100%);
-  display: flex; align-items: center; justify-content: center;
-  flex-wrap: nowrap; gap: 8px; z-index: 10;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* no overflow:hidden so panels can peek above it */
 }
-.live-ctrl-btn {
-  width: 42px; height: 42px; border-radius: 50%;
-  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
-  border: 1.5px solid rgba(255,255,255,0.22);
-  color: #fff; font-size: 18px;
+
+/* ── Inner wrapper: card + minimize toggle ── */
+.live-bottom-bar::before { content: none; } /* reset any legacy pseudo */
+
+/* ── Minimize toggle button (▼ chevron) ── */
+.live-panel-toggle {
   display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 20px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  color: rgba(255,255,255,0.6);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  margin-bottom: -1px; /* merge with panel below */
+  align-self: center;
+}
+.live-panel-toggle:hover { background: rgba(0,60,160,0.5); color: #fff; }
+.live-panel-toggle:active { transform: scale(0.92); }
+
+/* ── Button grid card ── */
+.live-panel-buttons {
+  width: 100%;
+  padding: 10px 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
+  background: rgba(0,0,0,0.78);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 8px;
+}
+
+/* ── Collapsed state: panel shrinks to just the pill ── */
+.live-panel-minimized {
+  background: transparent;
+  border: none;
+}
+.live-panel-minimized .live-panel-toggle { display: none; }
+
+/* ── Collapsed pill: 🔴 LIVE ── */
+.live-panel-pill {
+  margin-bottom: calc(12px + env(safe-area-inset-bottom, 0));
+  display: none;   /* shown by JS when minimized */
+  align-items: center; gap: 7px;
+  background: rgba(180,0,30,0.75);
+  border: 1.5px solid rgba(255,50,70,0.75);
+  border-radius: 22px;
+  padding: 8px 18px;
+  font-size: 12px; font-weight: 800; letter-spacing: 1.2px;
+  color: #fff; text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(255,30,60,0.45);
+  transition: background 0.15s;
+  touch-action: manipulation;
+  user-select: none; -webkit-user-select: none;
+}
+.live-panel-pill:hover { background: rgba(220,0,40,0.85); }
+.live-panel-pill:active { transform: scale(0.94); }
+.live-panel-pill-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #fff; flex-shrink: 0;
+  animation: feedLivePulse 1.2s ease-in-out infinite;
+}
+
+/* ── Individual control button ── */
+.live-ctrl-btn {
+  width: 56px; height: 54px;
+  border-radius: 12px;
+  background: rgba(0,15,45,0.7);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  color: #fff;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px;
+  cursor: pointer; flex-shrink: 0;
+  transition: background 0.18s, border-color 0.18s, transform 0.1s;
+  touch-action: manipulation;
+  padding: 0;
+}
+.live-btn-icon  { font-size: 20px; line-height: 1; display: block; }
+.live-btn-label { font-size: 9px; font-weight: 700; letter-spacing: 0.3px;
+                  color: rgba(255,255,255,0.65); text-transform: uppercase;
+                  white-space: nowrap; line-height: 1; }
+
+.live-ctrl-btn:hover { background: rgba(0,80,200,0.35); border-color: rgba(0,174,239,0.65); }
+.live-ctrl-btn:hover .live-btn-label { color: rgba(190,230,255,0.9); }
+.live-ctrl-btn:active { transform: scale(0.92); }
+.live-ctrl-btn.off {
+  background: rgba(255,30,50,0.22);
+  border-color: rgba(255,50,70,0.6);
+}
+.live-ctrl-btn.off .live-btn-icon { opacity: 0.7; }
+.live-ctrl-btn.off:hover { background: rgba(255,30,50,0.38); }
+
+/* ── End Live button — special red style ── */
+.live-end-btn {
+  background: rgba(180,0,30,0.55) !important;
+  border-color: rgba(255,50,70,0.7) !important;
+}
+.live-end-btn .live-btn-label { color: #ffb0b8 !important; }
+.live-end-btn:hover { background: rgba(220,0,40,0.75) !important; }
+.live-end-btn:hover .live-btn-label { color: #fff !important; }
+
+/* Keep legacy #btnEndLive override clean (cohost.js targets by id) */
+#btnEndLive { /* inherits .live-ctrl-btn + .live-end-btn */ }
+
+/* ── Dashboard button — matches ctrl-btn visually ── */
+.live-dash-btn {
+  width: 56px; height: 54px;
+  border-radius: 12px;
+  background: rgba(0,15,45,0.7);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  color: #fff;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px;
   cursor: pointer; flex-shrink: 0;
   transition: background 0.18s, border-color 0.18s, transform 0.1s;
   touch-action: manipulation;
 }
-.live-ctrl-btn:hover { background: rgba(0,80,200,0.3); border-color: rgba(0,174,239,0.6); }
-.live-ctrl-btn:active { transform: scale(0.92); }
-.live-ctrl-btn.off { background: rgba(255,30,50,0.25); border-color: rgba(255,50,70,0.65); }
-.live-ctrl-btn.off:hover { background: rgba(255,30,50,0.4); }
-
-/* End Live button */
-#btnEndLive {
-  padding: 7px 14px; border-radius: 20px; height: auto;
-  width: auto; font-size: 11px; font-weight: 800;
-  background: rgba(180,0,30,0.6); border-color: rgba(255,50,70,0.7);
-  letter-spacing: 0.5px; text-transform: uppercase;
-  color: #ffb0b8;
-}
-#btnEndLive:hover { background: rgba(220,0,40,0.8); color: #fff; }
+.live-dash-btn:hover { background: rgba(0,80,200,0.35); border-color: rgba(0,174,239,0.65); }
+.live-dash-btn:active { transform: scale(0.92); }
 
 /* ── Chat panel ── */
 .live-chat-panel {
@@ -351,7 +462,7 @@ body.is-creator #liveVideo {
 
 /* Creator mode — right edge can go full width, shift up above bottom controls */
 body.is-creator .live-chat-panel {
-  bottom: 66px;
+  bottom: 90px;
   right: 0;
   height: 48%;
 }
@@ -566,10 +677,12 @@ body.is-creator .live-chat-input-row {
 
 /* ── Responsive tweaks ── */
 @media (max-width: 380px) {
-  /* Very small phones — squeeze bottom bar even more */
-  .live-ctrl-btn  { width: 36px; height: 36px; font-size: 15px; }
-  .live-bottom-bar { gap: 5px; padding: 6px 6px; }
-  #btnEndLive { padding: 6px 10px; font-size: 10px; }
+  /* Very small phones — tighter panel buttons */
+  .live-ctrl-btn, .live-dash-btn { width: 48px; height: 46px; }
+  .live-btn-icon  { font-size: 17px; }
+  .live-btn-label { font-size: 8px; }
+  .live-panel-buttons { gap: 4px 6px; padding: 8px 6px;
+                        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0)); }
   /* Side buttons stay circular — just shrink slightly */
   .live-like-btn, .live-profile-btn, .live-share-btn, .live-request-box-btn {
     width: 38px; height: 38px;
@@ -580,14 +693,17 @@ body.is-creator .live-chat-input-row {
   .live-viewer-actions { gap: 10px; right: 7px; }
 }
 @media (max-width: 480px) and (min-width: 381px) {
-  .live-ctrl-btn  { width: 38px; height: 38px; font-size: 16px; }
-  .live-bottom-bar { gap: 6px; }
+  .live-ctrl-btn, .live-dash-btn { width: 52px; height: 50px; }
+  .live-btn-icon  { font-size: 18px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  /* Landscape on phones — shrink side buttons, shift viewer actions up */
-  .live-ctrl-btn  { width: 34px; height: 34px; font-size: 14px; }
-  .live-bottom-bar { gap: 6px; padding-bottom: calc(4px + env(safe-area-inset-bottom, 0)); }
-  #btnEndLive { padding: 5px 10px; font-size: 10px; }
+  /* Landscape on phones — shrink panel buttons, viewer actions up */
+  .live-ctrl-btn, .live-dash-btn { width: 46px; height: 42px; }
+  .live-btn-icon  { font-size: 16px; }
+  .live-btn-label { font-size: 8px; }
+  .live-panel-buttons { padding: 6px 8px;
+                        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0));
+                        gap: 4px 6px; }
   .live-viewer-actions {
     bottom: calc(52px + env(safe-area-inset-bottom, 0));
     right: 8px; gap: 8px;
@@ -604,14 +720,16 @@ body.is-creator .live-chat-input-row {
 @media (min-width: 768px) {
   /* Tablet/Desktop: wider chat, bigger side buttons */
   .live-chat-panel { width: 280px; right: auto; }
-  body.is-creator .live-chat-panel { bottom: 72px; right: 0; }
+  body.is-creator .live-chat-panel { bottom: 100px; right: 0; }
   .live-viewer-actions { right: 14px; gap: 16px; }
   .live-like-btn, .live-profile-btn, .live-share-btn, .live-request-box-btn {
     width: 50px; height: 50px;
   }
-  /* Desktop: restore comfortable button sizes */
-  .live-ctrl-btn { width: 46px; height: 46px; font-size: 20px; }
-  .live-bottom-bar { gap: 14px; }
+  /* Desktop: larger panel buttons */
+  .live-ctrl-btn, .live-dash-btn { width: 62px; height: 58px; }
+  .live-btn-icon  { font-size: 22px; }
+  .live-btn-label { font-size: 10px; }
+  .live-panel-buttons { gap: 8px 10px; }
 }
 
 /* ── Viewer-only: no bottom bar, use viewer-actions ── */
@@ -852,7 +970,7 @@ body.is-viewer #shadowBotBadge     { display: none !important; }
 /* ── Layout settings panel ── */
 .layout-settings-panel {
   position: absolute;
-  bottom: 80px; left: 50%; transform: translateX(-50%);
+  bottom: 100px; left: 50%; transform: translateX(-50%);
   width: min(340px, calc(100vw - 24px));
   background: rgba(0,10,30,0.95); backdrop-filter: blur(12px);
   border: 1.5px solid rgba(0,174,239,0.45);
@@ -1225,24 +1343,12 @@ button, input, a, [role="button"] {
    LIVE SETTINGS PANEL  (host only)
    ═══════════════════════════════════════════════════════════════ */
 
-/* Settings button in creator bottom bar */
-#btnLiveSettings {
-  width: 42px; height: 42px; border-radius: 50%;
-  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
-  border: 1.5px solid rgba(255,255,255,0.22);
-  color: #fff; font-size: 18px;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; flex-shrink: 0;
-  transition: background 0.18s, border-color 0.18s, transform 0.1s;
-  touch-action: manipulation;
-}
-#btnLiveSettings:hover { background: rgba(0,80,200,0.3); border-color: rgba(0,174,239,0.6); }
-#btnLiveSettings:active { transform: scale(0.92); }
+/* #btnLiveSettings inherits all styles from .live-ctrl-btn in the panel */
 
 /* Settings Panel */
 .live-settings-panel {
   position: absolute;
-  bottom: 80px; right: 12px;
+  bottom: 100px; right: 12px;
   width: min(300px, calc(100vw - 24px));
   background: rgba(0,10,30,0.97); backdrop-filter: blur(14px);
   border: 1.5px solid rgba(0,174,239,0.45);

@@ -610,11 +610,22 @@ async function startLive() {
     );
   }
 
+  // ── Read feature flags (co-host enable/disable) ──
+  try {
+    const cfgSnap = await getDoc(doc(_db, 'siteSettings', 'config'));
+    window._snxCoHostEnabled = cfgSnap.exists()
+      ? cfgSnap.data().coHostEnabled !== false
+      : true;
+  } catch (_) {
+    window._snxCoHostEnabled = true; // default ON if unavailable
+  }
+
   // ── Notify add-on modules (co-host, etc.) that live has started ──
   window.dispatchEvent(new CustomEvent('snxLiveReady', { detail: {
     db: _db, liveDB: _liveDB, auth: _auth,
     user: _user, userData: _userData,
     roomId: _roomId, isHost: true,
+    coHostEnabled: window._snxCoHostEnabled,
   }}));
 
   // ── Start optional systems (respects their individual ON/OFF state) ──
@@ -1054,11 +1065,24 @@ async function _startViewer() {
     );
   }
 
+  // ── Read feature flags for add-on modules (viewer path) ──
+  try {
+    if (window._snxCoHostEnabled === undefined) {
+      const cfgSnap = await getDoc(doc(_db, 'siteSettings', 'config'));
+      window._snxCoHostEnabled = cfgSnap.exists()
+        ? cfgSnap.data().coHostEnabled !== false
+        : true;
+    }
+  } catch (_) {
+    window._snxCoHostEnabled = true;
+  }
+
   // ── Notify add-on modules that viewer has joined ──
   window.dispatchEvent(new CustomEvent('snxLiveReady', { detail: {
     db: _db, liveDB: _liveDB, auth: _auth,
     user: _user, userData: _userData,
     roomId: _roomId, isHost: false,
+    coHostEnabled: window._snxCoHostEnabled,
   }}));
 
   /* ── Subscribe to live guest presence (shows guest boxes to viewers) ── */

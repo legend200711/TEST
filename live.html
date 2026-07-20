@@ -210,26 +210,71 @@
          CREATOR CONTROLS (bottom bar)
          Hidden for viewers via CSS
          ═══════════════════════════════════ -->
-    <div class="live-bottom-bar">
+    <div class="live-bottom-bar" id="liveControlPanel">
 
-      <button id="btnToggleCam" class="live-ctrl-btn" aria-label="Toggle camera" title="Camera">📷</button>
-      <button id="btnToggleMic" class="live-ctrl-btn" aria-label="Toggle microphone" title="Mic">🎤</button>
-      <button id="btnFlipCam"   class="live-ctrl-btn" aria-label="Flip camera" title="Flip">🔄</button>
-      <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">⛶</button>
-      <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">📤</button>
+      <!-- ── Minimize / Expand toggle ── -->
+      <button id="btnMinimizePanel" class="live-panel-toggle" aria-label="Minimize control panel" title="Minimize">▼</button>
 
-      <!-- Layout button (host only) — one button that opens all layout settings -->
-      <button id="btnLayoutSettings" class="live-ctrl-btn guest-layout-btn" aria-label="Layout settings" title="Layout">⊞</button>
+      <!-- ── Collapsed pill (shown when minimized) ── -->
+      <div id="livePanelPill" class="live-panel-pill" style="display:none;" aria-label="Expand control panel" role="button" tabindex="0">
+        <span class="live-panel-pill-dot"></span>
+        LIVE
+      </div>
 
-      <!-- Live Settings button (host only) -->
-      <button id="btnLiveSettings" class="live-ctrl-btn" aria-label="Live settings" title="Settings">⚙️</button>
+      <!-- ── All control buttons ── -->
+      <div class="live-panel-buttons" id="livePanelButtons">
 
-      <!-- Creator Dashboard button (host only) -->
-      <button id="btnCreatorDash" class="live-dash-btn" aria-label="Creator dashboard" title="Dashboard">📊</button>
+        <button id="btnToggleCam" class="live-ctrl-btn" aria-label="Toggle camera" title="Camera">
+          <span class="live-btn-icon">📷</span>
+          <span class="live-btn-label">Cam</span>
+        </button>
 
-      <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
+        <button id="btnToggleMic" class="live-ctrl-btn" aria-label="Toggle microphone" title="Mic">
+          <span class="live-btn-icon">🎤</span>
+          <span class="live-btn-label">Mic</span>
+        </button>
 
-    </div>
+        <button id="btnFlipCam" class="live-ctrl-btn" aria-label="Flip camera" title="Flip">
+          <span class="live-btn-icon">🔄</span>
+          <span class="live-btn-label">Flip</span>
+        </button>
+
+        <button id="btnFullscreen" class="live-ctrl-btn" aria-label="Fullscreen" title="Fullscreen">
+          <span class="live-btn-icon">⛶</span>
+          <span class="live-btn-label">Full</span>
+        </button>
+
+        <button id="btnShareLiveCreator" class="live-ctrl-btn" aria-label="Share live stream" title="Share">
+          <span class="live-btn-icon">📤</span>
+          <span class="live-btn-label">Share</span>
+        </button>
+
+        <!-- Layout button (host only) — one button that opens all layout settings -->
+        <button id="btnLayoutSettings" class="live-ctrl-btn guest-layout-btn" aria-label="Layout settings" title="Layout">
+          <span class="live-btn-icon">⊞</span>
+          <span class="live-btn-label">Layout</span>
+        </button>
+
+        <!-- Live Settings button (host only) -->
+        <button id="btnLiveSettings" class="live-ctrl-btn" aria-label="Live settings" title="Settings">
+          <span class="live-btn-icon">⚙️</span>
+          <span class="live-btn-label">Settings</span>
+        </button>
+
+        <!-- Creator Dashboard button (host only) -->
+        <button id="btnCreatorDash" class="live-dash-btn" aria-label="Creator dashboard" title="Dashboard">
+          <span class="live-btn-icon">📊</span>
+          <span class="live-btn-label">Stats</span>
+        </button>
+
+        <button id="btnEndLive" class="live-ctrl-btn live-end-btn" aria-label="End live stream">
+          <span class="live-btn-icon">🔴</span>
+          <span class="live-btn-label">End Live</span>
+        </button>
+
+      </div><!-- .live-panel-buttons -->
+
+    </div><!-- .live-bottom-bar -->
 
     <!-- ═══════════════════════════════════
          LAYOUT SETTINGS PANEL (host only)
@@ -440,41 +485,80 @@
     GIFTS
   } from './gifts.js';
 
-  /* ── Wire buttons ── */
-  document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('btnSendGift')?.addEventListener('click', openGiftPanel);
-    document.getElementById('btnBuyCoins')?.addEventListener('click', openBuyCoinsPanel);
+  /* ── Wire buttons ──
+     NOTE: ES modules are deferred — DOMContentLoaded has already fired by the
+     time this module runs. Wire events directly (no DOMContentLoaded wrapper). */
 
-    /* Creator dashboard — wire after DOM ready */
-    document.getElementById('btnCreatorDash')?.addEventListener('click', () => {
-      /* _user is set by live.js — read from live page context if available */
-      const uid = window._snxGiftUserId || null;
-      openCreatorDashboard(uid);
-    });
+  document.getElementById('btnSendGift')?.addEventListener('click', openGiftPanel);
+  document.getElementById('btnBuyCoins')?.addEventListener('click', openBuyCoinsPanel);
 
-    /* Initialise gift system — live context set after stream starts via window._snxGiftSetContext */
-    giftSystemInit({
-      onGiftReceived: ({ gift, senderName }) => {
-        /* Toast on creator side when they receive a gift */
-        const toast = document.getElementById('liveToast');
-        if (toast) {
-          toast.textContent = `${gift.emoji} ${senderName} sent ${gift.name}!`;
-          toast.style.display = 'block';
-          setTimeout(() => { toast.style.display = ''; }, 3500);
-        }
-      },
-    });
-
-    /* Expose helpers for live.js to call after auth resolves */
-    window._snxGiftSetContext = (roomId, creatorUid, creatorName) => {
-      import('./gifts.js').then(m => m.setLiveContext(roomId, creatorUid, creatorName));
-    };
-
-    /* Expose gift renderer so live.js can call it when it sees a gift chat message */
-    window._snxRenderGiftEvent = (giftId, senderName) => {
-      renderGiftEvent(giftId, senderName);
-    };
+  /* Creator dashboard */
+  document.getElementById('btnCreatorDash')?.addEventListener('click', () => {
+    const uid = window._snxGiftUserId || null;
+    openCreatorDashboard(uid);
   });
+
+  /* Initialise gift system — live context set after stream starts via window._snxGiftSetContext */
+  giftSystemInit({
+    onGiftReceived: ({ gift, senderName }) => {
+      const toast = document.getElementById('liveToast');
+      if (toast) {
+        toast.textContent = `${gift.emoji} ${senderName} sent ${gift.name}!`;
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = ''; }, 3500);
+      }
+    },
+  });
+
+  /* Expose helpers for live.js to call after auth resolves */
+  window._snxGiftSetContext = (roomId, creatorUid, creatorName) => {
+    import('./gifts.js').then(m => m.setLiveContext(roomId, creatorUid, creatorName));
+  };
+
+  /* Expose gift renderer so live.js can call it when it sees a gift chat message */
+  window._snxRenderGiftEvent = (giftId, senderName) => {
+    renderGiftEvent(giftId, senderName);
+  };
+</script>
+
+<!-- ══════════════════════════════════════════════
+     LIVE CONTROL PANEL — minimize / expand logic
+     ══════════════════════════════════════════════ -->
+<script>
+(function () {
+  var minimized = false;
+
+  function togglePanel() {
+    minimized = !minimized;
+    var panel   = document.getElementById('liveControlPanel');
+    var buttons = document.getElementById('livePanelButtons');
+    var pill    = document.getElementById('livePanelPill');
+    var toggle  = document.getElementById('btnMinimizePanel');
+
+    if (minimized) {
+      buttons.style.display = 'none';
+      pill.style.display    = 'flex';
+      toggle.style.display  = 'none';
+      panel.classList.add('live-panel-minimized');
+    } else {
+      buttons.style.display = '';
+      pill.style.display    = 'none';
+      toggle.style.display  = '';
+      toggle.textContent    = '▼';
+      panel.classList.remove('live-panel-minimized');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var toggle = document.getElementById('btnMinimizePanel');
+    var pill   = document.getElementById('livePanelPill');
+    if (toggle) toggle.addEventListener('click', togglePanel);
+    if (pill)   pill.addEventListener('click',   togglePanel);
+    if (pill)   pill.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePanel(); }
+    });
+  });
+})();
 </script>
 
 </body>

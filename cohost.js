@@ -137,7 +137,7 @@
     btn.className = 'live-ctrl-btn';
     btn.title     = 'Co-Host Settings';
     btn.setAttribute('aria-label', 'Open co-host settings');
-    btn.textContent = '🎙️';
+    btn.innerHTML = '<span class="live-btn-icon">🎙️</span><span class="live-btn-label">Co-Host</span>';
     const endBtn = document.getElementById('btnEndLive');
     if (endBtn && endBtn.parentNode) {
       endBtn.parentNode.insertBefore(btn, endBtn);
@@ -463,6 +463,11 @@
     // ── Pre-flight checks ──────────────────────────────────────────────────
     if (!_isHost) {
       _liveToast('Only the host can send co-host invites.');
+      return;
+    }
+    // Block if Founder turned the system off while live
+    if (window._snxCoHostEnabled === false) {
+      _liveToast('Co-host system is currently disabled by the Founder.');
       return;
     }
     if (!_cohostSettings.allowCohosts) {
@@ -895,15 +900,28 @@
 
   /* ═══════════════════════════════════════════════════════════════════════════
      BOOTSTRAP — wait for live.js to fire snxLiveReady
+     coHostEnabled is pre-read by live.js and passed in the event detail.
+     When OFF: suppresses all UI and invite handling silently.
      ═══════════════════════════════════════════════════════════════════════════ */
   window.addEventListener('snxLiveReady', e => {
-    const { db, liveDB, auth, user, userData, roomId, isHost } = e.detail || {};
+    const { db, liveDB, auth, user, userData, roomId, isHost, coHostEnabled } = e.detail || {};
     if (!db || !liveDB || !auth || !user || !roomId) {
       console.error('[CoHost] snxLiveReady missing required data:', {
         db: !!db, liveDB: !!liveDB, auth: !!auth, user: !!user, roomId
       });
       return;
     }
+
+    // ── Founder feature flag: coHostEnabled (default ON when absent) ──
+    if (coHostEnabled === false) {
+      // Co-host is OFF — ensure no UI is visible and stop
+      ['btnCoHost','cohostPanel','cohostInviteCard','cohostSettingsSection'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+      });
+      return; // do NOT call _init
+    }
+
     _init(db, liveDB, auth, user, userData, roomId, isHost);
   });
 

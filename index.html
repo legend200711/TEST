@@ -8423,9 +8423,13 @@ body.arcade-fs-ios body::after { display:none !important; }
             <div class="settings-label">🤖 AI Moderation<small>AI safety &amp; moderation system</small></div>
             <label class="notif-toggle-wrap"><input type="checkbox" id="esAI" class="notif-toggle-cb" checked onchange="window.founderToggleAIModeration()"><span class="notif-toggle-slider"></span></label>
         </div>
-        <div class="settings-row" style="border-bottom:none;">
+        <div class="settings-row">
             <div class="settings-label">🤖 Shadow Bot<small>Bot posts &amp; welcome messages</small></div>
             <label class="notif-toggle-wrap"><input type="checkbox" id="esBot" class="notif-toggle-cb" checked onchange="emergencyToggle('shadowBotEnabled',this.checked,'Shadow Bot')"><span class="notif-toggle-slider"></span></label>
+        </div>
+        <div class="settings-row" style="border-bottom:none;">
+            <div class="settings-label">🎙️ Co-Host System<small>Allow co-hosts on live streams</small></div>
+            <label class="notif-toggle-wrap"><input type="checkbox" id="esCoHost" class="notif-toggle-cb" checked onchange="emergencyToggle('coHostEnabled',this.checked,'Co-Host System')"><span class="notif-toggle-slider"></span></label>
         </div>
     </div>
 
@@ -10029,6 +10033,9 @@ body.arcade-fs-ios body::after { display:none !important; }
   onSnapshot(doc(db, 'siteSettings', 'config'), (snap) => {
       if (!snap.exists()) return;
       const cfg = snap.data();
+
+      // Co-Host system enable/disable (read by live.js / cohost.js via window._snxCoHostEnabled)
+      window._snxCoHostEnabled = cfg.coHostEnabled !== false;
 
       // AI moderation sync
       const isOn = cfg.aiModerationEnabled !== false;
@@ -15035,6 +15042,7 @@ body.arcade-fs-ios body::after { display:none !important; }
               { label: 'Arcade',        on: cfg.arcadeEnabled !== false,       onColor: '#39FF14', offColor: '#ff9966', onIcon: '✅', offIcon: '⛔' },
               { label: 'AI Moderation', on: cfg.aiModerationEnabled !== false, onColor: '#39FF14', offColor: '#ff9966', onIcon: '✅', offIcon: '⛔' },
               { label: 'Shadow Bot',    on: cfg.shadowBotEnabled !== false,    onColor: '#39FF14', offColor: '#ff9966', onIcon: '✅', offIcon: '⛔' },
+              { label: 'Co-Host',       on: cfg.coHostEnabled !== false,       onColor: '#39FF14', offColor: '#ff9966', onIcon: '✅', offIcon: '⛔' },
               { label: 'Messages',      on: cfg.messagesTabEnabled !== false,  onColor: '#39FF14', offColor: '#ff9966', onIcon: '✅', offIcon: '⛔' },
               { label: 'Welcome Pop-up',on: cfg.welcomePopupEnabled !== false, onColor: '#39FF14', offColor: '#ff9966', onIcon: '✅', offIcon: '⛔' },
           ];
@@ -15052,6 +15060,7 @@ body.arcade-fs-ios body::after { display:none !important; }
           _set('esRegistration', cfg.registrationEnabled !== false);
           _set('esAI',           cfg.aiModerationEnabled !== false);
           _set('esBot',          cfg.shadowBotEnabled !== false);
+          _set('esCoHost',       cfg.coHostEnabled !== false);
           _set('esWelcomePopup', cfg.welcomePopupEnabled !== false);
           // Sync maintenance badge
           const emBadge = document.getElementById('emergencyMaintBadge');
