@@ -97,9 +97,15 @@ let _rtcPc           = null;   // RTCPeerConnection
 let _rtcSignalUnsub  = null;   // RTDB listener unsubscribe (off ref)
 let _rtcSignalRef    = null;   // RTDB ref being listened to
 
+// Auto-reconnect for viewers
+let _viewerReconnectTimer   = null;
+let _viewerReconnectAttempt = 0;
+const _MAX_RECONNECT_ATTEMPTS = 5;
+
 let _chatUnsub        = null;
 let _viewerCountRef   = null;   // RTDB ref for viewer count listener
 let _viewerCountUnsub = null;
+let _roomWatchRef     = null;   // saved RTDB ref so we can call off() on it
 let _toastTimer       = null;
 let _viewerLeftFlag   = false;  // guard: prevent double-decrement on mobile
 let _creatorEndedFlag = false;  // guard: prevent beforeunload re-running endLive cleanup
@@ -118,6 +124,8 @@ let _shownReqUids      = new Set(); // host: tracks UIDs already shown in reques
 let _viewerGuestUnsub  = null;     // viewer: RTDB listener for liveGuests presence
 let _layoutSyncUnsub   = null;     // viewer/guest: RTDB listener for layout sync
 let _guestPc           = null;     // viewer-in-box: their own guest RTCPeerConnection (for disconnect cleanup)
+let _guestSigUnsub     = null;     // viewer-in-box: unsubscribe for host-ICE signaling onValue listener
+let _hostSigUnsubs     = {};       // host: uid → onValue unsubscribe for per-guest signaling listener
 
 /* ── DOM refs (resolved after DOMContentLoaded) ── */
 let D = {};
@@ -708,6 +716,9 @@ async function endLive() {
   window.removeEventListener('beforeunload', _creatorBeforeUnload);
   window.removeEventListener('pagehide',     _creatorBeforeUnload);
 
+  // Stop adaptive quality monitor
+  _stopAdaptiveQuality();
+
   // Close all guest peer connections
   _teardownAllGuestPeers();
   if (_guestReqUnsub) { try { _guestReqUnsub(); } catch(_){} _guestReqUnsub = null; }
@@ -928,10 +939,10 @@ async function _startViewer() {
     await set(viewersRef, (currentSnap.val() || 0) + 1);
   } catch (_) {}
 
-  /* ── Watch for stream ending via LIVE RTDB ── */
+  /* ── Watch for stream ending via LIVE RTDB (save ref for cleanup) ── */
   let _roomWatchSeenFirst = false;
-  const roomWatchRef = ref(_liveDB, `liveRooms/${_roomId}`);
-  onValue(roomWatchRef, snap => {
+  _roomWatchRef = ref(_liveDB, `liveRooms/${_roomId}`);
+  onValue(_roomWatchRef, snap => {
     const d = snap.val() || {};
     if (D.viewerCount) D.viewerCount.textContent = '👁 ' + (d.viewers || 0);
     if (D.likeCount)   D.likeCount.textContent   = '❤️ ' + (d.likes   || 0);
@@ -953,6 +964,9 @@ async function _startViewer() {
 async function _viewerLeave() {
   if (_viewerLeftFlag || !_roomId) return;
   _viewerLeftFlag = true;
+
+  // Cancel any pending reconnect
+  if (_viewerReconnectTimer) { clearTimeout(_viewerReconnectTimer); _viewerReconnectTimer = null; }
 
   // If viewer was in a guest box, clean up that state first
   if (_guestStream || _guestPc) {
@@ -976,6 +990,9 @@ async function _viewerLeave() {
     try { _layoutSyncUnsub(); } catch(_) {}
     _layoutSyncUnsub = null;
   }
+
+  // Tear down room-watch listener
+  if (_roomWatchRef) { try { off(_roomWatchRef); } catch(_) {} _roomWatchRef = null; }
 
   // Clean up any pending box request (RTDB + Firestore)
   if (_user && _roomId) {
@@ -1030,6 +1047,8 @@ async function _startCreatorWebRTC() {
 
   _rtcPc.onconnectionstatechange = () => {
     if (_rtcPc.connectionState === 'connected') {
+      // Start adaptive quality monitoring (adjust bitrate based on network conditions)
+      _startAdaptiveQuality(_rtcPc);
     }
   };
 
@@ -1171,10 +1190,13 @@ async function _startViewerWebRTC(roomData) {
   };
 
   _rtcPc.onconnectionstatechange = () => {
-    if (_rtcPc.connectionState === 'connected') {
+    const state = _rtcPc.connectionState;
+    if (state === 'connected') {
       _hideConnBanner();
-    } else if (_rtcPc.connectionState === 'disconnected' || _rtcPc.connectionState === 'failed') {
-      _showConnBanner('Waiting for stream…', '');
+      _viewerReconnectAttempt = 0; // reset on successful connection
+    } else if (state === 'disconnected' || state === 'failed') {
+      _showConnBanner('Reconnecting…', '');
+      _scheduleViewerReconnect(roomData);
     }
   };
 
@@ -1258,6 +1280,136 @@ async function _startViewerWebRTC(roomData) {
 }
 
 /* ═══════════════════════════════════════════════════
+   ADAPTIVE VIDEO QUALITY (creator-side)
+   ═══════════════════════════════════════════════════ */
+
+/**
+ * Monitor RTCPeerConnection stats every 10 seconds and reduce or restore
+ * video bitrate/resolution based on packet-loss rate.
+ *   packet loss ≥ 15%  → reduce to 360p / 400 kbps
+ *   packet loss < 5%   → restore to 720p / 1200 kbps
+ *
+ * Uses setParameters() on the video sender, which is non-destructive and
+ * does NOT renegotiate — so the viewer's connection stays stable.
+ */
+let _adaptiveQualityTimer = null;
+let _adaptiveQualityLow   = false;
+
+function _startAdaptiveQuality(pc) {
+  if (_adaptiveQualityTimer) return; // already running
+
+  let _prevPacketsSent = 0;
+  let _prevPacketsLost  = 0;
+
+  _adaptiveQualityTimer = setInterval(async () => {
+    if (!pc || pc.connectionState !== 'connected') {
+      clearInterval(_adaptiveQualityTimer);
+      _adaptiveQualityTimer = null;
+      return;
+    }
+
+    try {
+      const stats = await pc.getStats();
+      let totalSent = 0, totalLost = 0;
+
+      stats.forEach(report => {
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          totalSent += report.packetsSent  || 0;
+          totalLost += report.packetsLost  || 0;
+        }
+      });
+
+      const deltaSent = totalSent - _prevPacketsSent;
+      const deltaLost = totalLost - _prevPacketsSent;   // NOTE: packetsSent delta
+      _prevPacketsSent = totalSent;
+      _prevPacketsLost = totalLost;
+
+      if (deltaSent < 10) return; // not enough data yet
+
+      const lossRate = Math.max(0, totalLost - (_prevPacketsLost - deltaLost)) / deltaSent;
+
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (!sender) return;
+
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) return;
+
+      if (lossRate >= 0.15 && !_adaptiveQualityLow) {
+        // Degrade quality
+        _adaptiveQualityLow = true;
+        params.encodings[0].maxBitrate    = 400_000;
+        params.encodings[0].scaleResolutionDownBy = 2;
+        await sender.setParameters(params).catch(() => {});
+        console.log('[AdaptiveQuality] Degraded to low quality (loss:', (lossRate*100).toFixed(1) + '%)');
+
+      } else if (lossRate < 0.05 && _adaptiveQualityLow) {
+        // Restore quality
+        _adaptiveQualityLow = false;
+        params.encodings[0].maxBitrate    = 1_200_000;
+        params.encodings[0].scaleResolutionDownBy = 1;
+        await sender.setParameters(params).catch(() => {});
+        console.log('[AdaptiveQuality] Restored to high quality');
+      }
+    } catch(_) {}
+  }, 10_000);
+}
+
+function _stopAdaptiveQuality() {
+  if (_adaptiveQualityTimer) {
+    clearInterval(_adaptiveQualityTimer);
+    _adaptiveQualityTimer = null;
+    _adaptiveQualityLow   = false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   VIEWER AUTO-RECONNECT
+   ═══════════════════════════════════════════════════ */
+
+/**
+ * Schedule a WebRTC reconnect attempt with exponential back-off.
+ * Clears the old peer connection before creating a new one so listeners
+ * and ICE candidates don't pile up.
+ */
+function _scheduleViewerReconnect(roomData) {
+  if (_viewerLeftFlag) return;  // viewer already left
+  if (_viewerReconnectAttempt >= _MAX_RECONNECT_ATTEMPTS) {
+    _showConnBanner('Stream unavailable', 'Could not reconnect. The stream may have ended.');
+    return;
+  }
+
+  if (_viewerReconnectTimer) clearTimeout(_viewerReconnectTimer);
+
+  const delay = Math.min(2000 * Math.pow(1.5, _viewerReconnectAttempt), 15000);
+  _viewerReconnectAttempt++;
+  console.log(`[WebRTC] Reconnect attempt ${_viewerReconnectAttempt} in ${delay}ms`);
+
+  _viewerReconnectTimer = setTimeout(async () => {
+    _viewerReconnectTimer = null;
+    if (_viewerLeftFlag) return;
+
+    // Tear down old peer connection + signal listener
+    if (_rtcPc) { try { _rtcPc.close(); } catch(_){} _rtcPc = null; }
+    if (_rtcSignalRef && _rtcSignalUnsub) {
+      try { off(_rtcSignalRef); } catch(_) {}
+      _rtcSignalRef = null; _rtcSignalUnsub = null;
+    }
+
+    // Verify stream is still live before attempting
+    try {
+      const snap = await get(ref(_liveDB, `liveRooms/${_roomId}`));
+      if (!snap.exists() || snap.val().status !== 'live') {
+        _showEndedOverlay(false, 'Stream ended', `${roomData.hostName} has ended the live stream.`);
+        return;
+      }
+    } catch(_) {}
+
+    // Re-run the WebRTC viewer setup
+    await _startViewerWebRTC(roomData);
+  }, delay);
+}
+
+/* ═══════════════════════════════════════════════════
    CHAT — Firestore sub-collection
    ═══════════════════════════════════════════════════ */
 function _subscribeChat() {
@@ -1289,10 +1441,17 @@ function _appendChatMsg(data) {
     el.innerHTML = `<span class="live-chat-text">${_esc(data.text)}</span>`;
   }
   D.chatMessages.appendChild(el);
-  D.chatMessages.scrollTop = D.chatMessages.scrollHeight;
 
+  // Trim old messages before measuring scroll height to avoid unnecessary reflow
   while (D.chatMessages.children.length > 80) {
     D.chatMessages.removeChild(D.chatMessages.firstChild);
+  }
+
+  // Only auto-scroll if the user is already near the bottom (within 120px)
+  // to avoid forcibly scrolling away when the user is reading older messages.
+  const cm = D.chatMessages;
+  if (cm.scrollHeight - cm.scrollTop - cm.clientHeight < 120) {
+    cm.scrollTop = cm.scrollHeight;
   }
 }
 
@@ -1454,6 +1613,8 @@ function _showEndedOverlay(wasCreator, title, sub) {
     ? 'Your live stream has ended. Thanks for going live!'
     : 'The creator has ended this live stream.');
   D.ended.classList.add('visible');
+  // Cancel pending reconnect so we don't try to reconnect to an ended stream
+  if (_viewerReconnectTimer) { clearTimeout(_viewerReconnectTimer); _viewerReconnectTimer = null; }
   if (_rtcPc)  { try { _rtcPc.close(); } catch (_) {} _rtcPc = null; }
   if (_rtcSignalRef && _rtcSignalUnsub) { off(_rtcSignalRef); _rtcSignalRef = null; _rtcSignalUnsub = null; }
   if (_chatUnsub) { _chatUnsub(); _chatUnsub = null; }
@@ -2043,6 +2204,12 @@ async function _guestLeaveBox() {
 
 /* ── Internal: perform the guest leave cleanup (called from Leave Box or removedByHost signal) ── */
 function _guestDoLeave() {
+  // Tear down the host-ICE signaling listener first
+  if (_guestSigUnsub) {
+    try { _guestSigUnsub(); } catch(_) {}
+    _guestSigUnsub = null;
+  }
+
   // Close peer connection — triggers onconnectionstatechange cleanup below,
   // but also handle directly here for immediate UI response
   if (_guestPc) {
@@ -2165,8 +2332,9 @@ async function _guestJoinAsViewer() {
     try { await guestPc.addIceCandidate(new RTCIceCandidate(c)); } catch(_) {}
   }
 
-  // Listen for more host candidates
-  onValue(sigRef, async snap => {
+  // Listen for more host candidates — store unsub so _guestDoLeave can clean up
+  if (_guestSigUnsub) { try { off(sigRef); } catch(_) {} _guestSigUnsub = null; }
+  _guestSigUnsub = onValue(sigRef, async snap => {
     if (!snap.exists()) return;
     const d = snap.val();
     if (d.hostCandidates) {
@@ -2458,9 +2626,9 @@ async function _hostAcceptGuest(req) {
   }
   _pendingHostCands.length = 0;
 
-  // Watch for guest answer + ICE
+  // Watch for guest answer + ICE — store unsub so _hostDoRemoveGuest can clean up
   const appliedGuestCands = new Set();
-  onValue(sigRef, async snap => {
+  const _hostGuestSigUnsub = onValue(sigRef, async snap => {
     if (!snap.exists()) return;
     const d = snap.val();
     if (d.answer && guestPc.remoteDescription === null) {
@@ -2474,6 +2642,7 @@ async function _hostAcceptGuest(req) {
       }
     }
   });
+  _hostSigUnsubs[guestUid] = _hostGuestSigUnsub;
 
   // Store peer
   _guestPeers[guestUid] = { pc: guestPc, name: req.name, avatar: req.avatar };
@@ -2624,6 +2793,12 @@ function _hostDoRemoveGuest(uid) {
     set(ref(_liveDB, `guestSignaling/${_roomId}/${uid}/removedByHost`), true);
   } catch(_) {}
 
+  // Tear down host-side signaling listener for this guest
+  if (_hostSigUnsubs[uid]) {
+    try { _hostSigUnsubs[uid](); } catch(_) {}
+    delete _hostSigUnsubs[uid];
+  }
+
   const peer = _guestPeers[uid];
   if (peer) {
     if (peer.pc) { try { peer.pc.close(); } catch(_){} }
@@ -2659,6 +2834,12 @@ function _hostDoRemoveGuest(uid) {
 
 /* ── Tear down all guest peers (called on endLive) ── */
 function _teardownAllGuestPeers() {
+  // Tear down all host-side signaling listeners
+  for (const uid of Object.keys(_hostSigUnsubs)) {
+    try { _hostSigUnsubs[uid](); } catch(_) {}
+  }
+  _hostSigUnsubs = {};
+
   for (const uid of Object.keys(_guestPeers)) {
     const p = _guestPeers[uid];
     if (p.pc)   { try { p.pc.close(); }   catch(_){} }

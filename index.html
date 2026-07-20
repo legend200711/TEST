@@ -45,9 +45,12 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="album.css">
 
-<!-- ── Preconnect to Firebase so first load is faster ── -->
+<!-- ── Preconnect to Firebase + R2 CDN so first load is faster ── -->
 <link rel="preconnect" href="https://www.gstatic.com">
 <link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://yellow-term-11e6.nthntjrn.workers.dev" crossorigin>
+<link rel="dns-prefetch" href="https://pub-e5efe8c515324a8ab89ca15c5fa731dd.r2.dev">
+<link rel="dns-prefetch" href="https://pub-1cb8318faddb49f0b2c91fbd098c271f.r2.dev">
 
 <style>
 :root {
@@ -8950,10 +8953,13 @@ body.arcade-fs-ios body::after { display:none !important; }
   let _authFirstResolved = false; // prevents login-flash on initial page load
   let activeProfileUid = null;
   let scrollLimit = 8;
+  const BATCH_SIZE = 4;               // posts to add per "load more" trigger
   let totalUnread = 0;
   let feedUnsubscribe      = null;    // timeline feed
   let presenceUnsubscribe  = null;    // all-users presence strip
   let userDataUnsubscribe  = null;    // current user's own doc (settings + notifs + push)
+  // Track post IDs already in the DOM to prevent duplicates
+  const _renderedPostIds = new Set();
 
   /* ACCOUNT MANAGEMENT */
 
@@ -10240,6 +10246,9 @@ body.arcade-fs-ios body::after { display:none !important; }
       // Tear down any existing listener before (re)subscribing with a new limit
       if (feedUnsubscribe) { feedUnsubscribe(); feedUnsubscribe = null; }
 
+      // Clear duplicate-prevention set when re-subscribing
+      _renderedPostIds.clear();
+
       // Show a loading skeleton while the first snapshot is in flight
       const _feedContainer = document.getElementById("feedPosts");
       if (_feedContainer && !_feedContainer.querySelector('.postBox')) {
@@ -10275,7 +10284,10 @@ body.arcade-fs-ios body::after { display:none !important; }
           // Remove DOM nodes for posts no longer in the snapshot (deleted by owner/mod)
           container.querySelectorAll('.postBox[id^="post-"]').forEach(el => {
               const id = el.id.replace('post-', '');
-              if (!incomingIds.has(id)) el.remove();
+              if (!incomingIds.has(id)) {
+                  el.remove();
+                  _renderedPostIds.delete(id);
+              }
           });
 
           // Build an ordered list of post IDs to maintain correct DOM order
@@ -10337,7 +10349,7 @@ body.arcade-fs-ios body::after { display:none !important; }
                             </video>
                         </div>`;
                   } else {
-                      mediaHTML = `<img class="post-media-preview" src="${mu}" alt="photo"
+                      mediaHTML = `<img class="post-media-preview" src="${mu}" alt="photo" loading="lazy" decoding="async"
                           onclick="openMediaViewer('image','${mu}')"
                           onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\\'padding:14px;background:rgba(0,30,70,0.5);border-radius:10px;color:#6a90b8;font-size:13px;margin-top:8px;\\'>🖼 Image unavailable</div>')">`;
                   }
@@ -10348,9 +10360,9 @@ body.arcade-fs-ios body::after { display:none !important; }
                       const ext = mu.split('?')[0].split('.').pop().toLowerCase();
                       const videoExts = ['mp4','webm','mov','avi','mkv'];
                       if (videoExts.some(e => ext === e)) {
-                          return `<video src="${mu}" controls playsinline onclick="openMediaViewer('video','${mu}')" style="max-height:240px;"></video>`;
+                          return `<video src="${mu}" controls playsinline preload="metadata" onclick="openMediaViewer('video','${mu}')" style="max-height:240px;"></video>`;
                       }
-                      return `<img src="${mu}" alt="media" onclick="openMediaViewer('image','${mu}')" style="max-height:240px;">`;
+                      return `<img src="${mu}" alt="media" loading="lazy" decoding="async" onclick="openMediaViewer('image','${mu}')" style="max-height:240px;">`;
                   }).join('');
                   mediaHTML = `<div class="post-media-carousel">${items}</div>`;
               }
@@ -10420,6 +10432,11 @@ body.arcade-fs-ios body::after { display:none !important; }
                       container.insertBefore(existingEl, ref);
                   }
               } else {
+                  // Guard: don't render a post that's already in the DOM (prevents duplicates
+                  // that can appear when the onSnapshot fires before the DOM is settled)
+                  if (_renderedPostIds.has(pDoc.id)) return;
+                  _renderedPostIds.add(pDoc.id);
+
                   // New post — build the full element
                   const div = document.createElement("div");
                   div.className = "postBox";
@@ -10724,21 +10741,25 @@ body.arcade-fs-ios body::after { display:none !important; }
   _cleanExpiredPosts();
   setInterval(_cleanExpiredPosts, 5 * 60 * 1000);
 
-  // Infinite scroll — rAF-throttled to avoid firing every pixel
-  let _feedScrollPending = false;
-  window.addEventListener("scroll", () => {
-      if (_feedScrollPending) return;
-      _feedScrollPending = true;
-      requestAnimationFrame(() => {
-          _feedScrollPending = false;
-          const trigger = document.getElementById("infiniteLoadTrigger");
-          if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 60) {
-              scrollLimit += 4;
-              if (trigger) trigger.textContent = 'Loading more…';
-              initTimelineStream();
-          }
-      });
-  }, { passive: true });
+  // Infinite scroll — IntersectionObserver fires only when the sentinel enters the viewport,
+  // which is far more efficient than listening to every scroll event.
+  (function _initFeedInfiniteScroll() {
+      const trigger = document.getElementById("infiniteLoadTrigger");
+      if (!trigger || !('IntersectionObserver' in window)) return;
+
+      const io = new IntersectionObserver((entries) => {
+          if (!entries[0].isIntersecting) return;
+          // Only load more if we are on the feed page and logged in
+          if (!currentUser) return;
+          const feedPage = document.getElementById('feed');
+          if (!feedPage || !feedPage.classList.contains('active')) return;
+          scrollLimit += BATCH_SIZE;
+          trigger.textContent = 'Loading more…';
+          initTimelineStream();
+      }, { rootMargin: '200px' });
+
+      io.observe(trigger);
+  })();
 
   // ── @mention autocomplete for post composer ──
   (function() {
@@ -11442,40 +11463,69 @@ body.arcade-fs-ios body::after { display:none !important; }
       });
   };
 
+  /* ── Build a single comment DOM node ── */
+  function _buildCommentNode(postId, c) {
+      const canDelete = c.authorUid === currentUser?.uid;
+      const d = document.createElement("div");
+      d.className = "comment-row";
+      // Stable key: prefer authorUid+ts, fall back to ts alone
+      d.dataset.ck = `${c.authorUid || ''}:${c.ts || ''}`;
+      const tsLabel = c.ts ? fmtTimeAgo(c.ts) : '';
+      let badgeHtml = '';
+      if (c.authorBadges && c.authorBadges.length) {
+          badgeHtml = buildBadgeHtml(c.authorBadges, c.authorRole || 'member');
+      } else if (c.isFounder) {
+          badgeHtml = `<span class="badge-inline badge-founder" title="Founder">👑 Founder</span>`;
+      }
+      const commentMoodHtml = buildMoodChipHtml(c.authorMoodType || '', c.authorMoodValue || '');
+      d.innerHTML = `
+        <div class="comment-body">
+            <span style="display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap;">
+                <b class="comment-author">${escFeed(c.author)}</b>${badgeHtml}${commentMoodHtml}
+            </span>
+            <span class="comment-text" style="margin-left:4px;">${escFeed(c.text)}</span>
+            ${tsLabel ? `<span class="comment-ts">${tsLabel}</span>` : ''}
+        </div>
+        ${canDelete
+          ? `<button class="comment-del-btn" title="Delete comment" onclick="deletePostComment('${postId}', ${c.ts}, '${c.authorUid}')">✕</button>`
+          : ''}
+      `;
+      return d;
+  }
+
+  /* ── Incremental comment renderer — only appends/removes, never full re-render ──
+     This avoids wiping the entire comment box (and any in-progress input focus) when
+     a new comment arrives. It also prevents the visual flicker of a full innerHTML reset.
+  */
   function renderCommentsSubtree(postId, list) {
       const box = document.getElementById(`comments-${postId}`);
       if (!box) return;
       if (!list.length) { box.style.display = "none"; return; }
       box.style.display = "block";
-      box.innerHTML = "";
-      list.forEach((c) => {
-          const canDelete = c.authorUid === currentUser.uid;
-          const d = document.createElement("div");
-          d.className = "comment-row";
-          const tsLabel = c.ts ? fmtTimeAgo(c.ts) : '';
-          // Support new authorBadges/authorRole fields; fall back to legacy isFounder flag
-          let badgeHtml = '';
-          if (c.authorBadges && c.authorBadges.length) {
-              badgeHtml = buildBadgeHtml(c.authorBadges, c.authorRole || 'member');
-          } else if (c.isFounder) {
-              // Legacy comments written before badge system — render Founder badge directly
-              badgeHtml = `<span class="badge-inline badge-founder" title="Founder">👑 Founder</span>`;
-          }
-          const commentMoodHtml = buildMoodChipHtml(c.authorMoodType || '', c.authorMoodValue || '');
-          d.innerHTML = `
-            <div class="comment-body">
-                <span style="display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap;">
-                    <b class="comment-author">${escFeed(c.author)}</b>${badgeHtml}${commentMoodHtml}
-                </span>
-                <span class="comment-text" style="margin-left:4px;">${escFeed(c.text)}</span>
-                ${tsLabel ? `<span class="comment-ts">${tsLabel}</span>` : ''}
-            </div>
-            ${canDelete
-              ? `<button class="comment-del-btn" title="Delete comment" onclick="deletePostComment('${postId}', ${c.ts}, '${c.authorUid}')">✕</button>`
-              : ''}
-          `;
-          box.appendChild(d);
+
+      // Build a set of incoming keys
+      const incomingKeys = new Set(list.map(c => `${c.authorUid || ''}:${c.ts || ''}`));
+
+      // Remove DOM nodes that are no longer in the list
+      const existing = [...box.querySelectorAll('.comment-row[data-ck]')];
+      existing.forEach(el => {
+          if (!incomingKeys.has(el.dataset.ck)) el.remove();
       });
+
+      // Build a map of keys already in DOM
+      const renderedKeys = new Set(
+          [...box.querySelectorAll('.comment-row[data-ck]')].map(el => el.dataset.ck)
+      );
+
+      // Append only new comments (in order)
+      const frag = document.createDocumentFragment();
+      list.forEach(c => {
+          const key = `${c.authorUid || ''}:${c.ts || ''}`;
+          if (!renderedKeys.has(key)) {
+              frag.appendChild(_buildCommentNode(postId, c));
+          }
+      });
+      if (frag.childElementCount) box.appendChild(frag);
   }
 
   /* ── toggleCommentBox — show/hide the comment box + input for a post ── */
@@ -15640,6 +15690,16 @@ function navTo(pageId) {
         const _allTab = document.querySelector('.notif-filter-tab[data-filter="all"]');
         if (_allTab && typeof setNotifFilter === 'function') setNotifFilter('all', _allTab);
     }
+    // ── Presence strip: only run while the feed page is visible ──
+    // Unsubscribe when leaving feed, re-subscribe when returning to it.
+    if (pageId !== 'feed' && typeof presenceUnsubscribe !== 'undefined' && presenceUnsubscribe) {
+        presenceUnsubscribe(); presenceUnsubscribe = null;
+    }
+    if (pageId === 'feed' && typeof presenceUnsubscribe !== 'undefined' && !presenceUnsubscribe
+        && typeof currentUser !== 'undefined' && currentUser
+        && typeof initPresenceStrip === 'function') {
+        presenceUnsubscribe = initPresenceStrip();
+    }
     // Auto-close sidebar on mobile after navigation
     closeSidebar();
 }
@@ -17102,10 +17162,13 @@ document.addEventListener("visibilitychange", () => {
    We keep total count very low (max 14) to avoid performance issues.
 */
 (function spawnDomAsh() {
-    const MAX_DOM_ASH = 14;
+    // Mobile gets fewer DOM particles to save battery/CPU
+    const MAX_DOM_ASH = _isMobileDevice ? 7 : 14;
     let domAshCount = 0;
 
     function spawnOne() {
+        // Don't spawn new particles while the tab is hidden
+        if (document.hidden) { domAshCount = Math.max(0, domAshCount - 1); return; }
         if (domAshCount >= MAX_DOM_ASH) return;
         domAshCount++;
         const el = document.createElement('div');
@@ -17274,8 +17337,69 @@ const R2_UPLOAD_URL = 'https://yellow-term-11e6.nthntjrn.workers.dev';
  * @param {string}   progressWrapId - Element ID of the progress wrapper div
  * @returns {Promise<string>}  The public URL of the uploaded file
  */
+/**
+ * Compress an image File to JPEG/WebP before upload.
+ * - Skips non-image files (video, audio) untouched.
+ * - Skips SVG (cannot be drawn to canvas) and GIF (would lose animation).
+ * - Constrains the longest edge to maxEdgePx (default 1920) to reduce file size.
+ * - Quality 0.82 preserves visual quality while cutting file sizes ~50–70%.
+ *
+ * Returns the compressed Blob wrapped in a new File, or the original File if
+ * compression is not applicable / the result would be larger than the original.
+ */
+async function _compressImageFile(file, maxEdgePx = 1920, quality = 0.82) {
+    if (!file.type.startsWith('image/')) return file;
+    // Skip SVG (no rasterisation) and GIF (would lose animation)
+    if (file.type === 'image/svg+xml' || file.type === 'image/gif') return file;
+
+    return new Promise((resolve) => {
+        const img = new Image();
+        const objUrl = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(objUrl);
+            let { width, height } = img;
+            if (width > maxEdgePx || height > maxEdgePx) {
+                if (width >= height) {
+                    height = Math.round(height * maxEdgePx / width);
+                    width  = maxEdgePx;
+                } else {
+                    width  = Math.round(width * maxEdgePx / height);
+                    height = maxEdgePx;
+                }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width  = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Prefer WebP for better compression; fall back to JPEG
+            const outputType = (typeof ImageData !== 'undefined' && canvas.toDataURL('image/webp').startsWith('data:image/webp'))
+                ? 'image/webp'
+                : 'image/jpeg';
+
+            canvas.toBlob((blob) => {
+                if (!blob || blob.size >= file.size) {
+                    // Compressed result is not smaller — keep original
+                    resolve(file);
+                    return;
+                }
+                const ext = outputType === 'image/webp' ? 'webp' : 'jpg';
+                const newName = file.name.replace(/\.[^.]+$/, '') + '.' + ext;
+                resolve(new File([blob], newName, { type: outputType, lastModified: Date.now() }));
+            }, outputType, quality);
+        };
+        img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(file); };
+        img.src = objUrl;
+    });
+}
+
 async function uploadToR2(file, progressBarId, progressWrapId, _attempt) {
     _attempt = _attempt || 1;
+    // Compress images before upload (skips video/audio/svg/gif automatically)
+    if (file.type.startsWith('image/') && file.type !== 'image/svg+xml' && file.type !== 'image/gif') {
+        try { file = await _compressImageFile(file); } catch(_) { /* compression failed — use original */ }
+    }
     const MAX_RETRIES = 3;
     const uid = window._snxCurrentUser ? window._snxCurrentUser.uid : 'guest';
 
