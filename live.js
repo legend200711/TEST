@@ -637,6 +637,11 @@ async function flipLiveCamera() {
       D.liveVideo.srcObject = newStream;
       D.liveVideo.play().catch(() => {});
     }
+    /* FIX: keep host tile in guest stage in sync when camera is flipped */
+    if (D.gsHostVideo) {
+      D.gsHostVideo.srcObject = newStream;
+      D.gsHostVideo.play().catch(() => {});
+    }
     if (_rtcPc && newStream.getVideoTracks()[0]) {
       const newVideoTrack = newStream.getVideoTracks()[0];
       const sender = _rtcPc.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -2228,11 +2233,19 @@ function _gsPopulateHostTileViewer(roomData) {
       D.gsHostAvatar.textContent = (roomData.hostName || 'H')[0].toUpperCase();
     }
   }
-  /* Viewer can't see host video in guest stage — host video plays via main liveVideo */
+  /* FIX: mirror liveVideo srcObject to gsHostVideo — also re-sync when track arrives */
   const hv = D.gsHostVideo;
-  if (hv && D.liveVideo && D.liveVideo.srcObject) {
-    hv.srcObject = D.liveVideo.srcObject;
-    hv.play().catch(() => {});
+  if (!hv) return;
+  const _syncHostVid = () => {
+    if (D.liveVideo && D.liveVideo.srcObject) {
+      hv.srcObject = D.liveVideo.srcObject;
+      hv.play().catch(() => {});
+    }
+  };
+  _syncHostVid();
+  /* If stream hasn't arrived yet, watch for it via the video element's srcObject */
+  if (!hv.srcObject && D.liveVideo) {
+    D.liveVideo.addEventListener('loadedmetadata', _syncHostVid, { once: true });
   }
 }
 
@@ -2325,14 +2338,25 @@ function _gsActivateIfNeeded() {
     document.body.classList.add('gs-active');
     stageEl.style.display = '';
     stageEl.classList.add('active');
-    /* layout switcher shown (CSS handles it via gs-active body class) */
+
+    /* FIX: for viewer, re-sync host tile video when stage first activates */
+    if (_mode === 'viewer' && D.gsHostVideo && D.liveVideo && D.liveVideo.srcObject) {
+      D.gsHostVideo.srcObject = D.liveVideo.srcObject;
+      D.gsHostVideo.play().catch(() => {});
+    }
+    /* FIX: for creator, always keep host tile pointing at _localStream */
+    if (_mode === 'creator' && D.gsHostVideo && _localStream) {
+      D.gsHostVideo.srcObject = _localStream;
+      D.gsHostVideo.play().catch(() => {});
+    }
   }
   if (visibleGuests.length === 0 && document.body.classList.contains('gs-active')) {
     _gsHideStage();
   }
-  /* Auto-reflow grid layout whenever participant count changes */
-  if (_layoutMode === 'grid') {
-    _setLayout('grid', false);
+  /* FIX: Auto-reflow grid only when layout-grid is the active body class.
+     Avoids calling _setLayout with a stale mode that triggers camera restarts. */
+  if (_layoutMode === 'grid' && document.body.classList.contains('layout-grid')) {
+    /* just refresh data-count — CSS grid responds automatically */
   }
 }
 
@@ -2436,6 +2460,16 @@ function _gbGuestSignalRef(boxNum) {
 
 /* ── Guest: start camera/mic stream + create WebRTC offer ── */
 async function _guestStartStream(boxNum) {
+  /* FIX: clean up any previous stream/PC for this box before starting fresh */
+  if (_guestPcs[boxNum]?.pc) {
+    try { _guestPcs[boxNum].pc.close(); } catch (_) {}
+    delete _guestPcs[boxNum];
+  }
+  if (_guestSelfStream) {
+    _guestSelfStream.getTracks().forEach(t => t.stop());
+    _guestSelfStream = null;
+  }
+
   /* acquire camera + mic */
   try {
     _guestSelfStream = await navigator.mediaDevices.getUserMedia({
@@ -2551,10 +2585,18 @@ function _gbHostWatchGuestWebRTC(boxNum) {
   if (!_roomId) return;
   const signalRef = _gbGuestSignalRef(boxNum);
 
+  /* FIX: track processed offer SDP so we don't re-create PC on every ICE candidate
+     addition (onValue fires on every child change in the signaling node) */
+  let _processedOfferSdp = null;
+
   onValue(signalRef, async snap => {
     if (!snap.exists()) return;
     const d = snap.val();
     if (!d.guestOffer) return;
+
+    /* FIX: skip if we already processed this exact offer */
+    if (d.guestOffer.sdp === _processedOfferSdp) return;
+    _processedOfferSdp = d.guestOffer.sdp;
 
     /* clean up old PC for this box if one exists */
     if (_guestPcs[boxNum]?.pc) {
@@ -2655,8 +2697,14 @@ function _guestStopStream(boxNum) {
 /* ── Guest: auto-reconnect on connection failure ── */
 async function _guestReconnect(boxNum) {
   await new Promise(r => setTimeout(r, 3000));
-  if (_guestSelfBoxNum !== boxNum) return;  // was removed
-  if (_guestSelfStream) _guestStartStream(boxNum);
+  /* FIX: bail if the viewer was removed from the box while waiting */
+  if (_guestSelfBoxNum !== boxNum) return;
+  /* FIX: only reconnect once — re-entry guard via flag on the state object */
+  if (_guestPcs[boxNum]?._reconnecting) return;
+  if (!_guestPcs[boxNum]) _guestPcs[boxNum] = {};
+  _guestPcs[boxNum]._reconnecting = true;
+  await _guestStartStream(boxNum);
+  if (_guestPcs[boxNum]) _guestPcs[boxNum]._reconnecting = false;
 }
 
 /* ── Quality stats polling: checks packet loss / bandwidth every 5s ── */

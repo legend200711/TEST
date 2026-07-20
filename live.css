@@ -649,9 +649,28 @@ body.is-creator .live-viewer-actions { display: none !important; }
   z-index: 210;
   background: #000;
   display: none;
+  /* prevent tiles from ever going off-screen */
+  overflow: hidden;
 }
 /* flex is overridden by grid-layout rules below — keep as fallback */
 .guest-stage.active { display: flex; }
+
+/* On mobile creator view: shrink stage vertically so it doesn't hide behind the bottom panel */
+@media (max-width: 767px) {
+  body.is-creator.gs-active .guest-stage {
+    top: 0;
+    bottom: 42vh;        /* panel is max-height 42vh */
+    height: auto;
+  }
+}
+
+/* On desktop: inset stage right to leave room for the side management panel */
+@media (min-width: 768px) {
+  body.gs-active .guest-stage {
+    right: 220px;        /* matches .guest-box-panel width on desktop */
+    width: calc(100% - 220px);
+  }
+}
 
 /* ── Tile base ── */
 .gs-tile {
@@ -806,11 +825,21 @@ body.layout-auto .guest-stage[data-count="1"] {
   grid-template-rows: 1fr;
 }
 
-/* ── 2 people: 50/50 split — host | guest ── */
+/* ── 2 people: host top | guest bottom (portrait-first) ── */
 body.layout-grid .guest-stage[data-count="2"],
 body.layout-auto .guest-stage[data-count="2"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* On landscape / wide screens use side-by-side */
+@media (min-width: 481px) and (orientation: landscape),
+       (min-width: 600px) {
+  body.layout-grid .guest-stage[data-count="2"],
+  body.layout-auto .guest-stage[data-count="2"] {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+  }
 }
 
 /* ── 3 people: big host top-row, 2 guests bottom-row ── */
@@ -854,16 +883,10 @@ body.layout-auto .guest-stage[data-count="5"] .gs-guest-tile {
 
 /* All tiles fill their grid cell */
 body.layout-grid .gs-tile,
-body.layout-auto .gs-tile { width: 100%; height: 100%; }
+body.layout-auto .gs-tile { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 
-/* ── Portrait phone: 3-person layout stacks guests in a row ── */
+/* ── Portrait phone ── */
 @media (max-width: 480px) {
-  /* 2 people: stack vertically on very narrow screens */
-  body.layout-grid .guest-stage[data-count="2"],
-  body.layout-auto .guest-stage[data-count="2"] {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
-  }
   /* 5 people: 2 columns on phone */
   body.layout-grid .guest-stage[data-count="5"],
   body.layout-auto .guest-stage[data-count="5"] {
@@ -920,9 +943,10 @@ body.layout-floating #gsTile4 { bottom: 100px; left: 378px; }
 body.layout-equal .guest-stage {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-auto-rows: 1fr;
+  grid-template-rows: repeat(2, 1fr);   /* always fits in viewport, no scroll */
+  gap: 2px;
 }
-body.layout-equal .gs-tile { width: 100%; height: 100%; }
+body.layout-equal .gs-tile { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 
 /* ════════════════════════════════════════════════════
    GUEST SELF-CONTROLS BAR (viewer in a box)
@@ -1258,6 +1282,13 @@ body.gs-active #liveStage { background: transparent; z-index: 220; }
 body.gs-active .live-video-wrap { background: transparent; }
 /* ensure the video wrap itself doesn't obscure guest stage */
 body.gs-active .live-video-wrap { z-index: 0; }
+
+/* On desktop: nudge chat panel left so it doesn't overlap the side panel */
+@media (min-width: 768px) {
+  body.gs-active .live-chat-panel {
+    right: 224px;   /* 220px panel + 4px gap */
+  }
+}
 
 /* floating layout: tiles can overflow the video wrap area */
 body.layout-floating .live-video-wrap { overflow: visible; }
