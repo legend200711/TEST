@@ -117,6 +117,11 @@ let _toastTimer       = null;
 let _viewerLeftFlag   = false;  // guard: prevent double-decrement on mobile
 let _creatorEndedFlag = false;  // guard: prevent beforeunload re-running endLive cleanup
 
+/* ══════════════════════════════════════════════════
+   GUEST BOX CONFIGURATION — change here to update max
+   ══════════════════════════════════════════════════ */
+const _MAX_GUESTS = 9;   // Maximum simultaneous guest boxes (1–9 supported)
+
 /* ── Guest Box State ── */
 let _guestLayout       = 'auto';   // current layout preference
 let _guestBoxSize      = 'sm';     // 'sm' | 'md' | 'lg'
@@ -250,6 +255,29 @@ document.addEventListener('DOMContentLoaded', () => {
   D.btnLeaveBox       && D.btnLeaveBox.addEventListener('click', _guestLeaveBox);
   D.btnLayoutSettings && D.btnLayoutSettings.addEventListener('click', _toggleLayoutPanel);
 
+  // Live Settings panel wiring (host only)
+  const _btnLiveSettings = document.getElementById('btnLiveSettings');
+  if (_btnLiveSettings) {
+    _btnLiveSettings.addEventListener('click', () => {
+      const panel = document.getElementById('liveSettingsPanel');
+      if (!panel) return;
+      const open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : 'block';
+    });
+  }
+  document.getElementById('toggleAISafety') &&
+    document.getElementById('toggleAISafety').addEventListener('change', e => {
+      _aiSafetySetEnabled(e.target.checked);
+    });
+  document.getElementById('toggleShadowBot') &&
+    document.getElementById('toggleShadowBot').addEventListener('change', e => {
+      _shadowBotSetEnabled(e.target.checked);
+    });
+  document.getElementById('toggleLiveTimer') &&
+    document.getElementById('toggleLiveTimer').addEventListener('change', e => {
+      _liveTimerSetEnabled(e.target.checked);
+    });
+
   // Layout option buttons
   document.querySelectorAll('.layout-option-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -278,10 +306,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (_mode !== 'creator') return;
     const ignore = ['.live-ctrl-btn','#btnEndLive','.live-chat-input','.live-chat-send',
                     '.live-close-btn','.live-creator-pill','.live-badge',
-                    '.layout-settings-panel','.layout-option-btn','.layout-size-btn'];
+                    '.layout-settings-panel','.layout-option-btn','.layout-size-btn',
+                    '.live-settings-panel','#liveSettingsPanel','.lsp-row','.lsp-toggle','.lsp-slider'];
     if (ignore.some(s => e.target.closest(s))) return;
     // Close layout panel on tap-away
     if (_layoutPanelOpen) { _closeLayoutPanel(); return; }
+    // Close settings panel on tap-away
+    const sp = document.getElementById('liveSettingsPanel');
+    if (sp && sp.style.display !== 'none') { sp.style.display = 'none'; return; }
     D.stage.classList.toggle('live-controls-hidden');
   });
 
@@ -555,6 +587,11 @@ async function startLive() {
 
   toast('🔴 You are LIVE!');
 
+  // ── Start optional systems (respects their individual ON/OFF state) ──
+  _liveTimerOnLiveStart();
+  _shadowBotOnLiveStart();
+  _aiSafetyOnLiveStart();
+
   // ── Non-critical side-work ──
   try {
     await updateDoc(doc(_db, 'users', _user.uid), { isLive: true, liveRoomId: _roomId });
@@ -805,6 +842,12 @@ async function endLive() {
   }, 5 * 60 * 1000);
 
   _deleteLiveStory();
+
+  // ── Stop optional systems ──
+  _liveTimerOnLiveEnd();
+  _shadowBotOnLiveEnd();
+  _aiSafetyOnLiveEnd();
+
   _showEndedOverlay(true);
 }
 
@@ -2772,6 +2815,13 @@ function _hostShowRequestCard(req) {
 async function _hostAcceptGuest(req) {
   if (!_roomId || !_localStream) return;
 
+  // ── Cap: respect _MAX_GUESTS limit ──
+  if (Object.keys(_guestPeers).length >= _MAX_GUESTS) {
+    toast(`⚠️ Guest box full — max ${_MAX_GUESTS} guests.`);
+    _hostDeclineGuest(req.uid, req.requestId || `${_roomId}_${req.uid}`);
+    return;
+  }
+
   const guestUid  = req.uid;
   const requestId = req.requestId || `${_roomId}_${guestUid}`;
   const sigRef    = ref(_liveDB, `guestSignaling/${_roomId}/${guestUid}`);
@@ -3143,9 +3193,9 @@ function _teardownAllGuestPeers() {
   }
 }
 
-/* ═══════════════════════════════════════════════════
-   LAYOUT ENGINE
-   ═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   LAYOUT ENGINE  —  supports 1–9 guests + host (up to 10 total cells)
+   ═══════════════════════════════════════════════════════════════════ */
 
 function _applyGuestLayout() {
   // Coalesce rapid back-to-back calls into a single rAF paint
@@ -3163,49 +3213,50 @@ function _applyGuestLayout() {
 function _attachGuestGridResizeObserver() {
   const grid = D.guestGrid;
   if (!grid || !window.ResizeObserver) return;
-  // Observe the parent .live-video-wrap — this is the true sized container
   const container = grid.parentElement || grid;
   const ro = new ResizeObserver(() => { _applyGuestLayout(); });
   ro.observe(container);
-  // Also fire on orientation change for browsers that don't resize in time
   window.addEventListener('orientationchange', () => {
-    setTimeout(_applyGuestLayout, 150); // brief delay lets the new size settle
+    setTimeout(_applyGuestLayout, 150);
   }, { passive: true });
 }
 
+/* ─────────────────────────────────────────────────────────────────
+   _doApplyGuestLayout  —  the single source of truth for all
+   geometry.  All explicit pixel / percentage assignments live here;
+   CSS only provides the flex skeleton and default resets.
+
+   Smart auto-layout map (guestCount = number of guests, host NOT counted):
+     0  → grid hidden, main #liveVideo shown
+     1  → 2 participants: 50/50 split
+     2  → 3 participants: host 60% + 2 guests stacked in 40%
+     3  → 4 participants: 2×2 equal grid
+     4  → 5 participants: host top row 100%×55% + 4 guests equal bottom
+     5  → 6 participants: 2 rows × 3 cols equal
+     6  → 7 participants: host 50%×60% top-left + 6 guests equal right+bottom
+     7  → 8 participants: 2 rows × 4 cols equal
+     8  → 9 participants: 3 rows × 3 cols equal
+     9  → 10 participants: host top-left 33%×40% + 9 guests balanced
+   ───────────────────────────────────────────────────────────────── */
 function _doApplyGuestLayout() {
   const grid = D.guestGrid;
   if (!grid) return;
 
-  // ── Viewer mode: grid state is managed entirely by _startViewerGuestGrid.
-  //    _guestPeers is always empty for viewers, so we must NOT recompute from it.
-  //    Just apply visual layout (size class + equal-grid math) based on DOM state.
-  if (_mode === 'viewer') {
-    const guestCount = parseInt(grid.dataset.count || '0', 10);
-    grid.dataset.layout = _guestLayout;
-    grid.classList.remove('box-sm', 'box-md', 'box-lg');
-    grid.classList.add('box-' + _guestBoxSize);
-    if (guestCount === 0) { grid.classList.remove('has-guests'); return; }
-    grid.classList.add('has-guests');
-    if (_guestLayout === 'grid') {
-      _applyEqualGrid(grid, guestCount + 1);
-    } else if (_guestLayout === 'float') {
-      _applyFloatLayout(grid, guestCount);
-    } else if (_guestLayout === 'auto' && guestCount >= 5) {
-      _applyEqualGrid(grid, guestCount + 1);
-    }
-    return;
-  }
-
-  // ── Creator mode: derive count from _guestPeers ──
-  const guestCount = Object.keys(_guestPeers).length;  // guests only (not host)
-
-  grid.dataset.count  = guestCount.toString();
+  // ── Shared setup for both modes ──
   grid.dataset.layout = _guestLayout;
-
-  // Box size class
   grid.classList.remove('box-sm', 'box-md', 'box-lg');
   grid.classList.add('box-' + _guestBoxSize);
+
+  // ── Resolve guestCount based on mode ──
+  let guestCount;
+  if (_mode === 'viewer') {
+    // Viewer: count is maintained by _startViewerGuestGrid via dataset.count
+    guestCount = parseInt(grid.dataset.count || '0', 10);
+  } else {
+    // Creator: count from live _guestPeers
+    guestCount = Object.keys(_guestPeers).length;
+    grid.dataset.count = guestCount.toString();
+  }
 
   if (guestCount === 0) {
     grid.classList.remove('has-guests');
@@ -3213,53 +3264,325 @@ function _doApplyGuestLayout() {
   }
   grid.classList.add('has-guests');
 
-  // For the 'grid' layout and 6+ guests in 'auto', set equal sizes via JS
+  // ── Update guest-count indicator in layout panel ──
+  _updateLayoutPanelCounter(guestCount);
+
+  // ── Clear any previously JS-set inline styles on all cells ──
+  // (CSS rules handle the base; JS overrides only when needed)
+  grid.querySelectorAll('.guest-cell').forEach(c => {
+    c.style.width = '';
+    c.style.height = '';
+    c.style.position = '';
+    c.style.top = '';
+    c.style.right = '';
+    c.style.bottom = '';
+    c.style.left = '';
+    c.style.flex = '';
+  });
+  // Reset grid flex properties
+  grid.style.flexDirection = '';
+  grid.style.flexWrap      = '';
+  grid.style.alignContent  = '';
+  grid.style.alignItems    = '';
+
+  const totalCells = guestCount + 1; // +1 for host
+
+  // ── Named layout modes (host manually selected) ──
   if (_guestLayout === 'grid') {
-    _applyEqualGrid(grid, guestCount + 1); // +1 for host
-  } else if (_guestLayout === 'float') {
+    _applyEqualGrid(grid, totalCells);
+    return;
+  }
+  if (_guestLayout === 'float') {
     _applyFloatLayout(grid, guestCount);
-  } else if (_guestLayout === 'auto' && guestCount >= 5) {
-    _applyEqualGrid(grid, guestCount + 1);
+    return;
+  }
+  if (_guestLayout === 'split') {
+    _applySplitLayout(grid, guestCount);
+    return;
+  }
+  if (_guestLayout === 'host-full') {
+    _applyHostFullLayout(grid, guestCount);
+    return;
+  }
+  if (_guestLayout === 'host-big') {
+    _applyHostBigLayout(grid, guestCount);
+    return;
+  }
+
+  // ── 'auto' layout: pick best layout for current count ──
+  _applyAutoLayout(grid, guestCount, totalCells);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   AUTO LAYOUT  —  smart geometry for every count 1–9
+   ───────────────────────────────────────────────────────────────── */
+function _applyAutoLayout(grid, guestCount, totalCells) {
+  const stageW = grid.offsetWidth  || window.innerWidth;
+  const stageH = grid.offsetHeight || window.innerHeight;
+  const isLandscape = stageW >= stageH;
+
+  const hostCell   = grid.querySelector('.host-cell');
+  const guestCells = Array.from(grid.querySelectorAll('.guest-cell:not(.host-cell)'));
+
+  switch (guestCount) {
+
+    /* ── 1 guest: 50/50 side-by-side ── */
+    case 1: {
+      grid.style.flexDirection = 'row';
+      grid.style.flexWrap      = 'nowrap';
+      grid.style.alignItems    = 'stretch';
+      if (hostCell)       { hostCell.style.width = '50%';  hostCell.style.height = '100%'; }
+      if (guestCells[0])  { guestCells[0].style.width = '50%'; guestCells[0].style.height = '100%'; }
+      break;
+    }
+
+    /* ── 2 guests: host 60% left + 2 guests stacked right ── */
+    case 2: {
+      if (isLandscape) {
+        grid.style.flexDirection = 'row';
+        grid.style.flexWrap      = 'wrap';
+        grid.style.alignContent  = 'stretch';
+        if (hostCell)       { hostCell.style.width = '60%';  hostCell.style.height = '100%'; }
+        guestCells.forEach(c => { c.style.width = '40%'; c.style.height = '50%'; });
+      } else {
+        // Portrait: host full top row, guests side-by-side below
+        grid.style.flexDirection = 'row';
+        grid.style.flexWrap      = 'wrap';
+        grid.style.alignContent  = 'flex-start';
+        if (hostCell)       { hostCell.style.width = '100%'; hostCell.style.height = '55%'; }
+        guestCells.forEach(c => { c.style.width = '50%'; c.style.height = '45%'; });
+      }
+      break;
+    }
+
+    /* ── 3 guests: 2×2 grid ── */
+    case 3: {
+      _applyEqualGrid(grid, 4);
+      break;
+    }
+
+    /* ── 4 guests: host full top + 4 equal bottom ── */
+    case 4: {
+      grid.style.flexDirection = 'row';
+      grid.style.flexWrap      = 'wrap';
+      grid.style.alignContent  = 'flex-start';
+      if (hostCell) { hostCell.style.width = '100%'; hostCell.style.height = '55%'; }
+      guestCells.forEach(c => { c.style.width = '25%'; c.style.height = '45%'; });
+      break;
+    }
+
+    /* ── 5 guests: 2 rows × 3 cols equal (6 cells) ── */
+    case 5: {
+      _applyEqualGrid(grid, 6);
+      break;
+    }
+
+    /* ── 6 guests: host prominent top-left + 6 guests ──
+       Portrait: host top 100%×40%, 3 guests per row below
+       Landscape: host left 50%×60% + 6 guests on right in 3×2 */
+    case 6: {
+      if (isLandscape) {
+        grid.style.flexDirection = 'row';
+        grid.style.flexWrap      = 'wrap';
+        grid.style.alignContent  = 'flex-start';
+        if (hostCell) { hostCell.style.width = '50%'; hostCell.style.height = '66.67%'; }
+        // 3 guests on right, 3 below
+        guestCells.forEach((c, i) => {
+          if (i < 3) { c.style.width = '16.67%'; c.style.height = '66.67%'; }
+          else       { c.style.width = '16.67%'; c.style.height = '33.33%'; }
+        });
+      } else {
+        grid.style.flexDirection = 'row';
+        grid.style.flexWrap      = 'wrap';
+        grid.style.alignContent  = 'flex-start';
+        if (hostCell) { hostCell.style.width = '100%'; hostCell.style.height = '40%'; }
+        guestCells.forEach(c => { c.style.width = '33.33%'; c.style.height = '30%'; });
+      }
+      break;
+    }
+
+    /* ── 7 guests: 2 rows × 4 cols equal (8 cells) ── */
+    case 7: {
+      _applyEqualGrid(grid, 8);
+      break;
+    }
+
+    /* ── 8 guests: 3×3 equal (9 cells total) ── */
+    case 8: {
+      _applyEqualGrid(grid, 9);
+      break;
+    }
+
+    /* ── 9 guests: host top-left prominent + 9 guests ──
+       Portrait: host top 100%×33% + 3 rows of 3 below
+       Landscape: host left 33%×40% + 3 cols of 3 on right */
+    case 9: {
+      if (isLandscape) {
+        grid.style.flexDirection = 'row';
+        grid.style.flexWrap      = 'wrap';
+        grid.style.alignContent  = 'flex-start';
+        if (hostCell) { hostCell.style.width = '34%'; hostCell.style.height = '66.67%'; }
+        guestCells.forEach((c, i) => {
+          if (i < 3) { c.style.width = '22%';  c.style.height = '66.67%'; }
+          else       { c.style.width = '22%';  c.style.height = '33.33%'; }
+        });
+      } else {
+        grid.style.flexDirection = 'row';
+        grid.style.flexWrap      = 'wrap';
+        grid.style.alignContent  = 'flex-start';
+        if (hostCell) { hostCell.style.width = '100%'; hostCell.style.height = '33%'; }
+        guestCells.forEach(c => { c.style.width = '33.33%'; c.style.height = '22.33%'; });
+      }
+      break;
+    }
+
+    default: {
+      // Fallback for counts beyond 9 (should not happen given _MAX_GUESTS cap)
+      _applyEqualGrid(grid, totalCells);
+    }
   }
 }
 
-/* ── Equal grid: calculate rows/cols then set dimensions ── */
+/* ─────────────────────────────────────────────────────────────────
+   NAMED LAYOUT HELPERS
+   ───────────────────────────────────────────────────────────────── */
+
+/* Equal grid: calculate optimal rows/cols then set dimensions */
 function _applyEqualGrid(grid, totalCells) {
-  const cols  = Math.ceil(Math.sqrt(totalCells));
-  const rows  = Math.ceil(totalCells / cols);
-  const w     = (100 / cols).toFixed(2) + '%';
-  const h     = (100 / rows).toFixed(2) + '%';
+  const stageW   = grid.offsetWidth  || window.innerWidth;
+  const stageH   = grid.offsetHeight || window.innerHeight;
+  // Pick cols to minimise wasted space given aspect ratio
+  const cols     = Math.ceil(Math.sqrt(totalCells * (stageW / Math.max(1, stageH))));
+  const colsClamped = Math.max(1, Math.min(totalCells, cols));
+  const rows     = Math.ceil(totalCells / colsClamped);
+  const w        = (100 / colsClamped).toFixed(4) + '%';
+  const h        = (100 / rows).toFixed(4) + '%';
+  grid.style.flexDirection = 'row';
+  grid.style.flexWrap      = 'wrap';
+  grid.style.alignContent  = 'stretch';
   grid.querySelectorAll('.guest-cell').forEach(cell => {
     cell.style.width  = w;
     cell.style.height = h;
   });
 }
 
-/* ── Float layout: cascade guest boxes from top-right, responsive ── */
-function _applyFloatLayout(grid, guestCount) {
-  const vw = grid.offsetWidth  || window.innerWidth;
-  const vh = grid.offsetHeight || window.innerHeight;
+/* Split: side-by-side — works well when guestCount ≤ 2 */
+function _applySplitLayout(grid, guestCount) {
+  const cells = Array.from(grid.querySelectorAll('.guest-cell'));
+  const n     = cells.length;
+  if (n === 0) return;
+  grid.style.flexDirection = 'row';
+  grid.style.flexWrap      = 'nowrap';
+  grid.style.alignItems    = 'stretch';
+  const w = (100 / n).toFixed(4) + '%';
+  cells.forEach(c => { c.style.width = w; c.style.height = '100%'; });
+}
 
-  // Tile size: 22% of stage width, clamped to sane min/max
-  const tileW = Math.max(80,  Math.min(160, Math.round(vw * 0.22)));
-  const tileH = Math.max(60,  Math.min(120, Math.round(tileW * 0.75)));
-  const gapH  = Math.max(6,   Math.round(vw * 0.015));
-  const gapV  = Math.max(6,   Math.round(vw * 0.015));
-  // How many columns fit across the right side without overlap
-  const maxCols = Math.max(1, Math.floor(vw / (tileW + gapH)));
+/* Host full-screen — guests as responsive floating tiles */
+function _applyHostFullLayout(grid, guestCount) {
+  const stageW   = grid.offsetWidth  || window.innerWidth;
+  const stageH   = grid.offsetHeight || window.innerHeight;
+  const hostCell = grid.querySelector('.host-cell');
+  if (hostCell) {
+    hostCell.style.position = 'absolute';
+    hostCell.style.inset    = '0';
+    hostCell.style.width    = '100%';
+    hostCell.style.height   = '100%';
+  }
 
-  let guestIndex = 0;
+  // Tile size: shrink when many guests to avoid overflow
+  const maxPerRow  = Math.min(guestCount, Math.ceil(Math.sqrt(guestCount * 2)));
+  const baseW      = Math.max(60, Math.min(160, Math.floor(stageW * 0.18)));
+  const tileW      = Math.floor(baseW * (maxPerRow > 4 ? 0.75 : 1));
+  const tileH      = Math.floor(tileW * 0.75);
+  const gap        = Math.max(4, Math.floor(stageW * 0.012));
+  const cols       = Math.max(1, Math.floor((stageW - gap) / (tileW + gap)));
+
+  let i = 0;
   grid.querySelectorAll('.guest-cell:not(.host-cell)').forEach(cell => {
-    const col = guestIndex % maxCols;
-    const row = Math.floor(guestIndex / maxCols);
-    cell.style.width  = tileW + 'px';
-    cell.style.height = tileH + 'px';
-    cell.style.right  = (gapH + col * (tileW + gapH)) + 'px';
-    cell.style.top    = (gapV + row * (tileH + gapV)) + 'px';
-    cell.style.bottom = 'auto';
-    cell.style.left   = 'auto';
-    guestIndex++;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    cell.style.position = 'absolute';
+    cell.style.width    = tileW + 'px';
+    cell.style.height   = tileH + 'px';
+    cell.style.right    = (gap + col * (tileW + gap)) + 'px';
+    cell.style.top      = (gap + row * (tileH + gap)) + 'px';
+    cell.style.bottom   = 'auto';
+    cell.style.left     = 'auto';
+    i++;
   });
+}
+
+/* Host Big: host takes most of the width, guests in a vertical strip */
+function _applyHostBigLayout(grid, guestCount) {
+  const stageW     = grid.offsetWidth  || window.innerWidth;
+  const hostCell   = grid.querySelector('.host-cell');
+  const guestCells = Array.from(grid.querySelectorAll('.guest-cell:not(.host-cell)'));
+
+  // Strip width: clamp to avoid tiny guest tiles
+  const stripW = Math.max(80, Math.min(200, Math.floor(stageW * 0.22)));
+  grid.style.flexDirection = 'row';
+  grid.style.flexWrap      = 'nowrap';
+  grid.style.alignItems    = 'stretch';
+
+  if (hostCell) {
+    hostCell.style.flex   = '1';
+    hostCell.style.height = '100%';
+  }
+
+  // Stack guests in the strip — if more than 5, split into 2 sub-columns
+  const subCols  = guestCount > 5 ? 2 : 1;
+  const gH       = (100 / Math.ceil(guestCount / subCols)).toFixed(4) + '%';
+  const gW       = (stripW / subCols) + 'px';
+  guestCells.forEach(c => {
+    c.style.width  = gW;
+    c.style.height = gH;
+    c.style.flex   = 'none';
+  });
+}
+
+/* Float layout: cascade guest boxes from top-right, responsive */
+function _applyFloatLayout(grid, guestCount) {
+  const stageW   = grid.offsetWidth  || window.innerWidth;
+  const stageH   = grid.offsetHeight || window.innerHeight;
+  const hostCell = grid.querySelector('.host-cell');
+
+  if (hostCell) {
+    hostCell.style.position = 'absolute';
+    hostCell.style.inset    = '0';
+    hostCell.style.width    = '100%';
+    hostCell.style.height   = '100%';
+  }
+
+  // Scale tile size down for more guests
+  const base    = Math.max(55, Math.min(160, Math.floor(stageW * 0.20)));
+  const tileW   = guestCount > 5 ? Math.floor(base * 0.75) : base;
+  const tileH   = Math.floor(tileW * 0.75);
+  const gap     = Math.max(4, Math.floor(stageW * 0.012));
+  const cols    = Math.max(1, Math.floor((stageW - gap) / (tileW + gap)));
+
+  let i = 0;
+  grid.querySelectorAll('.guest-cell:not(.host-cell)').forEach(cell => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    cell.style.position = 'absolute';
+    cell.style.width    = tileW + 'px';
+    cell.style.height   = tileH + 'px';
+    cell.style.right    = (gap + col * (tileW + gap)) + 'px';
+    cell.style.top      = (gap + row * (tileH + gap)) + 'px';
+    cell.style.bottom   = 'auto';
+    cell.style.left     = 'auto';
+    i++;
+  });
+}
+
+/* ── Update the guest count indicator inside the layout panel ── */
+function _updateLayoutPanelCounter(guestCount) {
+  const el = document.getElementById('_guestCountIndicator');
+  if (el) {
+    el.textContent = `${guestCount} / ${_MAX_GUESTS} guest${guestCount === 1 ? '' : 's'}`;
+    el.style.color = guestCount >= _MAX_GUESTS ? '#ff6677' : '#00AEEF';
+  }
 }
 
 /* ── Toggle layout panel ── */
@@ -3272,10 +3595,387 @@ function _openLayoutPanel() {
   D.layoutSettingsPanel.style.display = 'block';
   _layoutPanelOpen = true;
   if (D.btnLayoutSettings) D.btnLayoutSettings.classList.add('has-guests');
+  // Refresh counter whenever panel opens
+  const guestCount = _mode === 'creator'
+    ? Object.keys(_guestPeers).length
+    : parseInt(D.guestGrid?.dataset.count || '0', 10);
+  _updateLayoutPanelCounter(guestCount);
 }
 
 function _closeLayoutPanel() {
   if (!D.layoutSettingsPanel) return;
   D.layoutSettingsPanel.style.display = 'none';
   _layoutPanelOpen = false;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIVE TIMER
+   — Tracks how long the live has been running.
+   — Controlled by the host via the Settings panel toggle.
+   — Displays in the top bar (host only).
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _liveTimerEnabled  = false;   // host's preference (ON/OFF toggle)
+let _liveTimerInterval = null;    // setInterval handle
+let _liveTimerStart    = 0;       // Date.now() when live started
+
+function _liveTimerSetEnabled(on) {
+  _liveTimerEnabled = on;
+  const badge = document.getElementById('liveTimerDisplay');
+  if (!badge) return;
+  if (on) {
+    badge.classList.add('visible');
+    // If the live is already running, start counting.
+    // If _liveTimerStart was never set (live started before timer was enabled),
+    // initialize it now so the counter starts from 0 rather than showing a huge number.
+    if (_roomId) {
+      if (!_liveTimerStart) _liveTimerStart = Date.now();
+      _liveTimerRun();
+    }
+  } else {
+    badge.classList.remove('visible');
+    if (_liveTimerInterval) { clearInterval(_liveTimerInterval); _liveTimerInterval = null; }
+    const txt = document.getElementById('liveTimerText');
+    if (txt) txt.textContent = '00:00:00';
+  }
+}
+
+function _liveTimerOnLiveStart() {
+  _liveTimerStart = Date.now();
+  if (_liveTimerEnabled) _liveTimerRun();
+}
+
+function _liveTimerOnLiveEnd() {
+  if (_liveTimerInterval) { clearInterval(_liveTimerInterval); _liveTimerInterval = null; }
+  const badge = document.getElementById('liveTimerDisplay');
+  if (badge) badge.classList.remove('visible');
+  const txt = document.getElementById('liveTimerText');
+  if (txt) txt.textContent = '00:00:00';
+}
+
+function _liveTimerRun() {
+  if (_liveTimerInterval) clearInterval(_liveTimerInterval);
+  const txt = document.getElementById('liveTimerText');
+  if (!txt) return;
+
+  const tick = () => {
+    const secs = Math.floor((Date.now() - _liveTimerStart) / 1000);
+    const h    = Math.floor(secs / 3600);
+    const m    = Math.floor((secs % 3600) / 60);
+    const s    = secs % 60;
+    txt.textContent =
+      String(h).padStart(2, '0') + ':' +
+      String(m).padStart(2, '0') + ':' +
+      String(s).padStart(2, '0');
+  };
+  tick();
+  _liveTimerInterval = setInterval(tick, 1000);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   AI SAFETY SYSTEM
+   — Monitors incoming live chat from Firestore in real time.
+   — Detects spam, harassment, threats, hate speech, doxxing.
+   — Shows a PRIVATE popup to the host only.
+   — Host chooses: Ignore / Warn user / Remove comment / Remove guest.
+   — Does NOT auto-punish users without host approval.
+   — Completely separate from the existing client-side send-time scanner.
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _aiSafetyEnabled   = false;    // host toggle
+let _aiSafetyChatUnsub = null;     // Firestore listener handle
+let _aiSafetySeenIds   = new Set(); // already-processed message IDs
+
+/* Enable / disable the system */
+function _aiSafetySetEnabled(on) {
+  _aiSafetyEnabled = on;
+  const badge = document.getElementById('aiSafetyBadge');
+  if (badge) badge.classList.toggle('visible', on);
+  if (on) {
+    if (_roomId) _aiSafetyStartMonitor();
+  } else {
+    _aiSafetyStopMonitor();
+  }
+}
+
+/* Called when live starts — starts monitor if already enabled */
+function _aiSafetyOnLiveStart() {
+  if (_aiSafetyEnabled && _roomId) _aiSafetyStartMonitor();
+}
+
+/* Called when live ends — clean up */
+function _aiSafetyOnLiveEnd() {
+  _aiSafetyStopMonitor();
+  _aiSafetySeenIds.clear();
+  const badge = document.getElementById('aiSafetyBadge');
+  if (badge) badge.classList.remove('visible');
+}
+
+function _aiSafetyStopMonitor() {
+  if (_aiSafetyChatUnsub) {
+    try { _aiSafetyChatUnsub(); } catch(_) {}
+    _aiSafetyChatUnsub = null;
+  }
+}
+
+function _aiSafetyStartMonitor() {
+  _aiSafetyStopMonitor();
+  if (!_roomId || _mode !== 'creator') return;
+
+  // Subscribe to live messages — last 50, ordered newest last
+  // We only alert on messages we haven't seen yet (added after system enabled)
+  const messagesRef = collection(_db, 'liveRooms', _roomId, 'liveMessages');
+  const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(50));
+
+  let _firstSnapshot = true;
+
+  _aiSafetyChatUnsub = onSnapshot(q, snap => {
+    // Skip the very first snapshot (historical messages already on screen)
+    if (_firstSnapshot) {
+      _firstSnapshot = false;
+      // Seed seen IDs so we don't alert on any existing messages
+      snap.docs.forEach(d => _aiSafetySeenIds.add(d.id));
+      return;
+    }
+
+    snap.docChanges().forEach(change => {
+      if (change.type !== 'added') return;
+      const docId = change.doc.id;
+      if (_aiSafetySeenIds.has(docId)) return;
+      _aiSafetySeenIds.add(docId);
+
+      const data = change.doc.data();
+      // Skip system messages and own messages
+      if (data.type === 'system') return;
+      if (data.userId === _user?.uid) return;
+
+      const hit = _liveScanText(data.text || '');
+      if (!hit) return;
+
+      // Show private warning popup to host
+      _aiSafetyShowWarning(hit, data, docId);
+    });
+  }, () => {});
+}
+
+/* Show the private warning popup to the host */
+function _aiSafetyShowWarning(rule, msgData, docId) {
+  // Don't stack: dismiss existing one first
+  const old = document.getElementById('_snxSafetyOverlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '_snxSafetyOverlay';
+  overlay.className = 'snx-safety-overlay';
+
+  const userName  = msgData.userName || 'Unknown User';
+  const msgText   = msgData.text     || '';
+  const msgUserId = msgData.userId   || '';
+
+  // Severity icon
+  const icon = rule.severity === 'block' ? '🚫' : '⚠️';
+
+  overlay.innerHTML = `
+    <div class="snx-safety-box">
+      <div class="snx-safety-header">
+        <div class="snx-safety-icon">${icon}</div>
+        <div class="snx-safety-title-block">
+          <div class="snx-safety-title">AI Safety Alert</div>
+          <div class="snx-safety-category">${rule.category} · ${rule.severity === 'block' ? 'High Risk' : 'Warning'}</div>
+        </div>
+      </div>
+      <div class="snx-safety-body">
+        <div class="snx-safety-label">Flagged Message</div>
+        <div class="snx-safety-text">${_escapeHtml(msgText)}</div>
+      </div>
+      <div class="snx-safety-user-row">
+        <span style="font-size:16px">👤</span>
+        <div class="snx-safety-user-name">${_escapeHtml(userName)}</div>
+        <span style="font-size:10px;color:#4a7a9a;">user</span>
+      </div>
+      <div class="snx-safety-actions">
+        <button class="snx-safety-btn snx-safety-btn-ignore" data-action="ignore">Ignore</button>
+        <button class="snx-safety-btn snx-safety-btn-warn"   data-action="warn">Warn User</button>
+        <button class="snx-safety-btn snx-safety-btn-del"    data-action="delete">Remove Comment</button>
+        <button class="snx-safety-btn snx-safety-btn-kick"   data-action="kick">Remove Guest</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelectorAll('.snx-safety-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      overlay.remove();
+      const action = btn.dataset.action;
+
+      if (action === 'ignore') {
+        // Host chose to ignore — no action
+        return;
+      }
+
+      if (action === 'warn') {
+        // Send a system warning message visible to everyone in chat
+        try {
+          await addDoc(collection(_db, 'liveRooms', _roomId, 'liveMessages'), {
+            userId:    _user.uid,
+            userName:  'Safety Bot',
+            text:      `⚠️ Please keep the community safe and respectful.`,
+            type:      'system',
+            createdAt: serverTimestamp(),
+          });
+        } catch(_) {}
+        toast('⚠️ Warning sent to chat.');
+        return;
+      }
+
+      if (action === 'delete') {
+        // Delete the flagged message from Firestore
+        try {
+          await deleteDoc(doc(_db, 'liveRooms', _roomId, 'liveMessages', docId));
+          toast('🗑 Comment removed.');
+        } catch(_) {
+          toast('Could not remove comment.');
+        }
+        return;
+      }
+
+      if (action === 'kick') {
+        // Host must confirm before removing a guest
+        if (!msgUserId) { toast('Cannot identify user to remove.'); return; }
+        const confirmed = await _snxConfirm({
+          icon:    '🚫',
+          title:   `Remove ${userName} from this live?`,
+          sub:     `They will be disconnected and cannot rejoin. This action cannot be undone.`,
+          okLabel: 'Remove',
+          okClass: '',
+        });
+        if (!confirmed) return;
+
+        // Remove from guest boxes if present
+        if (_guestPeers[msgUserId]) {
+          _hostDoRemoveGuest(msgUserId);
+        }
+        // Delete the flagged message as well
+        try {
+          await deleteDoc(doc(_db, 'liveRooms', _roomId, 'liveMessages', docId));
+        } catch(_) {}
+        toast('🚫 Guest removed.');
+      }
+    });
+  });
+
+  document.body.appendChild(overlay);
+
+  // Auto-dismiss after 30 s if host doesn't respond
+  setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 30000);
+}
+
+/* Tiny HTML escape for user content injected into innerHTML */
+function _escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   SHADOW BOT ASSISTANT
+   — Friendly welcome and positive messages.
+   — Completely separate from AI Safety System.
+   — Posts as a "Shadow Bot" system message to live chat.
+   — Limits: max 2 messages per hour. Only during active live.
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _shadowBotEnabled      = false;    // host toggle
+let _shadowBotTimer1       = null;     // first message timer
+let _shadowBotTimer2       = null;     // second message timer (if needed)
+let _shadowBotMsgCount     = 0;        // messages sent this hour window
+let _shadowBotHourReset    = null;     // hourly counter reset timer
+let _shadowBotActive       = false;    // true only when live is running
+
+const _SHADOW_BOT_MESSAGES = [
+  'Welcome to Shadow Nexus Live! 🌑',
+  'Thanks for being here — keep the chat positive! ✨',
+  'Great to see everyone here on Shadow Nexus Live! 🔴',
+  "You're all amazing — thanks for watching! 🙌",
+  'This live is powered by the Shadow Nexus community. Welcome! 💙',
+  'Enjoying the stream? Share it with a friend! 📤',
+];
+
+function _shadowBotSetEnabled(on) {
+  _shadowBotEnabled = on;
+  const badge = document.getElementById('shadowBotBadge');
+  if (badge) badge.classList.toggle('visible', on);
+  if (on) {
+    if (_shadowBotActive) _shadowBotSchedule();
+  } else {
+    _shadowBotClearTimers();
+  }
+}
+
+function _shadowBotOnLiveStart() {
+  _shadowBotActive   = true;
+  _shadowBotMsgCount = 0;
+  if (_shadowBotEnabled) _shadowBotSchedule();
+}
+
+function _shadowBotOnLiveEnd() {
+  _shadowBotActive = false;
+  _shadowBotClearTimers();
+  const badge = document.getElementById('shadowBotBadge');
+  if (badge) badge.classList.remove('visible');
+}
+
+function _shadowBotClearTimers() {
+  if (_shadowBotTimer1)    { clearTimeout(_shadowBotTimer1);    _shadowBotTimer1    = null; }
+  if (_shadowBotTimer2)    { clearTimeout(_shadowBotTimer2);    _shadowBotTimer2    = null; }
+  if (_shadowBotHourReset) { clearTimeout(_shadowBotHourReset); _shadowBotHourReset = null; }
+}
+
+function _shadowBotSchedule() {
+  _shadowBotClearTimers();
+  if (!_shadowBotEnabled || !_shadowBotActive || !_roomId || _mode !== 'creator') return;
+
+  // First message: 45–75 seconds after live starts (or bot is enabled)
+  const delay1 = 45000 + Math.random() * 30000;   // 45–75 s
+  // Second message: 30–40 minutes later
+  const delay2 = delay1 + (30 * 60 * 1000) + Math.random() * (10 * 60 * 1000);
+
+  _shadowBotTimer1 = setTimeout(() => _shadowBotPost(), delay1);
+
+  // Only schedule second message if we haven't hit the hourly cap
+  _shadowBotTimer2 = setTimeout(() => {
+    if (_shadowBotMsgCount < 2) _shadowBotPost();
+  }, delay2);
+
+  // Reset counter every 60 minutes so the bot can post again next hour
+  _shadowBotHourReset = setTimeout(() => {
+    _shadowBotMsgCount = 0;
+    if (_shadowBotEnabled && _shadowBotActive) _shadowBotSchedule();
+  }, 60 * 60 * 1000);
+}
+
+async function _shadowBotPost() {
+  if (!_shadowBotEnabled || !_shadowBotActive || !_roomId || _mode !== 'creator') return;
+  if (_shadowBotMsgCount >= 2) return;   // hard cap: max 2 per hour
+
+  _shadowBotMsgCount++;
+
+  // Pick a random message, avoid repeating the last one
+  const msg = _SHADOW_BOT_MESSAGES[
+    Math.floor(Math.random() * _SHADOW_BOT_MESSAGES.length)
+  ];
+
+  try {
+    await addDoc(collection(_db, 'liveRooms', _roomId, 'liveMessages'), {
+      userId:    'shadow_bot',
+      userName:  'Shadow Bot',
+      text:      msg,
+      type:      'system',
+      createdAt: serverTimestamp(),
+    });
+  } catch(_) {}
 }

@@ -144,6 +144,18 @@
       <!-- Viewer count -->
       <div class="live-viewer-count" id="liveViewerCount">👁 0</div>
 
+      <!-- Live Timer (host only) -->
+      <div id="liveTimerDisplay" aria-label="Live duration timer">
+        <span class="live-timer-dot"></span>
+        <span id="liveTimerText">00:00:00</span>
+      </div>
+
+      <!-- AI Safety active badge (host only) -->
+      <div id="aiSafetyBadge" aria-label="AI Safety active">🛡 AI</div>
+
+      <!-- Shadow Bot active badge (host only) -->
+      <div id="shadowBotBadge" aria-label="Shadow Bot active">🤖 Bot</div>
+
       <!-- Close / End button -->
       <button
         id="liveCloseBtn"
@@ -202,6 +214,9 @@
       <!-- Layout button (host only) — one button that opens all layout settings -->
       <button id="btnLayoutSettings" class="live-ctrl-btn guest-layout-btn" aria-label="Layout settings" title="Layout">⊞</button>
 
+      <!-- Live Settings button (host only) -->
+      <button id="btnLiveSettings" class="live-ctrl-btn" aria-label="Live settings" title="Settings">⚙️</button>
+
       <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
 
     </div>
@@ -211,6 +226,16 @@
          ═══════════════════════════════════ -->
     <div id="layoutSettingsPanel" class="layout-settings-panel" style="display:none;">
       <div class="layout-panel-title">Layout Settings</div>
+
+      <!-- Live guest count indicator -->
+      <div style="text-align:center;margin-bottom:10px;">
+        <span id="_guestCountIndicator" style="
+          font-size:11px;font-weight:700;color:#00AEEF;
+          background:rgba(0,174,239,0.1);border:1px solid rgba(0,174,239,0.3);
+          border-radius:20px;padding:3px 12px;letter-spacing:0.4px;
+        ">0 / 9 guests</span>
+      </div>
+
       <div class="layout-panel-grid">
         <button class="layout-option-btn active" data-layout="auto" title="Auto">
           <span class="layout-icon">✦</span>
@@ -242,6 +267,50 @@
         <button class="layout-size-btn active" data-size="sm">S</button>
         <button class="layout-size-btn" data-size="md">M</button>
         <button class="layout-size-btn" data-size="lg">L</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         LIVE SETTINGS PANEL (host only)
+         3 separate ON/OFF switches
+         ═══════════════════════════════════ -->
+    <div id="liveSettingsPanel" class="live-settings-panel" style="display:none;">
+      <div class="live-settings-title">⚙️ Live Settings</div>
+
+      <!-- AI Safety System -->
+      <div class="lsp-row">
+        <div class="lsp-label">
+          <div class="lsp-label-name">🛡 AI Safety System</div>
+          <div class="lsp-label-desc">Monitor chat &amp; warn host of violations</div>
+        </div>
+        <label class="lsp-toggle" aria-label="AI Safety System toggle">
+          <input type="checkbox" id="toggleAISafety">
+          <span class="lsp-slider"></span>
+        </label>
+      </div>
+
+      <!-- Shadow Bot -->
+      <div class="lsp-row">
+        <div class="lsp-label">
+          <div class="lsp-label-name">🤖 Shadow Bot</div>
+          <div class="lsp-label-desc">Friendly welcome &amp; community messages</div>
+        </div>
+        <label class="lsp-toggle" aria-label="Shadow Bot toggle">
+          <input type="checkbox" id="toggleShadowBot">
+          <span class="lsp-slider"></span>
+        </label>
+      </div>
+
+      <!-- Live Timer -->
+      <div class="lsp-row">
+        <div class="lsp-label">
+          <div class="lsp-label-name">⏱ Live Timer</div>
+          <div class="lsp-label-desc">Show live duration in top bar</div>
+        </div>
+        <label class="lsp-toggle" aria-label="Live Timer toggle">
+          <input type="checkbox" id="toggleLiveTimer">
+          <span class="lsp-slider"></span>
+        </label>
       </div>
     </div>
 

@@ -618,6 +618,13 @@ body.is-creator .live-chat-input-row {
 body.is-viewer .live-bottom-bar { display: none !important; }
 body.is-creator .live-viewer-actions { display: none !important; }
 
+/* ── Hide host-only items from viewers ── */
+body.is-viewer #btnLiveSettings    { display: none !important; }
+body.is-viewer #liveSettingsPanel  { display: none !important; }
+body.is-viewer #liveTimerDisplay   { display: none !important; }
+body.is-viewer #aiSafetyBadge      { display: none !important; }
+body.is-viewer #shadowBotBadge     { display: none !important; }
+
 /* ── Tap to show/hide controls on mobile (creator) ── */
 .live-controls-hidden .live-bottom-bar { opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 .live-controls-hidden .live-top-bar    { opacity: 0; transition: opacity 0.3s; pointer-events: none; }
@@ -958,213 +965,66 @@ body.is-creator .live-viewer-actions { display: none !important; }
 }
 .guest-cell-remove:hover { background: rgba(200,0,30,0.6); }
 
-/* ════════════════════════════════════
+/* ════════════════════════════════════════════════════════════
    LAYOUT MODES
-   ════════════════════════════════════ */
+   All sizes are set by the JS engine (_doApplyGuestLayout).
+   CSS provides only the flex container skeleton + named-mode
+   overrides for floating/absolute positioning.
+   ════════════════════════════════════════════════════════════ */
 
-/* ── 1 person: host full (default — grid hidden, main video shows) ── */
+/* Grid hidden when no guests */
 .guest-grid[data-count="0"] { display: none !important; }
 
-/* ══════════════════════════════════════════════════════════════
-   AUTO LAYOUT — fully responsive, no fixed pixels
-   All percentage-based so boxes fill available space on any screen.
-   ══════════════════════════════════════════════════════════════ */
-
-/* ── 2 people: side-by-side split ── */
-.guest-grid[data-layout="split"][data-count="1"],
-.guest-grid[data-layout="auto"][data-count="1"] {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: stretch;
-}
-.guest-grid[data-layout="auto"][data-count="1"] .guest-cell,
-.guest-grid[data-layout="split"][data-count="1"] .guest-cell {
-  width: 50%; height: 100%;
-}
-
-/* ── Host in grid: host cell always first at 50% width for 2 people ── */
-.guest-grid[data-layout="auto"][data-count="1"] .guest-cell.host-cell,
-.guest-grid[data-layout="split"][data-count="1"] .guest-cell.host-cell {
-  width: 50%; height: 100%;
-}
-
-/* ── 3 people: large host + 2 stacked guests ── */
-.guest-grid[data-layout="auto"][data-count="2"] {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: stretch;
-}
-.guest-grid[data-layout="auto"][data-count="2"] .guest-cell.host-cell {
-  width: 60%; height: 100%;
-}
-.guest-grid[data-layout="auto"][data-count="2"] .guest-cell:not(.host-cell) {
-  width: 40%; height: 50%;
-  align-self: flex-start;
-}
-/* Force guests to stack vertically inside the 40% column */
-.guest-grid[data-layout="auto"][data-count="2"] {
-  flex-wrap: wrap; align-content: stretch;
-}
-.guest-grid[data-layout="auto"][data-count="2"] .guest-cell:not(.host-cell):nth-child(3) {
-  align-self: flex-end;
-}
-
-/* ── 4 people: equal grid 2×2 ── */
-.guest-grid[data-layout="auto"][data-count="3"] {
-  flex-direction: row; flex-wrap: wrap;
-  align-content: stretch;
-}
-.guest-grid[data-layout="auto"][data-count="3"] .guest-cell {
-  width: 50%; height: 50%;
-}
-
-/* ── 5 people: host top-50% + 4 equal bottom ── */
-.guest-grid[data-layout="auto"][data-count="4"] {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-content: flex-start;
-}
-.guest-grid[data-layout="auto"][data-count="4"] .guest-cell.host-cell {
-  width: 100%; height: 55%;
-}
-.guest-grid[data-layout="auto"][data-count="4"] .guest-cell:not(.host-cell) {
-  width: 25%; height: 45%;
-}
-
-/* ── 6+ people: balanced equal grid (JS calculates cols/rows) ── */
-.guest-grid[data-layout="auto"] .guest-cell {
-  /* Fallback for 5+ guests — handled dynamically by JS */
+/* All cells: box-model + transition for smooth rearrangement */
+.guest-cell {
   box-sizing: border-box;
+  transition: width 0.25s ease, height 0.25s ease;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   HOST FULL — host full-screen, guests as responsive floating tiles
-   ══════════════════════════════════════════════════════════════ */
-.guest-grid[data-layout="host-full"] .guest-cell.host-cell {
-  position: absolute; inset: 0;
-  width: 100% !important; height: 100% !important;
-}
+/* ── Float / Host-Full: absolute guest tiles need border + shadow ── */
+.guest-grid[data-layout="float"]     .guest-cell:not(.host-cell),
 .guest-grid[data-layout="host-full"] .guest-cell:not(.host-cell) {
-  position: absolute;
-  /* Responsive: use viewport-relative sizes clamped to prevent overflow */
-  width: clamp(80px, 22vw, 160px) !important;
-  height: clamp(60px, 16.5vw, 120px) !important;
-  border-radius: 10px; overflow: hidden;
+  border-radius: 10px;
   border: 1.5px solid rgba(0,174,239,0.4);
   box-shadow: 0 4px 18px rgba(0,0,0,0.6);
   z-index: 6;
-}
-
-/* ── Host Big: large host + small guest strip ── */
-.guest-grid[data-layout="host-big"] {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: stretch;
-}
-.guest-grid[data-layout="host-big"] .guest-cell.host-cell {
-  flex: 1; height: 100%; min-width: 0;
-}
-.guest-grid[data-layout="host-big"] .guest-cell:not(.host-cell) {
-  /* Responsive strip width: at most 22% but at least 80px */
-  width: clamp(80px, 22%, 160px); height: 100%;
-  flex-shrink: 0;
-}
-
-/* ── Grid: equal grid for all ── */
-.guest-grid[data-layout="grid"] {
-  flex-direction: row; flex-wrap: wrap;
-  align-content: stretch;
-}
-.guest-grid[data-layout="grid"] .guest-cell {
-  /* JS sets width/height based on count */
-  box-sizing: border-box;
-  border: 1px solid rgba(0,0,0,0.3);
-}
-
-/* ── Float: all guests float over host ── */
-.guest-grid[data-layout="float"] .guest-cell.host-cell {
-  position: absolute; inset: 0;
-  width: 100% !important; height: 100% !important;
+  overflow: hidden;
 }
 .guest-grid[data-layout="float"] .guest-cell:not(.host-cell) {
-  position: absolute;
-  border-radius: 10px; overflow: hidden;
-  border: 1.5px solid rgba(0,174,239,0.4);
-  box-shadow: 0 4px 18px rgba(0,0,0,0.6);
-  z-index: 6;
   cursor: move;
 }
 
-/* ── Box size modifiers (responsive scaling via CSS custom property) ── */
+/* ── Grid layout: thin dividing border between cells ── */
+.guest-grid[data-layout="grid"] .guest-cell {
+  border: 1px solid rgba(0,0,0,0.3);
+}
+
+/* ── Box size modifiers ── */
 .guest-grid.box-sm .guest-cell:not(.host-cell) { --gbox-scale: 0.82; }
 .guest-grid.box-md .guest-cell:not(.host-cell) { --gbox-scale: 1.0;  }
 .guest-grid.box-lg .guest-cell:not(.host-cell) { --gbox-scale: 1.18; }
 
 /* ══════════════════════════════════════════════════════════════
-   RESPONSIVE GUEST GRID BREAKPOINTS
-   Phone portrait → phone landscape → tablet → desktop
+   RESPONSIVE OVERRIDES — compact labels on small screens
+   (Geometry is always JS; only typography changes here)
    ══════════════════════════════════════════════════════════════ */
 
-/* ── Phone (≤480px): compact layout adjustments ── */
 @media (max-width: 480px) {
-  /* host-full floating tiles: smaller on tiny screens */
-  .guest-grid[data-layout="host-full"] .guest-cell:not(.host-cell) {
-    width: clamp(68px, 24vw, 110px) !important;
-    height: clamp(50px, 18vw, 80px) !important;
-  }
-  /* host-big strip: wider percentage on phones so guest is visible */
-  .guest-grid[data-layout="host-big"] .guest-cell:not(.host-cell) {
-    width: clamp(70px, 28%, 110px);
-  }
-  /* 3-person: stack vertically on small phones */
-  .guest-grid[data-layout="auto"][data-count="2"] .guest-cell.host-cell { width: 100%; height: 55%; }
-  .guest-grid[data-layout="auto"][data-count="2"] .guest-cell:not(.host-cell) { width: 50%; height: 45%; }
-  .guest-grid[data-layout="auto"][data-count="2"] { flex-direction: row; flex-wrap: wrap; }
-  /* Name labels: even more compact */
   .guest-cell-name { font-size: 9px; padding: 3px 5px; }
-  /* Avatar in viewer cards: smaller */
-  .vgc-avatar { width: 48px; height: 48px; font-size: 18px; }
+  .vgc-avatar      { width: 48px; height: 48px; font-size: 18px; }
 }
 
-/* ── Phone landscape (height ≤ 420px): prioritise vertical space ── */
 @media (orientation: landscape) and (max-height: 420px) {
-  /* 3-person: side-by-side is best in landscape */
-  .guest-grid[data-layout="auto"][data-count="2"] {
-    flex-direction: row; flex-wrap: nowrap;
-  }
-  .guest-grid[data-layout="auto"][data-count="2"] .guest-cell.host-cell { width: 50%; height: 100%; }
-  .guest-grid[data-layout="auto"][data-count="2"] .guest-cell:not(.host-cell) { width: 25%; height: 100%; }
-  /* 5-person: row-based in landscape */
-  .guest-grid[data-layout="auto"][data-count="4"] .guest-cell.host-cell { width: 50%; height: 100%; }
-  .guest-grid[data-layout="auto"][data-count="4"] .guest-cell:not(.host-cell) { width: 12.5%; height: 100%; }
-  /* Floating tiles: compact row near top */
-  .guest-grid[data-layout="host-full"] .guest-cell:not(.host-cell) {
-    width: clamp(56px, 16vw, 100px) !important;
-    height: clamp(42px, 12vw, 75px) !important;
-  }
   .guest-cell-name { font-size: 8px; padding: 2px 4px; }
 }
 
-/* ── Tablet (481px–768px) ── */
 @media (min-width: 481px) and (max-width: 768px) {
-  .guest-grid[data-layout="host-full"] .guest-cell:not(.host-cell) {
-    width: clamp(90px, 20vw, 140px) !important;
-    height: clamp(68px, 15vw, 105px) !important;
-  }
   .guest-cell-name { font-size: 10px; }
 }
 
-/* ── Desktop (≥769px): roomier tiles ── */
 @media (min-width: 769px) {
-  .guest-grid[data-layout="host-full"] .guest-cell:not(.host-cell) {
-    width: clamp(120px, 14vw, 200px) !important;
-    height: clamp(90px, 10.5vw, 150px) !important;
-  }
-  .guest-grid[data-layout="host-big"] .guest-cell:not(.host-cell) {
-    width: clamp(100px, 18%, 200px);
-  }
   .guest-cell-name { font-size: 11px; }
-  .vgc-avatar { width: 72px; height: 72px; font-size: 28px; }
+  .vgc-avatar      { width: 72px; height: 72px; font-size: 28px; }
 }
 
 /* Hide main #liveVideo when grid is showing (grid renders its own host cell) */
@@ -1360,3 +1220,235 @@ button, input, a, [role="button"] {
   from { opacity: 1; transform: scale(1); }
   to   { opacity: 0; transform: scale(0.85); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   LIVE SETTINGS PANEL  (host only)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Settings button in creator bottom bar */
+#btnLiveSettings {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255,255,255,0.22);
+  color: #fff; font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: background 0.18s, border-color 0.18s, transform 0.1s;
+  touch-action: manipulation;
+}
+#btnLiveSettings:hover { background: rgba(0,80,200,0.3); border-color: rgba(0,174,239,0.6); }
+#btnLiveSettings:active { transform: scale(0.92); }
+
+/* Settings Panel */
+.live-settings-panel {
+  position: absolute;
+  bottom: 80px; right: 12px;
+  width: min(300px, calc(100vw - 24px));
+  background: rgba(0,10,30,0.97); backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(0,174,239,0.45);
+  border-radius: 18px; padding: 16px 18px;
+  z-index: 50;
+  animation: lspIn 0.2s ease-out both;
+}
+@keyframes lspIn {
+  from { opacity:0; transform: translateY(10px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.live-settings-title {
+  font-size: 12px; font-weight: 800; color: #e8f4ff;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  text-align: center; margin-bottom: 14px;
+  border-bottom: 1px solid rgba(0,174,239,0.2);
+  padding-bottom: 10px;
+}
+
+/* Row for each toggle setting */
+.lsp-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.lsp-row:last-child { border-bottom: none; padding-bottom: 0; }
+.lsp-label {
+  display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0;
+}
+.lsp-label-name {
+  font-size: 12px; font-weight: 700; color: #d8eeff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lsp-label-desc {
+  font-size: 10px; color: #4a7a9a; line-height: 1.4;
+}
+
+/* Toggle switch */
+.lsp-toggle {
+  position: relative; display: inline-block;
+  width: 42px; height: 24px; flex-shrink: 0;
+}
+.lsp-toggle input { opacity: 0; width: 0; height: 0; }
+.lsp-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: rgba(255,255,255,0.12);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  border-radius: 24px;
+  transition: background 0.22s, border-color 0.22s;
+}
+.lsp-slider:before {
+  content: ''; position: absolute;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: rgba(255,255,255,0.55);
+  left: 3px; top: 50%; transform: translateY(-50%);
+  transition: left 0.22s, background 0.22s;
+}
+.lsp-toggle input:checked + .lsp-slider {
+  background: rgba(0,174,239,0.35);
+  border-color: rgba(0,174,239,0.7);
+}
+.lsp-toggle input:checked + .lsp-slider:before {
+  left: 20px; background: #00AEEF;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIVE TIMER  (host only, shown in top-bar)
+   ═══════════════════════════════════════════════════════════════ */
+#liveTimerDisplay {
+  display: none;
+  align-items: center; gap: 5px;
+  background: rgba(0,0,0,0.52); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: 11px; color: #d0e8ff; flex-shrink: 0;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', monospace;
+}
+#liveTimerDisplay.visible { display: flex; }
+.live-timer-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #ff2244; flex-shrink: 0;
+  animation: feedLivePulse 1.2s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AI SAFETY SYSTEM  (host-only private warning popup)
+   ═══════════════════════════════════════════════════════════════ */
+.snx-safety-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9900;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(3px);
+  animation: snxSafetyIn 0.22s ease-out both;
+}
+@keyframes snxSafetyIn {
+  from { opacity:0; }
+  to   { opacity:1; }
+}
+.snx-safety-box {
+  background: rgba(6,18,44,0.99);
+  border: 2px solid rgba(255,180,0,0.55);
+  border-radius: 20px;
+  padding: 20px 18px 18px;
+  width: min(360px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: 12px;
+  animation: snxSafetyBoxIn 0.24s ease-out both;
+}
+@keyframes snxSafetyBoxIn {
+  from { opacity:0; transform: translateY(18px) scale(0.97); }
+  to   { opacity:1; transform: translateY(0) scale(1); }
+}
+.snx-safety-header {
+  display: flex; align-items: center; gap: 10px;
+}
+.snx-safety-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+.snx-safety-title-block { flex: 1; min-width: 0; }
+.snx-safety-title {
+  font-size: 14px; font-weight: 800; color: #ffe066;
+  line-height: 1.3;
+}
+.snx-safety-category {
+  font-size: 10px; font-weight: 700; color: #b89c00;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  margin-top: 2px;
+}
+.snx-safety-body {
+  background: rgba(255,180,0,0.07);
+  border: 1px solid rgba(255,180,0,0.2);
+  border-radius: 10px; padding: 10px 12px;
+}
+.snx-safety-label {
+  font-size: 10px; font-weight: 700; color: #6a90b8;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.snx-safety-text {
+  font-size: 12px; color: #d8eeff;
+  word-break: break-word; line-height: 1.5;
+}
+.snx-safety-user-row {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(0,174,239,0.06);
+  border: 1px solid rgba(0,174,239,0.18);
+  border-radius: 8px; padding: 7px 10px;
+}
+.snx-safety-user-name {
+  font-size: 12px; font-weight: 700; color: #00AEEF;
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.snx-safety-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.snx-safety-btn {
+  padding: 9px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s;
+  touch-action: manipulation; text-align: center;
+}
+.snx-safety-btn-ignore {
+  background: rgba(255,255,255,0.07);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  color: #a8c8e8;
+}
+.snx-safety-btn-ignore:hover { background: rgba(255,255,255,0.12); }
+.snx-safety-btn-warn {
+  background: rgba(255,180,0,0.15);
+  border: 1.5px solid rgba(255,180,0,0.5);
+  color: #ffe066;
+}
+.snx-safety-btn-warn:hover { background: rgba(255,180,0,0.28); }
+.snx-safety-btn-del {
+  background: rgba(180,0,30,0.18);
+  border: 1.5px solid rgba(255,50,70,0.45);
+  color: #ff7788;
+}
+.snx-safety-btn-del:hover { background: rgba(220,0,40,0.35); }
+.snx-safety-btn-kick {
+  background: rgba(80,0,180,0.18);
+  border: 1.5px solid rgba(140,80,255,0.45);
+  color: #bb99ff;
+}
+.snx-safety-btn-kick:hover { background: rgba(100,0,200,0.35); }
+
+/* ── Shadow Bot indicator badge shown in top-bar when bot is active ── */
+#shadowBotBadge {
+  display: none;
+  align-items: center; gap: 5px;
+  background: rgba(0,0,0,0.52); backdrop-filter: blur(6px);
+  border: 1px solid rgba(124,92,216,0.5);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: 10px; color: #bb99ff; flex-shrink: 0;
+  white-space: nowrap;
+}
+#shadowBotBadge.visible { display: flex; }
+
+/* ── AI Safety active indicator in top-bar ── */
+#aiSafetyBadge {
+  display: none;
+  align-items: center; gap: 5px;
+  background: rgba(0,0,0,0.52); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,180,0,0.4);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: 10px; color: #ffe066; flex-shrink: 0;
+  white-space: nowrap;
+}
+#aiSafetyBadge.visible { display: flex; }
