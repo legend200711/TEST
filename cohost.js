@@ -2,8 +2,32 @@
  * Shadow Nexus Live — cohost.js
  *
  * Co-Host feature — completely self-contained.
- * Uses ONLY:  cohosts/{roomId}/...  in Realtime Database
- *             notifications/{uid}/items  in Firestore (write-only — same path live.js uses)
+ * Uses ONLY:  cohosts/{liveID}/...  in Realtime Database
+ *
+ * DB structure:
+ *   cohosts/{liveID}/requests/{userID}
+ *     from:      hostID
+ *     fromName:  string
+ *     fromAvatar:string
+ *     toUid:     userID
+ *     toName:    string
+ *     roomId:    liveID
+ *     status:    'pending' | 'accepted' | 'denied'
+ *     timestamp: number (ms)
+ *
+ *   cohosts/{liveID}/active/{userID}
+ *     uid:       userID
+ *     name:      string
+ *     avatar:    string
+ *     role:      'cohost'
+ *     joinedAt:  number (ms)
+ *
+ *   cohosts/{liveID}/settings
+ *     allowCohosts: boolean
+ *     whoCanCohost: 'friends' | 'approved' | 'nobody'
+ *
+ *   cohosts/{liveID}/removed/{userID}
+ *     ts: number (ms)
  *
  * Does NOT touch:
  *   messages/, posts/, comments/, users/, chat/, feed/,
@@ -367,10 +391,19 @@
 
   /* ═══════════════════════════════════════════════════
      SEND INVITE
-     Writes to:  cohosts/{roomId}/invites/{targetUid}
+     Writes to:  cohosts/{roomId}/requests/{targetUid}
      ═══════════════════════════════════════════════════ */
   async function _sendInvite(targetUser) {
-    if (!_liveDB || !_roomId || !_user) return;
+    if (!_liveDB || !_roomId || !_user) {
+      console.error('[CoHost] sendInvite blocked — missing:', { liveDB: !!_liveDB, roomId: _roomId, user: !!_user });
+      _liveToast('Could not send invite. Missing session data.');
+      return;
+    }
+    if (!targetUser || !targetUser.uid) {
+      console.error('[CoHost] sendInvite blocked — target user has no uid', targetUser);
+      _liveToast('Could not send invite. User not found.');
+      return;
+    }
     if (!_cohostSettings.allowCohosts) {
       _liveToast('Co-hosts are currently disabled in your settings.');
       return;
@@ -381,18 +414,19 @@
     }
 
     const { ref: rtRef, set: rtSet } = await _importRTDB();
-    const inviteRef = rtRef(_liveDB, `cohosts/${_roomId}/invites/${targetUser.uid}`);
+    // Path: cohosts/{liveID}/requests/{userID}
+    const requestRef = rtRef(_liveDB, `cohosts/${_roomId}/requests/${targetUser.uid}`);
 
     try {
-      await rtSet(inviteRef, {
-        fromUid:    _user.uid,
+      await rtSet(requestRef, {
+        from:       _user.uid,           // hostID — matches checklist field name
         fromName:   _userData.displayName || _user.email?.split('@')[0] || 'Host',
         fromAvatar: _userData.avatar || _userData.profilePicture || '',
         toUid:      targetUser.uid,
         toName:     targetUser.displayName || targetUser.username || 'User',
         roomId:     _roomId,
         status:     'pending',
-        sentAt:     Date.now(),
+        timestamp:  Date.now(),          // checklist field name
       });
 
       // Mark as sent in local state + re-render
@@ -400,13 +434,18 @@
       _renderSearchResults();
       _liveToast(`🎙️ Co-host invite sent to ${targetUser.displayName || targetUser.username || 'user'}!`);
     } catch (e) {
-      _liveToast('Could not send invite. Please try again.');
+      console.error('[CoHost] sendInvite write failed:', e);
+      if (e && e.code === 'PERMISSION_DENIED') {
+        _liveToast('Permission denied. Check Firebase rules for cohosts/.');
+      } else {
+        _liveToast('Could not send invite. Please try again.');
+      }
     }
   }
 
   /* ═══════════════════════════════════════════════════
      HOST — subscribe to active co-hosts list
-     Path:  cohosts/{roomId}/active/
+     Path:  cohosts/{liveID}/active/
      ═══════════════════════════════════════════════════ */
   async function _subscribeActiveCohosts() {
     if (!_liveDB || !_roomId) return;
@@ -474,16 +513,21 @@
 
   /* ═══════════════════════════════════════════════════
      INVITEE (VIEWER) — watch for incoming invite
-     Path:  cohosts/{roomId}/invites/{myUid}
+     Path:  cohosts/{roomId}/requests/{myUid}
      ═══════════════════════════════════════════════════ */
   async function _watchForInvite() {
-    if (!_liveDB || !_roomId || !_user) return;
+    if (!_liveDB || !_roomId || !_user) {
+      console.error('[CoHost] watchForInvite blocked — missing:', { liveDB: !!_liveDB, roomId: _roomId, user: !!_user });
+      return;
+    }
     const { ref: rtRef, onValue: rtOnValue, off: rtOff } = await _importRTDB();
-    const inviteRef = rtRef(_liveDB, `cohosts/${_roomId}/invites/${_user.uid}`);
+    // Path: cohosts/{liveID}/requests/{userID}
+    const requestRef = rtRef(_liveDB, `cohosts/${_roomId}/requests/${_user.uid}`);
 
-    _inviteInboxUnsub = rtOnValue(inviteRef, snap => {
+    _inviteInboxUnsub = rtOnValue(requestRef, snap => {
       if (!snap.exists()) return;
       const data = snap.val();
+      // Only show card if status is still pending (ignore accepted/denied updates)
       if (data.status !== 'pending') return;
       _showInviteCard(data);
     });
@@ -505,7 +549,8 @@
     const sub  = document.getElementById('cohostInviteSub');
     if (!card) return;
     if (sub) sub.textContent = `${data.fromName || 'The host'} wants you to join their live as co-host.`;
-    card.dataset.inviteFrom = data.fromUid || '';
+    // Store host ID using the 'from' field (checklist field name)
+    card.dataset.inviteFrom = data.from || data.fromUid || '';
     card.classList.add('visible');
   }
 
@@ -519,24 +564,28 @@
     if (!_liveDB || !_roomId || !_user) return;
     _hideInviteCard();
 
-    const { ref: rtRef, set: rtSet, remove: rtRemove } = await _importRTDB();
+    const { ref: rtRef, set: rtSet, update: rtUpdate } = await _importRTDB();
 
     try {
-      // Write co-host entry to active list
+      // Write co-host entry to active list with role field
       await rtSet(rtRef(_liveDB, `cohosts/${_roomId}/active/${_user.uid}`), {
         uid:      _user.uid,
         name:     _userData.displayName || _user.email?.split('@')[0] || 'Co-Host',
         avatar:   _userData.avatar || _userData.profilePicture || '',
+        role:     'cohost',
         joinedAt: Date.now(),
       });
 
-      // Update invite status
-      await rtSet(rtRef(_liveDB, `cohosts/${_roomId}/invites/${_user.uid}/status`), 'accepted');
+      // Update request status to accepted (update the whole object to avoid child-write issues)
+      await rtUpdate(rtRef(_liveDB, `cohosts/${_roomId}/requests/${_user.uid}`), {
+        status: 'accepted',
+      });
 
       _isCohostOfRoom = _roomId;
       _showCohostBadge();
       _liveToast('🎙️ You are now a co-host!');
-    } catch (_) {
+    } catch (e) {
+      console.error('[CoHost] acceptInvite failed:', e);
       _liveToast('Could not accept. Please try again.');
     }
   }
@@ -548,8 +597,8 @@
 
     const { ref: rtRef, remove: rtRemove } = await _importRTDB();
     try {
-      // Remove the invite entirely so the card can't reappear
-      await rtRemove(rtRef(_liveDB, `cohosts/${_roomId}/invites/${_user.uid}`));
+      // Remove the request entirely so the card can't reappear
+      await rtRemove(rtRef(_liveDB, `cohosts/${_roomId}/requests/${_user.uid}`));
     } catch (_) {}
   }
 
@@ -654,7 +703,10 @@
      ═══════════════════════════════════════════════════ */
   window.addEventListener('snxLiveReady', e => {
     const { db, liveDB, auth, user, userData, roomId, isHost } = e.detail || {};
-    if (!db || !liveDB || !auth || !user || !roomId) return;
+    if (!db || !liveDB || !auth || !user || !roomId) {
+      console.error('[CoHost] snxLiveReady missing data:', { db: !!db, liveDB: !!liveDB, auth: !!auth, user: !!user, roomId });
+      return;
+    }
     _init(db, liveDB, auth, user, userData, roomId, isHost);
   });
 

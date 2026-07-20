@@ -1,5 +1,11 @@
 {
   "rules": {
+    "cohosts": {
+      "$liveId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
     "liveRooms": {
       "$roomId": {
         ".read":  "auth != null",
