@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="live.css">
 <!-- Co-Host feature — remove these two lines to disable entirely -->
 <link rel="stylesheet" href="cohost.css">
+<!-- Gift & Coin System -->
+<link rel="stylesheet" href="gifts.css">
 </head>
 <body>
 
@@ -155,6 +157,9 @@
       <!-- AI Safety active badge (host only) -->
       <div id="aiSafetyBadge" aria-label="AI Safety active">🛡 AI</div>
 
+      <!-- Internet Quality badge (host only) -->
+      <div id="iqBadge" aria-label="Internet quality status"></div>
+
       <!-- Shadow Bot active badge (host only) -->
       <div id="shadowBotBadge" aria-label="Shadow Bot active">🤖 Bot</div>
 
@@ -218,6 +223,9 @@
 
       <!-- Live Settings button (host only) -->
       <button id="btnLiveSettings" class="live-ctrl-btn" aria-label="Live settings" title="Settings">⚙️</button>
+
+      <!-- Creator Dashboard button (host only) -->
+      <button id="btnCreatorDash" class="live-dash-btn" aria-label="Creator dashboard" title="Dashboard">📊</button>
 
       <button id="btnEndLive"   class="live-ctrl-btn" aria-label="End live stream">END LIVE</button>
 
@@ -314,6 +322,18 @@
           <span class="lsp-slider"></span>
         </label>
       </div>
+
+      <!-- Internet Quality -->
+      <div class="lsp-row">
+        <div class="lsp-label">
+          <div class="lsp-label-name">📶 Auto Internet Quality</div>
+          <div class="lsp-label-desc">Auto-adjust quality to your connection</div>
+        </div>
+        <label class="lsp-toggle" aria-label="Auto Internet Quality toggle">
+          <input type="checkbox" id="toggleInternetQuality">
+          <span class="lsp-slider"></span>
+        </label>
+      </div>
     </div>
 
     <!-- ═══════════════════════════════════
@@ -327,6 +347,16 @@
       <button id="btnLike" class="live-like-btn" aria-label="Like stream">
         <span class="live-like-icon">❤️</span>
         <span id="likeBtnCount" style="display:none;">Like</span>
+      </button>
+
+      <!-- 🎁 Send Gift (viewers only) -->
+      <button id="btnSendGift" class="live-gift-btn" aria-label="Send a gift">
+        🎁
+      </button>
+
+      <!-- 🪙 Buy Coins (viewers only) -->
+      <button id="btnBuyCoins" class="live-coins-btn" aria-label="Buy Shadow Coins">
+        🪙
       </button>
 
       <!-- Request a Box 📺 -->
@@ -388,12 +418,64 @@
 
 
 <!-- ══════════════════════════════════════════════
+     GLOBAL INTERNET MANAGER (plain script — loads before live.js)
+     ══════════════════════════════════════════════ -->
+<script src="snx-net.js"></script>
+
+<!-- ══════════════════════════════════════════════
      LIVE ENGINE (ES module)
      ══════════════════════════════════════════════ -->
 <script type="module" src="live.js"></script>
 
 <!-- Co-Host add-on (ES module) — remove to disable entirely -->
 <script type="module" src="cohost.js"></script>
+
+<!-- ══════════════════════════════════════════════
+     GIFT & COIN SYSTEM (ES module)
+     ══════════════════════════════════════════════ -->
+<script type="module">
+  import {
+    giftSystemInit, openGiftPanel, openBuyCoinsPanel,
+    setLiveContext, renderGiftEvent, openCreatorDashboard,
+    GIFTS
+  } from './gifts.js';
+
+  /* ── Wire buttons ── */
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btnSendGift')?.addEventListener('click', openGiftPanel);
+    document.getElementById('btnBuyCoins')?.addEventListener('click', openBuyCoinsPanel);
+
+    /* Creator dashboard — wire after DOM ready */
+    document.getElementById('btnCreatorDash')?.addEventListener('click', () => {
+      /* _user is set by live.js — read from live page context if available */
+      const uid = window._snxGiftUserId || null;
+      openCreatorDashboard(uid);
+    });
+
+    /* Initialise gift system — live context set after stream starts via window._snxGiftSetContext */
+    giftSystemInit({
+      onGiftReceived: ({ gift, senderName }) => {
+        /* Toast on creator side when they receive a gift */
+        const toast = document.getElementById('liveToast');
+        if (toast) {
+          toast.textContent = `${gift.emoji} ${senderName} sent ${gift.name}!`;
+          toast.style.display = 'block';
+          setTimeout(() => { toast.style.display = ''; }, 3500);
+        }
+      },
+    });
+
+    /* Expose helpers for live.js to call after auth resolves */
+    window._snxGiftSetContext = (roomId, creatorUid, creatorName) => {
+      import('./gifts.js').then(m => m.setLiveContext(roomId, creatorUid, creatorName));
+    };
+
+    /* Expose gift renderer so live.js can call it when it sees a gift chat message */
+    window._snxRenderGiftEvent = (giftId, senderName) => {
+      renderGiftEvent(giftId, senderName);
+    };
+  });
+</script>
 
 </body>
 </html>

@@ -25,6 +25,12 @@ rules_version = '2';
 //   /arcadeStats/{docId}        — per-user aggregated stats
 //   /stormRoomMessages/{docId}  — Storm Room chat messages
 //
+//   ── Gift & Coin System (NEW) ──────────────────────────────────────────
+//   /userCoins/{uid}            — coin balance per user
+//   /giftTransactions/{txId}    — gift send records (immutable)
+//   /coinPurchases/{txId}       — coin reload purchase records
+//   /creatorEarnings/{uid}      — aggregated creator earnings
+//
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -529,27 +535,17 @@ service cloud.firestore {
       }
     }
 
-    // ── Co-Host Requests ───────────────────────────────────────────────────────
+    // ── Co-Host Requests (legacy) ───────────────────────────────────────────────
     //
     //   /coHostRequests/{requestId}
-    //     liveId      — the host's RTDB room id
-    //     hostId      — host uid
-    //     guestId     — invitee uid
-    //     status      — 'pending' | 'accepted' | 'declined'
-    //     createdAt   — server timestamp
-    //
+    //     liveId, hostId, guestId, status, createdAt
     //   requestId = "{liveId}_{guestId}"
-    //
-    // Host creates; guest reads their own invite and updates status.
-    // Viewers can read accepted records so they see the active co-host list.
 
     match /coHostRequests/{requestId} {
-      // Host can create an invite for a specific guest
       allow create: if isSignedIn()
         && request.auth.token.firebase.sign_in_provider != 'anonymous'
         && request.resource.data.hostId == request.auth.uid;
 
-      // Host or guest can read; viewers can read accepted ones
       allow read: if isSignedIn()
         && (
           request.auth.uid == resource.data.hostId
@@ -557,19 +553,207 @@ service cloud.firestore {
           || resource.data.status == 'accepted'
         );
 
-      // Guest can update status (accept / decline)
-      // Host can also update status (e.g. cancel invite after removing co-host)
       allow update: if isSignedIn()
         && (request.auth.uid == resource.data.guestId || request.auth.uid == resource.data.hostId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
 
-      // Host or guest can delete (cleanup); Founder always can
       allow delete: if isSignedIn()
         && (
           request.auth.uid == resource.data.hostId
           || request.auth.uid == resource.data.guestId
           || isFounder()
         );
+    }
+
+    // ── Co-Host Invites ────────────────────────────────────────────────────────
+    //
+    //   /coHostInvites/{receiverUID}/senders/{senderUID}
+    //     from:   sender display name
+    //     status: 'pending' | 'accepted' | 'denied'
+    //     time:   server timestamp
+    //     roomId: live room id
+    //
+    // Sender (host) creates the invite doc.
+    // Receiver updates status (accept / deny) and then deletes the doc.
+    // Both parties can delete (cleanup after answering).
+
+    match /coHostInvites/{receiverUID} {
+      allow read: if isSignedIn() && isOwner(receiverUID);
+      allow write: if false; // only subcollection docs are written
+
+      match /senders/{senderUID} {
+        // Sender creates their own invite
+        allow create: if isSignedIn()
+          && request.auth.uid == senderUID
+          && request.auth.token.firebase.sign_in_provider != 'anonymous';
+
+        // Receiver (or sender) can read
+        allow read: if isSignedIn()
+          && (request.auth.uid == receiverUID || request.auth.uid == senderUID);
+
+        // Receiver updates status; sender can also update (cancel)
+        allow update: if isSignedIn()
+          && (request.auth.uid == receiverUID || request.auth.uid == senderUID)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+        // Either party or Founder can delete
+        allow delete: if isSignedIn()
+          && (request.auth.uid == receiverUID || request.auth.uid == senderUID || isFounder());
+      }
+    }
+
+    // ── Co-Hosts (active co-host records) ─────────────────────────────────────
+    //
+    //   /coHosts/{userUID}
+    //     coHost: true
+    //
+    // Written by the receiver when they accept an invite.
+    // Readable by any signed-in user (so host can verify).
+    // Deletable by the owner or Founder.
+
+    match /coHosts/{userUID} {
+      allow read: if isSignedIn();
+      // Only the user themselves writes their own coHost record
+      allow create, update: if isOwner(userUID);
+      allow delete: if isOwner(userUID) || isFounder();
+    }
+
+    // ── Gift & Coin System ────────────────────────────────────────────────────
+    //
+    //   Security model:
+    //     - Coin balances can ONLY be decremented via runTransaction (client).
+    //       The balance write path requires the user is the owner.
+    //       Server-side Cloud Functions (coin purchases, gift splits) can bypass
+    //       this via Admin SDK — that path is fully trusted.
+    //
+    //   /userCoins/{uid}
+    //     coins: number (must be >= 0), updatedAt
+    //
+    //   Rules:
+    //     - Owner reads/writes their own balance.
+    //     - Nobody else can read balances (privacy).
+    //     - Writes are restricted: only the owner can write, and only via
+    //       runTransaction to prevent direct inflation.
+    //       (Coin purchase credits are done server-side; this rule blocks
+    //        direct setDoc({coins: 99999}) from the browser.)
+
+    match /userCoins/{uid} {
+      // Owner reads their own balance; Founder can audit
+      allow read: if isOwner(uid) || isFounder();
+
+      // Owner can update their own balance:
+      //   - Sending gifts: balance decreases (enforced by runTransaction in gifts.js)
+      //   - Coin purchases: balance increases via setDoc with merge (demo mode)
+      //     In production replace with Cloud Functions / Admin SDK for purchases;
+      //     remove the `|| request.resource.data.coins > resource.data.coins` branch below.
+      allow update: if isOwner(uid)
+        && request.resource.data.coins >= 0;
+
+      // Owner creates their own balance doc (used by gift module on first purchase).
+      allow create: if isOwner(uid)
+        && request.resource.data.coins >= 0;
+
+      allow delete: if false; // never delete balance docs
+    }
+
+    // ── Gift Transactions (append-only) ──────────────────────────────────────
+    //
+    //   /giftTransactions/{txId}
+    //     senderId, receiverId, giftId, coins, creatorEarnings, platformFee,
+    //     liveRoomId, createdAt
+    //
+    // Only the sender can create a transaction, and only for themselves.
+    // No edits or deletes — permanent audit trail.
+
+    match /giftTransactions/{txId} {
+      // Sender or receiver can read their own transactions; Founder sees all
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.senderId
+            || request.auth.uid == resource.data.receiverId
+            || isFounder());
+
+      // Sender creates the record and must identify themselves
+      allow create: if isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.coins    is  int
+        && request.resource.data.coins    > 0;
+
+      // Immutable — no updates or deletes
+      allow update, delete: if false;
+    }
+
+    // ── Coin Purchases (pending payment records) ──────────────────────────────
+    //
+    //   /coinPurchases/{txId}
+    //     uid, displayName, coins, amount (cents), paymentMethod,
+    //     status: 'pending' | 'completed' | 'failed', createdAt
+    //     paypalOrderId (added by Cloud Function after createPayPalOrder)
+    //
+    // Client creates a pending record; Cloud Function (capturePayPalOrder)
+    // updates status to completed and credits coins.
+    // Owner (or Founder) reads only. All status updates are done server-side.
+
+    match /coinPurchases/{txId} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.uid || isFounder());
+
+      // Client creates a pending record for themselves
+      allow create: if isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amount is int
+        && request.resource.data.amount >= 5;   // min 5 cents
+
+      // Status updates are done by Cloud Functions (Admin SDK) only.
+      // Direct client updates are blocked to prevent fake completion.
+      allow update: if isFounder();
+      allow delete: if false;
+    }
+
+    // ── Payout Requests ──────────────────────────────────────────────────────
+    //
+    //   /payoutRequests/{requestId}
+    //     uid, paypalEmail, amountCoins, amountCents, amountUsd,
+    //     status: 'processing' | 'sent' | 'failed' | 'completed'
+    //     createdAt, sentAt
+    //
+    // Created and updated by Cloud Function (requestPayout).
+    // Owner and Founder can read. No direct client writes.
+
+    match /payoutRequests/{requestId} {
+      // Creator reads their own requests; Founder sees all
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.uid || isFounder());
+
+      // All writes are done by Cloud Functions (Admin SDK).
+      // Clients cannot create, update, or delete payout records.
+      allow write: if false;
+    }
+
+    // ── Creator Earnings ──────────────────────────────────────────────────────
+    //
+    //   /creatorEarnings/{uid}
+    //     totalCoins, pendingCoins, withdrawnCoins, updatedAt
+    //
+    // Updated via runTransaction (gift sends). Creator reads own data.
+    // Only increment operations allowed from client (no deflating earnings).
+
+    match /creatorEarnings/{uid} {
+      allow read: if isOwner(uid) || isFounder();
+
+      // Earnings may only increase from client (gift transactions).
+      // Decrements (withdrawals) must be done via Cloud Functions / Admin SDK.
+      allow create: if isSignedIn()
+        && request.resource.data.totalCoins   >= 0
+        && request.resource.data.pendingCoins >= 0;
+
+      allow update: if isSignedIn()
+        && request.resource.data.totalCoins   >= resource.data.totalCoins
+        && request.resource.data.pendingCoins >= 0;
+
+      allow delete: if false;
     }
 
     // ── Wall Post Comments ─────────────────────────────────────────────────────

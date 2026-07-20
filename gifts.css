@@ -1,0 +1,462 @@
+/*
+ * Shadow Nexus — Gift & Coin System (gifts.css)
+ * Styles for: gift button, gift panel, buy coins panel,
+ * payment modal, creator dashboard, gift burst animation.
+ */
+
+/* ── Gift button (viewer side bar) ─────────────────────── */
+.live-gift-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255, 200, 0, 0.45);
+  color: #ffd700;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 0;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.18s, border-color 0.18s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  font-size: 22px; line-height: 1;
+}
+.live-gift-btn:hover  { background: rgba(255, 180, 0, 0.22); border-color: rgba(255, 200, 0, 0.75); }
+.live-gift-btn:active { transform: scale(0.88); }
+
+/* Buy Coins button (viewer side bar) */
+.live-coins-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(0, 200, 100, 0.45);
+  color: #44ff99;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  font-size: 20px; line-height: 1;
+  transition: transform 0.15s, background 0.18s;
+}
+.live-coins-btn:hover  { background: rgba(0, 180, 80, 0.2); border-color: rgba(0, 220, 100, 0.7); }
+.live-coins-btn:active { transform: scale(0.88); }
+
+/* Creator dashboard button (creator bottom bar) */
+.live-dash-btn {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(150, 100, 255, 0.45);
+  color: #bb88ff; font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: background 0.18s, border-color 0.18s, transform 0.1s;
+  touch-action: manipulation;
+}
+.live-dash-btn:hover  { background: rgba(80, 40, 200, 0.28); border-color: rgba(150, 100, 255, 0.75); }
+.live-dash-btn:active { transform: scale(0.92); }
+
+/* ── Bottom slide-up panel (gift store + buy coins) ──────── */
+.snx-bottom-panel {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 1200;
+  background: rgba(8, 16, 36, 0.97);
+  border-top: 1px solid rgba(0, 174, 239, 0.3);
+  border-radius: 20px 20px 0 0;
+  padding: 0 0 env(safe-area-inset-bottom, 12px);
+  display: none;
+  flex-direction: column;
+  max-height: 65vh;
+  overflow-y: auto;
+  backdrop-filter: blur(14px);
+  animation: snxPanelUp 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@keyframes snxPanelUp {
+  from { transform: translateY(100%); opacity: 0.6; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.snx-bottom-panel.snx-panel-open { display: flex; }
+
+/* Panel header */
+.snx-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+.snx-panel-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #e8f4ff;
+  letter-spacing: 0.3px;
+  flex: 1;
+}
+.snx-panel-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #aaa; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: background 0.15s;
+}
+.snx-panel-close:hover { background: rgba(255, 60, 80, 0.3); color: #fff; }
+
+/* Coin balance chip (in panel header) */
+.snx-coin-balance-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 40, 90, 0.7);
+  border: 1px solid rgba(0, 174, 239, 0.35);
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd700;
+}
+.snx-coin-icon { font-size: 13px; }
+.snx-buy-btn-inline {
+  background: rgba(0, 174, 239, 0.2);
+  border: 1px solid rgba(0, 174, 239, 0.5);
+  color: #00d4ff;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  line-height: 1.3;
+  transition: background 0.15s;
+}
+.snx-buy-btn-inline:hover { background: rgba(0, 174, 239, 0.4); }
+
+/* ── Gift grid ──────────────────────────────────────────── */
+.snx-gift-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  padding: 14px 14px 18px;
+}
+@media (max-width: 380px) {
+  .snx-gift-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.snx-gift-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(var(--gift-color-rgb, 255, 255, 255), 0.2);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px 6px 8px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, transform 0.12s;
+  position: relative;
+  overflow: hidden;
+}
+.snx-gift-item::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 30%, var(--gift-color, #00aaff), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  border-radius: inherit;
+}
+.snx-gift-item:hover::before  { opacity: 0.14; }
+.snx-gift-item:active::before { opacity: 0.25; }
+.snx-gift-item:hover  { border-color: var(--gift-color, #00aaff); transform: translateY(-2px); }
+.snx-gift-item:active { transform: scale(0.94); }
+
+.snx-gift-emoji { font-size: 26px; line-height: 1.1; }
+.snx-gift-name  { font-size: 9px;  font-weight: 700; color: #b8d4f0; text-align: center; letter-spacing: 0.2px; }
+.snx-gift-price {
+  font-size: 10px; font-weight: 800; color: #ffd700;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px; padding: 2px 6px;
+}
+
+/* ── Coin package grid ──────────────────────────────────── */
+.snx-package-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px 14px 4px;
+}
+.snx-pkg-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 20, 55, 0.7);
+  border: 1.5px solid rgba(0, 174, 239, 0.25);
+  border-radius: 14px;
+  padding: 14px 10px;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.18s, background 0.18s, transform 0.12s;
+}
+.snx-pkg-item:hover  { border-color: rgba(0, 174, 239, 0.65); background: rgba(0, 50, 120, 0.4); transform: translateY(-1px); }
+.snx-pkg-item:active { transform: scale(0.96); }
+.snx-pkg-item.snx-pkg-badge[data-badge]::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: -9px; right: 10px;
+  background: linear-gradient(135deg, #003388, #0066cc);
+  color: #fff;
+  font-size: 9px; font-weight: 800;
+  padding: 2px 8px; border-radius: 8px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.snx-pkg-coins {
+  font-size: 14px; font-weight: 800; color: #ffd700;
+}
+.snx-pkg-price {
+  font-size: 18px; font-weight: 900; color: #fff;
+}
+
+/* Payment methods */
+.snx-payment-methods {
+  padding: 10px 14px 4px;
+}
+.snx-pay-label {
+  font-size: 11px; color: #6a90b8; font-weight: 600;
+  display: block; margin-bottom: 8px;
+}
+.snx-pay-row {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.snx-pay-btn {
+  flex: 1; min-width: 80px;
+  background: rgba(0, 20, 55, 0.7);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  color: #b8d4f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px; font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.snx-pay-btn:hover { background: rgba(0, 50, 120, 0.3); }
+.snx-pay-btn.snx-pay-active {
+  border-color: rgba(0, 174, 239, 0.7);
+  background: rgba(0, 80, 180, 0.25);
+  color: #00d4ff;
+}
+.snx-pay-note {
+  font-size: 10px; color: #4a6a8a;
+  padding: 6px 14px 14px;
+  line-height: 1.5;
+}
+
+/* ── Payment modal ──────────────────────────────────────── */
+.snx-modal-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+.snx-modal-box {
+  background: rgba(8, 18, 40, 0.98);
+  border: 1px solid rgba(0, 174, 239, 0.35);
+  border-radius: 20px;
+  padding: 22px 22px 20px;
+  width: 100%; max-width: 360px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.snx-modal-title {
+  font-size: 17px; font-weight: 800; color: #fff;
+  text-align: center;
+}
+.snx-modal-summary {
+  background: rgba(0, 30, 70, 0.6);
+  border: 1px solid rgba(0, 174, 239, 0.2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.snx-modal-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: #b8d4f0;
+}
+.snx-modal-row strong { color: #fff; font-weight: 800; }
+
+/* Card inputs */
+.snx-card-fields { display: flex; flex-direction: column; gap: 8px; }
+.snx-card-input {
+  background: rgba(0, 20, 55, 0.8);
+  border: 1px solid rgba(0, 174, 239, 0.3);
+  border-radius: 10px;
+  color: #fff; font-size: 14px;
+  padding: 10px 12px; outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.snx-card-input::placeholder { color: rgba(80, 140, 200, 0.45); }
+.snx-card-input:focus { border-color: rgba(0, 180, 255, 0.65); }
+
+.snx-modal-redirect-note {
+  font-size: 13px; color: #6a90b8;
+  text-align: center; line-height: 1.5;
+}
+
+.snx-modal-confirm {
+  background: linear-gradient(135deg, #003388, #0066cc);
+  border: 1px solid rgba(0, 180, 255, 0.6);
+  color: #fff; font-size: 15px; font-weight: 800;
+  border-radius: 12px; padding: 13px;
+  cursor: pointer;
+  transition: filter 0.15s;
+  letter-spacing: 0.3px;
+}
+.snx-modal-confirm:hover   { filter: brightness(1.12); }
+.snx-modal-confirm:active  { transform: scale(0.97); }
+.snx-modal-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.snx-modal-cancel {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #6a90b8; font-size: 13px;
+  border-radius: 10px; padding: 10px;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.snx-modal-cancel:hover { border-color: rgba(255, 80, 100, 0.5); color: #ff8899; }
+
+.snx-modal-note {
+  font-size: 10px; color: #4a6a8a;
+  line-height: 1.5; text-align: center;
+}
+
+/* ── Creator Dashboard ──────────────────────────────────── */
+.snx-dash-stats {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 14px;
+}
+.snx-dash-stat {
+  display: flex; flex-direction: column; gap: 4px;
+  background: rgba(0, 20, 55, 0.6);
+  border: 1px solid rgba(0, 174, 239, 0.2);
+  border-radius: 12px; padding: 12px 10px;
+}
+.snx-dash-stat.snx-dash-green { border-color: rgba(0, 200, 100, 0.35); }
+.snx-dash-stat-val { font-size: 16px; font-weight: 800; color: #fff; }
+.snx-dash-green .snx-dash-stat-val { color: #44ff99; }
+.snx-dash-stat-lbl { font-size: 10px; color: #6a90b8; }
+
+.snx-dash-split-note {
+  background: rgba(0, 50, 20, 0.4);
+  border: 1px solid rgba(0, 180, 80, 0.25);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12px; color: #7aeaaa;
+  margin-bottom: 14px; line-height: 1.5;
+}
+.snx-dash-split-note strong { color: #44ff99; }
+
+.snx-dash-section {
+  font-size: 12px; font-weight: 700; color: #6a90b8;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  margin-bottom: 8px;
+}
+
+.snx-dash-tx-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 220px; overflow-y: auto;
+}
+.snx-dash-tx-list::-webkit-scrollbar { display: none; }
+
+.snx-dash-tx {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0, 20, 55, 0.45);
+  border: 1px solid rgba(0, 174, 239, 0.12);
+  border-radius: 10px; padding: 8px 12px;
+}
+.snx-dash-tx-emoji { font-size: 22px; flex-shrink: 0; }
+.snx-dash-tx-info  { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.snx-dash-tx-sender { font-size: 12px; font-weight: 700; color: #e8f4ff; }
+.snx-dash-tx-name   { font-size: 10px; color: #6a90b8; }
+.snx-dash-tx-earn   { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.snx-dash-tx-coins  { font-size: 12px; font-weight: 800; color: #44ff99; }
+.snx-dash-tx-pct    { font-size: 10px; color: #6a90b8; }
+
+/* ── PayPal loading indicator ──────────────────────────── */
+.snx-paypal-loading {
+  font-size: 13px; color: #6a90b8;
+  padding: 12px;
+}
+
+/* ── Cash out form ───────────────────────────────────────── */
+.snx-cashout-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 0 4px;
+  margin-bottom: 6px;
+}
+
+/* ── On-screen gift burst animation ─────────────────────── */
+.snx-gift-burst {
+  position: absolute;
+  left: 50%; bottom: 120px;
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  pointer-events: none;
+  animation: snxGiftBurst 3s ease-out forwards;
+}
+@keyframes snxGiftBurst {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(30px) scale(0.7); }
+  15%  { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1.1); }
+  80%  { opacity: 1; transform: translateX(-50%) translateY(-40px) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-70px) scale(0.9); }
+}
+.snx-gift-burst-emoji {
+  font-size: 56px; line-height: 1;
+  filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.6));
+  animation: snxEmojiBounce 0.5s ease-out 0.1s both;
+}
+@keyframes snxEmojiBounce {
+  0%   { transform: scale(0.5);  }
+  60%  { transform: scale(1.25); }
+  100% { transform: scale(1);    }
+}
+.snx-gift-burst-label {
+  font-size: 13px; font-weight: 800; color: #fff;
+  background: rgba(0, 0, 0, 0.68);
+  border-radius: 14px; padding: 4px 14px;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 0 12px rgba(0, 200, 255, 0.5);
+}
+
+/* Gift-specific colours */
+.gift-anim-heart   .snx-gift-burst-emoji { filter: drop-shadow(0 0 18px rgba(255, 60, 100, 0.9)); }
+.gift-anim-flame   .snx-gift-burst-emoji { filter: drop-shadow(0 0 22px rgba(0, 160, 255, 0.9)); }
+.gift-anim-wolf    .snx-gift-burst-emoji { filter: drop-shadow(0 0 24px rgba(140, 60, 255, 0.9)); }
+.gift-anim-reaper  .snx-gift-burst-emoji { filter: drop-shadow(0 0 20px rgba(200, 200, 255, 0.8)); }
+.gift-anim-rose    .snx-gift-burst-emoji { filter: drop-shadow(0 0 22px rgba(220, 60, 180, 0.9)); }
+
+/* ── Gift chat message in live chat ─────────────────────── */
+.live-chat-msg.gift-msg {
+  background: rgba(255, 200, 0, 0.08);
+  border: 1px solid rgba(255, 200, 0, 0.2);
+  border-radius: 10px;
+  padding: 4px 10px;
+  gap: 7px;
+}
+.live-chat-msg.gift-msg .live-chat-author { color: #ffd700; }
+.live-chat-msg.gift-msg .live-chat-text   { color: #ffe77a; font-weight: 700; }
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 380px) {
+  .snx-gift-burst-emoji { font-size: 44px; }
+  .snx-gift-burst-label { font-size: 11px; }
+  .snx-package-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+}

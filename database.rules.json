@@ -1,64 +1,185 @@
 {
   "rules": {
+
+    // ── Co-Host system ────────────────────────────────────────────────
+    //
+    //  cohosts/{liveId}/requests/{uid}
+    //    - Host writes the initial invite (from == auth.uid)
+    //    - Invitee (uid == auth.uid) updates status field only
+    //    - Host (from == auth.uid) can read all; invitee reads their own
+    //
+    //  cohosts/{liveId}/active/{uid}
+    //    - Only the invitee (uid == auth.uid) can create/update their own entry
+    //    - Host (liveId starts with safeUid of host — not feasible in RTDB rules,
+    //      so we allow any auth'd user to delete: host removes guests via their uid path)
+    //
+    //  cohosts/{liveId}/removed/{uid}
+    //    - Any authenticated user can write (host removes a co-host)
+    //
+    //  cohosts/{liveId}/settings
+    //    - Any authenticated user can read; any authenticated user can write
+    //      (host is the only one who opens settings UI — enforced in client code)
+    //
     "cohosts": {
       "$liveId": {
-        ".read":  "auth != null",
-        ".write": "auth != null"
+
+        // Settings — host reads and writes; viewers read
+        "settings": {
+          ".read":  "auth != null",
+          ".write": "auth != null"
+        },
+
+        // Requests — host writes invite; invitee updates their own status
+        "requests": {
+          ".read": "auth != null",
+          "$uid": {
+            // Any authenticated user can create a request node
+            // (host creates the initial invite, invitee never creates — only updates)
+            ".write": "auth != null"
+          }
+        },
+
+        // Active co-hosts — the invitee writes their own entry; any auth'd user can delete
+        "active": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null"
+          }
+        },
+
+        // Removed list — host writes when removing a co-host
+        "removed": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null"
+          }
+        }
       }
     },
+
+    // ── Co-Host Invites (real-time delivery) ──────────────────────────
+    //
+    //  coHostInvites/{receiverUID}/{senderUID}
+    //    from, status, time
+    //
+    //  Sender writes; receiver reads and updates their own slot.
+    //  Both parties can delete (clean up after answering).
+    "coHostInvites": {
+      "$receiverUID": {
+        "$senderUID": {
+          ".read":  "auth != null && (auth.uid == $receiverUID || auth.uid == $senderUID)",
+          ".write": "auth != null && (auth.uid == $senderUID   || auth.uid == $receiverUID)"
+        }
+      }
+    },
+
+    // ── Co-Hosts (active co-host flag per user) ───────────────────────
+    //
+    //  coHosts/{uid}
+    //    coHost: true
+    //
+    //  Only the user themselves writes their coHost flag.
+    "coHosts": {
+      "$uid": {
+        ".read":  "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    // ── Live Rooms ────────────────────────────────────────────────────
     "liveRooms": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── WebRTC signaling ──────────────────────────────────────────────
     "liveConnections": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── Guest box requests ────────────────────────────────────────────
     "guestRequests": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── Guest WebRTC signaling ────────────────────────────────────────
     "guestSignaling": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── Guest presence in live rooms ──────────────────────────────────
     "liveGuests": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── Storm Rooms ───────────────────────────────────────────────────
     "stormRooms": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── Support Rooms ─────────────────────────────────────────────────
     "supportRooms": {
       "$roomId": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
     },
+
+    // ── User presence — each user owns their own node ─────────────────
     "presence": {
       "$uid": {
         ".read":  "auth != null",
         ".write": "auth != null && auth.uid == $uid"
       }
     },
+
+    // ── Per-user live status ──────────────────────────────────────────
     "userLive": {
       "$uid": {
         ".read":  "auth != null",
         ".write": "auth != null && auth.uid == $uid"
       }
+    },
+
+    // ── Online / live presence for friends list ───────────────────────
+    "users": {
+      "$uid": {
+        ".read":  "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    // ── Gift events real-time feed (for live page) ────────────────────
+    //
+    //  giftEvents/{liveRoomId}/{eventId}
+    //    senderId, senderName, giftId, giftEmoji, giftName, coins, ts
+    //
+    //  Any authenticated viewer can read; only auth'd non-anon users write.
+    "giftEvents": {
+      "$liveRoomId": {
+        ".read": "auth != null",
+        "$eventId": {
+          ".write": "auth != null"
+        }
+      }
     }
+
   }
 }

@@ -278,6 +278,11 @@ document.addEventListener('DOMContentLoaded', () => {
       _liveTimerSetEnabled(e.target.checked);
     });
 
+  document.getElementById('toggleInternetQuality') &&
+    document.getElementById('toggleInternetQuality').addEventListener('change', e => {
+      _iqSetEnabled(e.target.checked);
+    });
+
   // Layout option buttons
   document.querySelectorAll('.layout-option-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -326,6 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
     _user = user;
     _loadUserData().then(() => {
       if (D.goLiveBtn) { D.goLiveBtn.disabled = false; }
+      // ── Expose uid to gift system module ──
+      window._snxGiftUserId = user.uid;
       _resolveMode();
       // ── One-time update check per session ──
       _checkForUpdate();
@@ -594,6 +601,15 @@ async function startLive() {
 
   toast('🔴 You are LIVE!');
 
+  // ── Inform gift system of live context (creator) ──
+  if (typeof window._snxGiftSetContext === 'function') {
+    window._snxGiftSetContext(
+      _roomId,
+      _user.uid,
+      _userData.displayName || _user.email?.split('@')[0] || 'Creator'
+    );
+  }
+
   // ── Notify add-on modules (co-host, etc.) that live has started ──
   window.dispatchEvent(new CustomEvent('snxLiveReady', { detail: {
     db: _db, liveDB: _liveDB, auth: _auth,
@@ -605,10 +621,20 @@ async function startLive() {
   _liveTimerOnLiveStart();
   _shadowBotOnLiveStart();
   _aiSafetyOnLiveStart();
+  _iqOnLiveStart();
 
   // ── Non-critical side-work ──
   try {
     await updateDoc(doc(_db, 'users', _user.uid), { isLive: true, liveRoomId: _roomId });
+  } catch (_) {}
+
+  // ── RTDB users/{uid} presence: mark as online + live in one atomic write ──
+  try {
+    const _uPresRef = ref(_liveDB, 'users/' + _user.uid);
+    await update(_uPresRef, { online: true, live: true, lastSeen: rtdbTimestamp() });
+    // If the page crashes or network drops, reset live to false (keep online true so they
+    // appear as online once they reconnect — the login flow sets online properly on reconnect).
+    onDisconnect(_uPresRef).update({ live: false, lastSeen: rtdbTimestamp() });
   } catch (_) {}
   // _createLiveFeedPost intentionally omitted — live sessions must not create
   // feed posts; they appear only in the story bar and Live Hub.
@@ -827,6 +853,15 @@ async function endLive() {
     });
   } catch (_) {}
 
+  // ── RTDB users/{uid} presence: mark live ended, keep online = true ──
+  try {
+    // Cancel the onDisconnect we registered at startLive — we are ending cleanly
+    await onDisconnect(ref(_liveDB, 'users/' + _user.uid)).cancel();
+  } catch (_) {}
+  try {
+    await update(ref(_liveDB, 'users/' + _user.uid), { live: false, online: true, lastSeen: rtdbTimestamp() });
+  } catch (_) {}
+
   /* ── Delete live feed post from main Firestore (safety net for old data) ── */
   if (_feedPostId) {
     try { await deleteDoc(doc(_db, 'posts', _feedPostId)); } catch (_) {}
@@ -862,6 +897,7 @@ async function endLive() {
   _liveTimerOnLiveEnd();
   _shadowBotOnLiveEnd();
   _aiSafetyOnLiveEnd();
+  _iqOnLiveEnd();
 
   // ── Co-host cleanup (no-op if cohost.js is not loaded) ──
   if (typeof window._cohostCleanup === 'function') { try { window._cohostCleanup(); } catch(_){} }
@@ -1008,6 +1044,15 @@ async function _startViewer() {
   _populateCreatorInfo(roomData);
   _setupViewerControls(roomData);
   _subscribeChat();
+
+  // ── Inform gift system of live context (viewer) ──
+  if (typeof window._snxGiftSetContext === 'function') {
+    window._snxGiftSetContext(
+      _roomId,
+      roomData.hostId,
+      roomData.hostName || ''
+    );
+  }
 
   // ── Notify add-on modules that viewer has joined ──
   window.dispatchEvent(new CustomEvent('snxLiveReady', { detail: {
@@ -1617,10 +1662,25 @@ function _buildChatMsgEl(data) {
   const hostUid  = _roomId ? _roomId.split('_')[0] : null;
   const isHost   = !!(hostUid && data.userId === hostUid);
   const isSystem = data.type === 'system';
+  const isGift   = data.type === 'gift';
 
   const el = document.createElement('div');
-  el.className = 'live-chat-msg' + (isSystem ? ' system' : '');
-  if (!isSystem) {
+  el.className = 'live-chat-msg' + (isSystem ? ' system' : '') + (isGift ? ' gift-msg' : '');
+
+  if (isGift) {
+    const author = document.createElement('span');
+    author.className = 'live-chat-author';
+    author.textContent = data.userName || 'Guest';
+    const text = document.createElement('span');
+    text.className = 'live-chat-text';
+    text.textContent = `${data.giftEmoji || '🎁'} sent ${data.giftName || 'a gift'}!`;
+    el.appendChild(author);
+    el.appendChild(text);
+    // Show burst animation for all viewers (not just the sender)
+    if (typeof window._snxRenderGiftEvent === 'function') {
+      window._snxRenderGiftEvent(data.giftId, data.userName || 'Guest');
+    }
+  } else if (!isSystem) {
     const author = document.createElement('span');
     author.className = 'live-chat-author' + (isHost ? ' is-host' : '');
     author.textContent = data.userName || 'Guest';
@@ -4050,4 +4110,277 @@ async function _shadowBotPost() {
       createdAt: serverTimestamp(),
     });
   } catch(_) {}
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   AUTOMATIC INTERNET QUALITY
+   — Host-only feature.  Separate from existing adaptive quality.
+   — Detects connection type via Network Information API.
+   — Monitors upload packet-loss, latency (RTT), and buffering every 8 s.
+   — Maps network conditions to four tiers: Excellent / Good / Fair / Poor.
+   — Adjusts bitrate + resolution on the outbound video sender.
+   — Shows a top-bar badge and toasts the host when tier changes.
+   — Prevents disconnection by pre-emptively reducing quality.
+   — Auto-recovers when conditions improve.
+   — Does NOT touch chat, posts, comments, Firebase, or viewer code.
+   ═══════════════════════════════════════════════════════════════════ */
+
+// ── State ────────────────────────────────────────────────────────────
+let _iqEnabled       = false;    // toggled by the host
+let _iqLiveActive    = false;    // true only while stream is running
+let _iqTimer         = null;     // monitoring interval handle
+let _iqCurrentTier   = null;     // 'excellent' | 'good' | 'fair' | 'poor'
+let _iqUpgradePending = false;   // hysteresis: require two good reads to upgrade
+let _iqPrevSent      = 0;
+let _iqPrevLost      = 0;
+let _iqPrevBytes     = 0;
+let _iqPrevTs        = 0;
+
+// ── Quality tiers ────────────────────────────────────────────────────
+// Each tier: { id, label, icon, maxBitrate (bps), scaleDown, lossMax, rttMax }
+const _IQ_TIERS = {
+  excellent: { id: 'excellent', label: '1080p',   icon: '📶', maxBitrate: 5_500_000, scaleDown: 1,   lossMax: 0.02, rttMax: 80  },
+  good:      { id: 'good',      label: '720p',    icon: '📶', maxBitrate: 3_000_000, scaleDown: 1,   lossMax: 0.08, rttMax: 150 },
+  fair:      { id: 'fair',      label: '480p',    icon: '📶', maxBitrate: 1_200_000, scaleDown: 1.5, lossMax: 0.18, rttMax: 300 },
+  poor:      { id: 'poor',      label: '360p',    icon: '⚠️', maxBitrate:   550_000, scaleDown: 2.5, lossMax: 1,    rttMax: Infinity },
+};
+
+// ── Network type → initial tier hint ─────────────────────────────────
+const _IQ_TYPE_HINT = { '5g': 'excellent', '4g': 'good', 'wifi': 'good', 'ethernet': 'excellent' };
+
+// ── Public lifecycle hooks ───────────────────────────────────────────
+
+function _iqSetEnabled(on) {
+  _iqEnabled = on;
+  if (!on) {
+    _iqStop();
+    _iqHideBadge();
+    return;
+  }
+  // If live is already running, start immediately
+  if (_iqLiveActive && _rtcPc) {
+    _iqStart(_rtcPc);
+  }
+}
+
+function _iqOnLiveStart() {
+  _iqLiveActive = true;
+  if (_iqEnabled && _rtcPc) _iqStart(_rtcPc);
+}
+
+function _iqOnLiveEnd() {
+  _iqLiveActive = false;
+  _iqStop();
+  _iqHideBadge();
+}
+
+// ── Core: start monitoring ───────────────────────────────────────────
+
+function _iqStart(pc) {
+  if (_iqTimer) return; // already running
+
+  // Detect initial tier from Network Information API if available
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (conn) {
+    const etype = (conn.effectiveType || '').toLowerCase(); // 'slow-2g'|'2g'|'3g'|'4g'
+    const type  = (conn.type || '').toLowerCase();          // 'wifi'|'cellular'|'ethernet'|…
+    let hint = null;
+    if (type === 'ethernet' || type === 'wifi') {
+      hint = conn.downlink >= 10 ? 'excellent' : 'good';
+    } else if (etype === '4g') {
+      hint = 'good';
+    } else if (etype === '3g') {
+      hint = 'fair';
+    } else if (etype === '2g' || etype === 'slow-2g') {
+      hint = 'poor';
+    }
+    if (hint) _iqApplyTier(pc, hint, false);
+  }
+
+  // Reset counters
+  _iqPrevSent  = 0;
+  _iqPrevLost  = 0;
+  _iqPrevBytes = 0;
+  _iqPrevTs    = 0;
+  _iqUpgradePending = false;
+
+  _iqTimer = setInterval(() => _iqTick(pc), 8_000);
+
+  // Also listen for connection-type changes
+  if (conn) {
+    conn.addEventListener('change', () => _iqOnConnectionChange(pc));
+  }
+}
+
+// ── Monitoring tick (runs every 8 s) ─────────────────────────────────
+
+async function _iqTick(pc) {
+  if (!pc || pc.connectionState !== 'connected') return;
+  if (!_iqEnabled || !_iqLiveActive) return;
+
+  try {
+    const stats = await pc.getStats();
+
+    let sent  = 0, lost  = 0, bytes = 0, rtt = 0, rttCount = 0;
+    let roundTripMs = null;
+
+    stats.forEach(r => {
+      if (r.type === 'outbound-rtp' && r.kind === 'video') {
+        sent  += r.packetsSent  || 0;
+        lost  += r.packetsLost  || 0;
+        bytes += r.bytesSent    || 0;
+      }
+      if (r.type === 'remote-inbound-rtp' && r.kind === 'video') {
+        if (r.roundTripTime != null) { rtt += r.roundTripTime; rttCount++; }
+      }
+      // candidate-pair for RTT fallback
+      if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null) {
+        if (!rttCount) { rtt = r.currentRoundTripTime; rttCount = 1; }
+      }
+    });
+
+    const now      = Date.now();
+    const deltaSent = sent  - _iqPrevSent;
+    const deltaLost = lost  - _iqPrevLost;
+    const deltaBytes = bytes - _iqPrevBytes;
+    const deltaSec   = _iqPrevTs ? (now - _iqPrevTs) / 1000 : 8;
+
+    _iqPrevSent  = sent;
+    _iqPrevLost  = lost;
+    _iqPrevBytes = bytes;
+    _iqPrevTs    = now;
+
+    if (deltaSent < 5) return; // too few packets to be meaningful
+
+    const lossRate = Math.max(0, deltaLost) / deltaSent;
+    const kbps     = (deltaBytes * 8 / 1000) / deltaSec;
+    roundTripMs    = rttCount ? (rtt / rttCount) * 1000 : null;
+
+    const targetTier = _iqPickTier(lossRate, roundTripMs, kbps);
+    _iqMaybeChangeTier(pc, targetTier, lossRate, roundTripMs);
+
+  } catch(_) {}
+}
+
+// ── Pick the best tier based on current network metrics ──────────────
+
+function _iqPickTier(lossRate, rttMs, kbps) {
+  const rtt = rttMs != null ? rttMs : 0;
+  if (lossRate <= _IQ_TIERS.excellent.lossMax && rtt <= _IQ_TIERS.excellent.rttMax && kbps >= 4000) return 'excellent';
+  if (lossRate <= _IQ_TIERS.good.lossMax      && rtt <= _IQ_TIERS.good.rttMax      && kbps >= 1500) return 'good';
+  if (lossRate <= _IQ_TIERS.fair.lossMax      && rtt <= _IQ_TIERS.fair.rttMax      && kbps >= 600)  return 'fair';
+  return 'poor';
+}
+
+// ── Change-tier logic with hysteresis ────────────────────────────────
+
+function _iqMaybeChangeTier(pc, targetTier, lossRate, rttMs) {
+  const order = ['excellent', 'good', 'fair', 'poor'];
+  const curIdx = order.indexOf(_iqCurrentTier ?? 'good');
+  const tarIdx = order.indexOf(targetTier);
+
+  if (tarIdx === curIdx) { _iqUpgradePending = false; return; }
+
+  if (tarIdx > curIdx) {
+    // Degrading → apply immediately (protect stream first)
+    _iqUpgradePending = false;
+    _iqApplyTier(pc, targetTier, true);
+  } else {
+    // Improving → require two consecutive good reads (hysteresis)
+    if (!_iqUpgradePending) {
+      _iqUpgradePending = true;
+      return;
+    }
+    _iqUpgradePending = false;
+    // Improve one step at a time
+    const nextTier = order[curIdx - 1];
+    _iqApplyTier(pc, nextTier, true);
+  }
+}
+
+// ── Apply a quality tier to the sender ───────────────────────────────
+
+async function _iqApplyTier(pc, tierId, notify) {
+  if (_iqCurrentTier === tierId) return;
+  const prev = _iqCurrentTier;
+  _iqCurrentTier = tierId;
+  const tier = _IQ_TIERS[tierId];
+
+  // Apply to the video sender
+  try {
+    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+    if (sender) {
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate            = tier.maxBitrate;
+      params.encodings[0].scaleResolutionDownBy = tier.scaleDown;
+      await sender.setParameters(params).catch(() => {});
+    }
+  } catch(_) {}
+
+  // Also align the existing adaptive-quality module's tier index so they don't fight
+  const legacyMap = { excellent: 0, good: 1, fair: 2, poor: 3 };
+  _adaptiveQualityTierIdx = legacyMap[tierId] ?? 1;
+
+  _iqShowBadge(tierId, tier);
+  if (notify && prev !== null) _iqNotify(prev, tierId, tier);
+
+  console.log(`[IQ] → ${tierId.toUpperCase()} (${tier.label} / ${tier.maxBitrate/1000} kbps)`);
+}
+
+// ── Handle Network Information API change event ───────────────────────
+
+function _iqOnConnectionChange(pc) {
+  if (!_iqEnabled || !_iqLiveActive) return;
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!conn) return;
+  const etype = (conn.effectiveType || '').toLowerCase();
+  let hint = null;
+  if      (etype === '4g')                   hint = 'good';
+  else if (etype === '3g')                   hint = 'fair';
+  else if (etype === '2g' || etype === 'slow-2g') hint = 'poor';
+  if (hint) _iqMaybeChangeTier(pc, hint, null, null);
+}
+
+// ── Badge ─────────────────────────────────────────────────────────────
+
+function _iqShowBadge(tierId, tier) {
+  const badge = document.getElementById('iqBadge');
+  if (!badge) return;
+  badge.className = `iq-visible iq-${tierId}`;
+  badge.textContent = `${tier.icon} ${tier.label}`;
+}
+
+function _iqHideBadge() {
+  const badge = document.getElementById('iqBadge');
+  if (!badge) return;
+  badge.className = '';
+  badge.textContent = '';
+  _iqCurrentTier = null;
+}
+
+// ── Toast notification to streamer ───────────────────────────────────
+
+function _iqNotify(prevId, nextId, tier) {
+  const order = ['excellent', 'good', 'fair', 'poor'];
+  const improved = order.indexOf(nextId) < order.indexOf(prevId);
+  const msg = improved
+    ? `📶 Quality improved → ${tier.label}`
+    : `⚠️ Quality reduced → ${tier.label} (weak signal)`;
+  toast(msg, 3500);
+}
+
+// ── Stop & cleanup ────────────────────────────────────────────────────
+
+function _iqStop() {
+  if (_iqTimer) { clearInterval(_iqTimer); _iqTimer = null; }
+  _iqPrevSent  = 0;
+  _iqPrevLost  = 0;
+  _iqPrevBytes = 0;
+  _iqPrevTs    = 0;
+  _iqUpgradePending = false;
+  // Remove network-change listener
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (conn) conn.removeEventListener('change', _iqOnConnectionChange);
 }

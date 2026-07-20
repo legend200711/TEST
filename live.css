@@ -1452,3 +1452,24 @@ button, input, a, [role="button"] {
   white-space: nowrap;
 }
 #aiSafetyBadge.visible { display: flex; }
+
+/* ═══════════════════════════════════════════════════════════════
+   INTERNET QUALITY BADGE  (host-only, top-bar)
+   ═══════════════════════════════════════════════════════════════ */
+#iqBadge {
+  display: none;
+  align-items: center; gap: 5px;
+  background: rgba(0,0,0,0.52); backdrop-filter: blur(6px);
+  border: 1px solid rgba(0,174,239,0.4);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: 10px; color: #88ddff; flex-shrink: 0;
+  white-space: nowrap;
+}
+#iqBadge.iq-visible { display: flex; }
+/* Quality-tier colour variants */
+#iqBadge.iq-excellent { border-color: rgba(57,255,20,0.55);  color: #77ff55; }
+#iqBadge.iq-good      { border-color: rgba(0,174,239,0.55);  color: #55ddff; }
+#iqBadge.iq-fair      { border-color: rgba(255,180,0,0.55);  color: #ffcc44; }
+#iqBadge.iq-poor      { border-color: rgba(255,50,70,0.65);  color: #ff7788; }
+
+/* IQ quality-change toast — reuses existing #liveToast; colours are set inline via JS */

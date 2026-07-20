@@ -5336,6 +5336,20 @@ body.arcade-fs-ios body::after { display:none !important; }
     border: 2px solid #070f20;
     pointer-events: none;
     z-index: 2;
+    animation: storyDotBreath 2.4s ease-in-out infinite;
+}
+@keyframes storyDotBreath {
+    0%,100% { box-shadow: 0 0 6px #00ff66, 0 0 12px #00cc55; }
+    50%     { box-shadow: 0 0 10px #00ff66, 0 0 20px #00cc55; }
+}
+/* Offline dot — small gray pip at bottom-right of bubble */
+.story-offline-dot {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 11px; height: 11px; border-radius: 50%;
+    background: #3a4a5a;
+    border: 2px solid #070f20;
+    pointer-events: none;
+    z-index: 2;
 }
 .story-live-badge {
     position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
@@ -8798,6 +8812,7 @@ body.arcade-fs-ios body::after { display:none !important; }
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
   import { getFirestore, doc, setDoc, getDoc, getDocFromCache, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, onSnapshot, arrayUnion, arrayRemove, runTransaction, where, getDocs, writeBatch, increment, serverTimestamp, enableNetwork, disableNetwork } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
   import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js";
+  import { getDatabase as _getRtdb, ref as _rtdbRef, set as _rtdbSet, update as _rtdbUpdate, onDisconnect as _rtdbOnDisconnect, serverTimestamp as _rtdbServerTimestamp, onValue as _rtdbOnValue, off as _rtdbOff } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyByZRmp6R9HY17T2_WdJUFWeeaLNOP6y2Y",
@@ -8812,6 +8827,7 @@ body.arcade-fs-ios body::after { display:none !important; }
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const _presenceRtdb = _getRtdb(app);
 
   // ── Ensure auth token is always persisted in localStorage (survives tab/app close) ──
   setPersistence(auth, browserLocalPersistence).catch(() => {});
@@ -8829,6 +8845,9 @@ body.arcade-fs-ios body::after { display:none !important; }
   window._snxDoc        = doc;
   window._snxGetDoc     = getDoc;
   window._snxUpdateDoc  = updateDoc;
+
+  // ── Expose RTDB helpers for presence (used by _attachFriendRtdbStatus) ──
+  window._snxRtdbApi = { getDatabase: _getRtdb, ref: _rtdbRef, onValue: _rtdbOnValue, off: _rtdbOff };
 
   // ── Full Firestore namespace for feature scripts ──
   window._snxFirestore = {
@@ -9528,6 +9547,7 @@ body.arcade-fs-ios body::after { display:none !important; }
   window.handleLogout = async () => {
       if (currentUser) {
           try { await updateDoc(doc(db, "users", currentUser.uid), { status: "offline", lastSeen: Date.now() }); } catch(_) {}
+          try { await _rtdbSet(_rtdbRef(_presenceRtdb, 'users/' + currentUser.uid), { online: false, live: false, lastSeen: _rtdbServerTimestamp() }); } catch(_) {}
       }
       signOut(auth);
   };
@@ -9698,6 +9718,25 @@ body.arcade-fs-ios body::after { display:none !important; }
           }
 
           try { await updateDoc(doc(db, "users", user.uid), { status: "online", lastSeen: Date.now() }); } catch(_) {}
+
+          // ── RTDB presence: users/{uid} — online/live status for friends list ──
+          // Use update() so we never overwrite `live: true` that live.js may have
+          // already set (e.g. user opens feed in a second tab while streaming).
+          // `live` is managed exclusively by live.js; we only touch `online` here.
+          try {
+              const _uStatusRef = _rtdbRef(_presenceRtdb, 'users/' + user.uid);
+              await _rtdbUpdate(_uStatusRef, { online: true, lastSeen: _rtdbServerTimestamp() });
+              _rtdbOnDisconnect(_uStatusRef).update({ online: false, lastSeen: _rtdbServerTimestamp() });
+          } catch(_) {}
+
+          // ── Heartbeat: keep RTDB presence alive every 30 s ──
+          // Use update() (not set()) so we only refresh online+lastSeen without
+          // overwriting the `live` field that live.js manages independently.
+          setInterval(() => {
+              if (auth.currentUser) {
+                  try { _rtdbUpdate(_rtdbRef(_presenceRtdb, 'users/' + auth.currentUser.uid), { online: true, lastSeen: _rtdbServerTimestamp() }); } catch(_) {}
+              }
+          }, 30000);
 
           // Save email to Firestore so username login works for existing accounts
           try {
@@ -12012,7 +12051,14 @@ body.arcade-fs-ios body::after { display:none !important; }
       renderFriendsPage();
   };
 
+  // ── Track per-friend RTDB presence unsubscribers so we can cancel on re-render ──
+  let _friendPresenceUnsubs = [];
+
   async function renderFriendsPage() {
+      // Cancel previous RTDB presence listeners before re-rendering
+      _friendPresenceUnsubs.forEach(fn => { try { fn(); } catch(_) {} });
+      _friendPresenceUnsubs = [];
+
       const myS = await getDoc(doc(db,"users",currentUser.uid));
       const md = myS.data();
       const friends = md.friends||[], family = md.family||[], received = md.friendRequestsReceived||[];
@@ -12027,11 +12073,13 @@ body.arcade-fs-ios body::after { display:none !important; }
       fDocs.forEach((d,i) => {
           const u = d.exists()?d.data():{displayName:friends[i].substring(0,8),username:'',avatar:'',uid:friends[i]};
           const isF2 = family.includes(u.uid);
-          const row = document.createElement('div'); row.className='friend-card';
+          const row = document.createElement('div'); row.className='friend-card'; row.dataset.uid = u.uid;
           row.innerHTML=`<div class="friend-avatar" style="background-image:url('${u.avatar||''}');${!u.avatar?'display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;color:#00AEEF;background:#0B1F3A;':''}" onclick="viewProfile('${u.uid}')" data-uid="${u.uid}">${!u.avatar?escFeed((u.displayName||'?')[0].toUpperCase()):''}</div>
-            <div class="friend-meta"><div class="friend-name" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;" onclick="viewProfile('${u.uid}')">${escFeed(u.displayName)}${buildBadgeHtml(u.badges||[],u.role||'member')}${isF2?'<span class="friend-tag-family">❤️ Family</span>':''}</div><div class="friend-handle">@${escFeed(u.username||'')}</div></div>
+            <div class="friend-meta"><div class="friend-name" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;" onclick="viewProfile('${u.uid}')">${escFeed(u.displayName)}${buildBadgeHtml(u.badges||[],u.role||'member')}${isF2?'<span class="friend-tag-family">❤️ Family</span>':''}</div><div class="friend-handle">@${escFeed(u.username||'')} <span class="friend-rtdb-status" data-uid="${u.uid}"></span></div></div>
             <div class="friend-actions"><button class="${isF2?'btn-family-on':'btn-family-off'}" onclick="toggleFamily('${u.uid}')">${isF2?'❤️':'🤍'}</button><button onclick="if(typeof window.ipcOpen==='function')window.ipcOpen('${u.uid}');else establishDirectMessageChannel('${u.uid}')">💬</button><button class="btn-decline" onclick="unfriend('${u.uid}')">✕</button></div>`;
           fb.appendChild(row);
+          // ── Live RTDB status listener for this friend ──
+          _friendPresenceUnsubs.push(_attachFriendRtdbStatus(u.uid));
       });
       // Requests tab
       const rb = document.getElementById("reqCountBadge");
@@ -12092,6 +12140,28 @@ body.arcade-fs-ios body::after { display:none !important; }
           fbox.innerHTML='<div class="empty-state">No family members yet.<br><span style="font-size:12px;color:#3a5a7a;">Tap ❤️ Add Family on someone\'s profile to send a request.</span></div>';
       }
       updateFriendBadges(received.length);
+  }
+
+  // ── Helper: subscribe to RTDB users/{uid} and update the status span in the friend card ──
+  function _attachFriendRtdbStatus(uid) {
+      const { getDatabase: _gdb, ref: _r, onValue: _ov, off: _off } = window._snxRtdbApi || {};
+      if (!_gdb) return () => {};  // RTDB not yet available
+      const rtdb    = _gdb(window._snxApp);
+      const nodeRef = _r(rtdb, 'users/' + uid);
+      const handler = snap => {
+          const s   = snap.val();
+          const el  = document.querySelector(`.friend-rtdb-status[data-uid="${uid}"]`);
+          if (!el) return;
+          if (s && s.live) {
+              el.innerHTML = '<span style="color:#ff3344;font-weight:800;font-size:10px;letter-spacing:0.5px;animation:snxLiveDot 1s ease-in-out infinite;">🔴 LIVE</span>';
+          } else if (s && s.online) {
+              el.innerHTML = '<span style="color:#39FF14;font-size:10px;font-weight:600;">🟢 Online</span>';
+          } else {
+              el.innerHTML = '<span style="color:#6a90b8;font-size:10px;">⚫ Offline</span>';
+          }
+      };
+      _ov(nodeRef, handler);
+      return () => _off(nodeRef, handler);
   }
 
   function updateFriendBadges(count) {
@@ -15346,7 +15416,7 @@ body.arcade-fs-ios body::after { display:none !important; }
                   <span class="story-live-badge">LIVE</span>
                   <div class="story-ring story-ring-live">
                       <div class="story-ring-inner" style="${avatarStyle}">${liveStory.authorAvatar ? '' : escFeed(initial)}</div>
-                      ${isOnlineLive ? '<div class="story-online-dot"></div>' : ''}
+                      <div class="story-presence-dot ${isOnlineLive ? 'story-online-dot' : 'story-offline-dot'}" data-uid="${uid}"></div>
                   </div>
                   <span class="story-label" style="color:#ff5566;">${escFeed(liveStory.authorName || 'Unknown')}</span>`;
               lvBubble.addEventListener('click', () => {
@@ -15393,18 +15463,64 @@ body.arcade-fs-ios body::after { display:none !important; }
           bubble.innerHTML = `
               <div class="${ringClass}">
                   <div class="story-ring-inner" style="${avatarStyle}">${latest.authorAvatar ? '' : escFeed(initial)}</div>
-                  ${isOnline ? '<div class="story-online-dot"></div>' : ''}
+                  <div class="story-presence-dot ${isOnline ? 'story-online-dot' : 'story-offline-dot'}" data-uid="${uid}"></div>
               </div>
               <span class="story-label">${escFeed(latest.authorName || 'Unknown')}</span>`;
 
           bubble.addEventListener('click', () => openStoryViewer(uid));
           bar.appendChild(bubble);
       });
+
+      // Attach RTDB real-time presence to every dot that was just rendered
+      _attachStoryPresenceDots();
+  }
+
+  /* ─────────────────────────────────────────
+     Story presence dots — RTDB real-time
+     Subscribes to users/{uid}.online for every
+     dot currently rendered in the story bar and
+     flips the dot class in-place without rebuilding
+     the whole bar.
+   ───────────────────────────────────────── */
+  let _storyPresenceUnsubs = [];   // cleanup handles
+
+  function _attachStoryPresenceDots() {
+      // Tear down any previous RTDB listeners
+      _storyPresenceUnsubs.forEach(fn => { try { fn(); } catch(_) {} });
+      _storyPresenceUnsubs = [];
+
+      const { getDatabase: _gdb, ref: _r, onValue: _ov, off: _off } = window._snxRtdbApi || {};
+      if (!_gdb || !window._snxApp) return;
+      const rtdb = _gdb(window._snxApp);
+
+      // Find every presence dot rendered in the bar
+      const bar = document.getElementById('storyBar');
+      if (!bar) return;
+
+      bar.querySelectorAll('.story-presence-dot[data-uid]').forEach(dot => {
+          const uid = dot.dataset.uid;
+          if (!uid || uid === (currentUser && currentUser.uid)) return;
+
+          const nodeRef = _r(rtdb, 'users/' + uid);
+          const handler = snap => {
+              const s = snap.val();
+              // Re-query: the dot element may have been replaced by a full re-render
+              const liveDot = document.querySelector(`.story-presence-dot[data-uid="${uid}"]`);
+              if (!liveDot) return;
+              if (s && (s.online || s.live)) {
+                  liveDot.className = 'story-presence-dot story-online-dot';
+              } else {
+                  liveDot.className = 'story-presence-dot story-offline-dot';
+              }
+          };
+          _ov(nodeRef, handler);
+          _storyPresenceUnsubs.push(() => _off(nodeRef, handler));
+      });
   }
 
   /* ─────────────────────────────────────────
      Seen-story tracking (sessionStorage)
-  ───────────────────────────────────────── */
+   ───────────────────────────────────────── */
   function _getSeenStories() {
       try { return new Set(JSON.parse(sessionStorage.getItem('snxSeenStories') || '[]')); }
       catch(_) { return new Set(); }
@@ -15810,12 +15926,9 @@ function navTo(pageId) {
         const _allTab = document.querySelector('.notif-filter-tab[data-filter="all"]');
         if (_allTab && typeof setNotifFilter === 'function') setNotifFilter('all', _allTab);
     }
-    // ── Presence strip: only run while the feed page is visible ──
-    // Unsubscribe when leaving feed, re-subscribe when returning to it.
-    if (pageId !== 'feed' && typeof presenceUnsubscribe !== 'undefined' && presenceUnsubscribe) {
-        presenceUnsubscribe(); presenceUnsubscribe = null;
-    }
-    if (pageId === 'feed' && typeof presenceUnsubscribe !== 'undefined' && !presenceUnsubscribe
+    // ── Presence strip: keep running at all times so story dots stay accurate ──
+    // Only start it if it hasn't been started yet (login triggers the first start).
+    if (typeof presenceUnsubscribe !== 'undefined' && !presenceUnsubscribe
         && typeof currentUser !== 'undefined' && currentUser
         && typeof initPresenceStrip === 'function') {
         presenceUnsubscribe = initPresenceStrip();
@@ -19002,6 +19115,9 @@ function _supportStopCanvas() {
      Shared JavaScript utilities (SW registration, PWA install,
      online/offline detection, helper functions)
      ═══════════════════════════════════════════════════════════ -->
+
+<!-- ── Global Background Internet Manager (must load before script.js) ── -->
+<script src="snx-net.js"></script>
 
 <script src="script.js"></script>
 
@@ -24319,6 +24435,222 @@ window.switchAdminTab = function(tab) {
 
 <!-- ── Profile Photo Album module (must load after the main IIFE) ── -->
 <script src="album.js"></script>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     CO-HOST INVITE POPUP — index.html (feed page)
+     Listens on coHostInvites/{currentUserUID} in RTDB.
+     Shows ACCEPT / DENY popup when a pending invite arrives.
+     Does NOT touch any existing code — purely additive.
+     ══════════════════════════════════════════════════════════════════ -->
+<style>
+#snxCoHostInviteOverlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 99000;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 72px;
+}
+#snxCoHostInviteOverlay.visible { display: flex; }
+#snxCoHostInviteCard {
+  background: rgba(4, 10, 28, 0.98);
+  backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(160, 80, 255, 0.65);
+  border-radius: 18px;
+  padding: 22px 20px 18px;
+  width: min(310px, calc(100vw - 32px));
+  text-align: center;
+  animation: _snxChIn 0.22s ease-out both;
+}
+@keyframes _snxChIn {
+  from { opacity:0; transform:translateY(-14px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+#snxCoHostInviteCard .chi-icon  { font-size:34px; line-height:1; margin-bottom:10px; }
+#snxCoHostInviteCard .chi-title { font-size:15px; font-weight:800; color:#e8d8ff; margin-bottom:5px; }
+#snxCoHostInviteCard .chi-sub   { font-size:13px; color:#8a6ab8; line-height:1.5; margin-bottom:16px; }
+#snxCoHostInviteCard .chi-row   { display:flex; gap:10px; }
+#snxCoHostInviteCard .chi-accept {
+  flex:1; padding:11px;
+  border-radius:11px;
+  background:rgba(60,200,80,0.18);
+  border:1.5px solid rgba(60,220,90,0.6);
+  color:#55e870; font-size:14px; font-weight:800;
+  cursor:pointer;
+}
+#snxCoHostInviteCard .chi-deny {
+  flex:1; padding:11px;
+  border-radius:11px;
+  background:rgba(180,0,30,0.14);
+  border:1.5px solid rgba(255,50,70,0.45);
+  color:#ff5566; font-size:14px; font-weight:800;
+  cursor:pointer;
+}
+</style>
+
+<div id="snxCoHostInviteOverlay" role="dialog" aria-modal="true" aria-label="Co-host invite">
+  <div id="snxCoHostInviteCard">
+    <div class="chi-icon">🎥</div>
+    <div class="chi-title">Co-host Invite</div>
+    <div class="chi-sub" id="snxCoHostInviteSub">Someone wants you to join their live.</div>
+    <div class="chi-row">
+      <button class="chi-accept" id="snxCoHostAcceptBtn">ACCEPT</button>
+      <button class="chi-deny"   id="snxCoHostDenyBtn">DENY</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ── Co-Host Invite Listener (index.html) ─────────────────────────────────────
+// Watches coHostInvites/{uid} in RTDB. When a pending invite arrives it shows
+// a popup with ACCEPT / DENY. Completely isolated — touches nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
+(async function () {
+  'use strict';
+
+  const RTDB_VERSION = '10.8.0';   // matches the version used in this page
+  const RTDB_URL     = `https://www.gstatic.com/firebasejs/${RTDB_VERSION}/firebase-database.js`;
+
+  let _activeInvite = null;   // { senderUID, from, roomId }
+  let _listenerRef  = null;
+  let _rtdbRef      = null;
+  let _liveDB       = null;
+
+  // ── Wait for the main module to expose the app + auth ──────────────────────
+  function _waitFor(getter, maxMs = 12000) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        const val = getter();
+        if (val) { resolve(val); return; }
+        if (Date.now() - start > maxMs) { reject(new Error('timeout')); return; }
+        setTimeout(check, 150);
+      };
+      check();
+    });
+  }
+
+  try {
+    // Wait for main Firebase app to be ready (set immediately by the inline module)
+    const app = await _waitFor(() => window._snxApp);
+
+    // Import RTDB module
+    const rtdbMod = await import(RTDB_URL);
+    const { getDatabase, ref, onValue, off, set, update, remove } = rtdbMod;
+    _liveDB = getDatabase(app);
+    _rtdbRef = ref;
+
+    // Wait for auth to resolve then start the listener
+    const { getAuth, onAuthStateChanged } = await import(
+      `https://www.gstatic.com/firebasejs/${RTDB_VERSION}/firebase-auth.js`
+    );
+    const _auth = getAuth(app);
+
+    onAuthStateChanged(_auth, user => {
+      // Stop any previous listener
+      if (_listenerRef) {
+        try { off(_listenerRef); } catch(_) {}
+        _listenerRef = null;
+      }
+      if (!user || user.isAnonymous) return;
+
+      // ── Subscribe to coHostInvites/{myUID} ────────────────────────────────
+      const inboxRef = ref(_liveDB, `coHostInvites/${user.uid}`);
+      _listenerRef   = inboxRef;
+
+      onValue(inboxRef, snap => {
+        if (!snap.exists()) return;
+        const invites = snap.val() || {};
+
+        // Pick the most-recent pending invite not already shown
+        const pending = Object.entries(invites)
+          .filter(([, v]) => v.status === 'pending')
+          .sort(([, a], [, b]) => (b.time || 0) - (a.time || 0));
+
+        if (pending.length && !_activeInvite) {
+          const [senderUID, data] = pending[0];
+          _activeInvite = { senderUID, ...data };
+          _showCard(data.from || 'Someone');
+        }
+      });
+
+      // ── ACCEPT ────────────────────────────────────────────────────────────
+      document.getElementById('snxCoHostAcceptBtn').onclick = async () => {
+        if (!_activeInvite) return;
+        const inv = _activeInvite;
+        _hideCard();
+        try {
+          // 1. Mark accepted
+          await update(ref(_liveDB, `coHostInvites/${user.uid}/${inv.senderUID}`), {
+            status: 'accepted',
+          });
+          // 2. Add to coHosts/{uid} in RTDB
+          await set(ref(_liveDB, `coHosts/${user.uid}`), {
+            active: true,
+            roomId: inv.roomId || '',
+            joinedAt: Date.now(),
+          });
+          // 3. Clean up invite
+          await remove(ref(_liveDB, `coHostInvites/${user.uid}/${inv.senderUID}`));
+          // 4. Navigate to the live room
+          if (inv.roomId) {
+            window.location.href = `live.html?room=${encodeURIComponent(inv.roomId)}`;
+          } else {
+            _toast('🎥 Co-host invite accepted!');
+          }
+        } catch (e) {
+          console.error('[CoHostInvite] accept error:', e);
+          _toast('Could not accept invite. Please try again.');
+        }
+      };
+
+      // ── DENY ──────────────────────────────────────────────────────────────
+      document.getElementById('snxCoHostDenyBtn').onclick = async () => {
+        if (!_activeInvite) return;
+        const inv = _activeInvite;
+        _hideCard();
+        try {
+          // 1. Mark denied (host gets notified via their listener)
+          await update(ref(_liveDB, `coHostInvites/${user.uid}/${inv.senderUID}`), {
+            status: 'denied',
+          });
+          // 2. Clean up after short delay (so host reads the 'denied' status first)
+          setTimeout(() => {
+            remove(ref(_liveDB, `coHostInvites/${user.uid}/${inv.senderUID}`)).catch(() => {});
+          }, 3000);
+          _toast('Co-host invite declined.');
+        } catch (_) {}
+      };
+    });
+
+  } catch (e) {
+    console.warn('[CoHostInvite] init failed:', e);
+  }
+
+  function _showCard(fromName) {
+    const sub = document.getElementById('snxCoHostInviteSub');
+    if (sub) sub.textContent = `${fromName} wants you to join their live as a co-host.`;
+    const overlay = document.getElementById('snxCoHostInviteOverlay');
+    if (overlay) overlay.classList.add('visible');
+  }
+
+  function _hideCard() {
+    _activeInvite = null;
+    const overlay = document.getElementById('snxCoHostInviteOverlay');
+    if (overlay) overlay.classList.remove('visible');
+  }
+
+  function _toast(msg) {
+    if (typeof toastNotification === 'function') { toastNotification(msg); return; }
+    const t = document.getElementById('toast') || document.getElementById('snxToast');
+    if (t) { t.textContent = msg; t.classList.add('show','visible'); setTimeout(() => t.classList.remove('show','visible'), 3500); return; }
+    console.log('[CoHostInvite]', msg);
+  }
+
+})();
+</script>
 
 </body>
 </html>

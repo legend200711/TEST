@@ -10,7 +10,7 @@
  * GitHub Pages (/ShadowNexusSocial/) and any local dev server (/).
  */
 
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v14';
 const CACHE_NAME    = `shadow-nexus-${CACHE_VERSION}`;
 const MEDIA_CACHE   = `shadow-nexus-media-${CACHE_VERSION}`;
 
@@ -27,6 +27,7 @@ const SHELL_FILES = [
   'style.css',
   'album.css',
   'script.js',
+  'snx-net.js',
   'manifest.json',
   'icon-192.png',
   'icon-512.png',
@@ -224,6 +225,11 @@ async function _trimMediaCache(cache) {
 /* ─────────────────────────────────────────────
    MESSAGE — cache control from the page
    ───────────────────────────────────────────── */
+/** Current network tier reported by snx-net.js on any page */
+let _snxNetTier     = 'good';
+let _snxDataSaver   = false;
+let _snxOffline     = false;
+
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     // Take over immediately — all clients will reload via controllerchange
@@ -240,5 +246,23 @@ self.addEventListener('message', (event) => {
       type:       'UPDATE_STATUS',
       hasUpdate:  false,  // SW itself can't self-inspect; client handles via reg.waiting
     });
+  }
+
+  // ── SNX-NET: network quality state update from snx-net.js ──
+  if (event.data?.type === 'SNX_NET_STATE') {
+    _snxNetTier   = event.data.tier      ?? 'good';
+    _snxDataSaver = event.data.dataSaver ?? false;
+    _snxOffline   = event.data.offline   ?? false;
+    // On data-saver tier: trim media cache more aggressively
+    if (_snxDataSaver) {
+      caches.open(MEDIA_CACHE).then(cache => {
+        cache.keys().then(keys => {
+          // Keep only the 30 most-recently-cached items when bandwidth is tight
+          if (keys.length > 30) {
+            keys.slice(0, keys.length - 30).forEach(k => cache.delete(k));
+          }
+        });
+      }).catch(() => {});
+    }
   }
 });
